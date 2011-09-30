@@ -1,0 +1,14 @@
+package DB {
+    trait Field {
+        has store
+        has fetch
+    }
+}
+
+class Point {
+    has x is DB::Field : Number = 0
+    has y is DB::Field : Number = 0
+}
+
+var p = Point.new()
+

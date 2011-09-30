@@ -1,0 +1,34 @@
+class RegExp {
+    var rex = require("rex_onig")
+
+    method __init(patt, ...args) {
+        self::_pattern = rex::new(patt, ...args)
+    }
+    method match(subj, ...args) {
+        return rex::match(subj, self::_pattern, ...args)
+    }
+    method gmatch(subj, ...args) {
+        var matches = [ ]
+        for m in rex::gmatch(subj, self::_pattern, ...args) {
+            matches.push(m)
+        }
+        return matches
+    }
+    method find(subj, ...args) {
+        return rex::find(subj, self::_pattern, ...args)
+    }
+    method tfind(subj, ...args) {
+        return rex::tfind(subj, self::_pattern, ...args)
+    }
+    method gsub(subj, repl, ...args) {
+        return rex::gsub(subj, self::_pattern, repl, ...args)
+    }
+    method split(subj, ...args) {
+        var frags = [ ]
+        for s in rex::split(subj, self::_pattern, ...args) {
+            frags.push(s)
+        }
+        return frags
+    }
+}
+

@@ -1,0 +1,16 @@
+var x, y
+x = 42
+x,y = 42
+
+var a = { }
+a['b'] = 42
+a::b = 42
+a::b,a::c = 69
+
+var a,b,c = 1,2,3
+a,b,c = 'a','b','c'
+print(a,b,c)
+
+var a = { }
+var b = { }
+a['foo'], a['bar'] = b['baz'], b['quux']

@@ -1,0 +1,9 @@
+
+var a = { x = 1 }
+var b = { y = 2 }
+var c = { z = 3 }
+
+var d = a with b with c
+print(d.x, d.y, d.z)
+print(d)
+

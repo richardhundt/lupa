@@ -1,0 +1,5 @@
+def foo() : ...Num {
+    return 'blah', 42
+}
+
+print(foo())

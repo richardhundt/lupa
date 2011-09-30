@@ -1,0 +1,120 @@
+class Context {
+    has out = [ ]
+    method put(str) {
+        self.out.push(str)
+    }
+}
+
+class Parser {
+    rule template {
+        {@ <const> (<code> <const>)* @} -> function(a) { a.concat() }
+    }
+    rule code {
+        <intrp> | <logic>
+    }
+    rule intrp {
+        "<%=" %s* {~ { (!(%s* "%>") .)+ } -> function(s) {
+            return "__ctx.put(%s);".format(s)
+        } ~} %s* "%>"
+    }
+    rule logic {
+        "<%" %s* { (!"%>" .)+ } "%>" %s*
+    }
+    rule const {
+        {~ { (!<code> .)* } -> function(s) {
+            if s != "" {
+                return "__ctx.put(%q);".format(s)
+            }
+        } ~}
+    }
+
+    method parse(source) {
+        return self.template.match(source)
+    }
+}
+
+object Compiler {
+
+    var CACHE = { }
+
+    has _parser = Parser.new()
+
+    method compile(source) {
+        if CACHE[source] {
+            return CACHE[source]
+        }
+        var code = self._parser.parse(source)
+        var luac = kula::lang::make_eval(code)
+        CACHE[source] = luac
+        return luac
+    }
+
+    method clear_cache() {
+        CACHE = { }
+    }
+}
+
+class Template {
+    has _base = "."
+
+    method __init(base) {
+        self._base = base
+    }
+    method process_file(path, vars) {
+        var path = self._base ~ '/' ~ path
+        var file = assert(io::open(path, "r"))
+        var data = file.read("*a")
+        file.close()
+        return self.process(data, vars, path)
+    }
+    method process(src, vars, name) {
+        var ctx = Context.new()
+        var env = {
+            __ctx = ctx,
+            pairs = pairs,
+            next  = next,
+            print = function(...args) {
+                for i=1, #args {
+                    out.push(tostring(args[i]))
+                }
+            },
+            tostring = tostring,
+            tonumber = tonumber,
+            require  = require,
+            Core     = Core,
+            Op       = Op,
+        }
+
+        if vars {
+            for k,v in vars {
+                env::[k] = v
+            }
+        }
+        var code = Compiler.compile(src)
+        setfenv(code, env)
+        code()
+
+        return ctx.out.concat()
+    }
+}
+
+///*
+var s = """
+<html>
+<body>
+  <ul>
+<% var a = ['a','b','c','d','e'] %>
+<% for i, v in a { %>
+    <li> <%= i %> => <%= v %> </li>
+<% } %>
+  </ul>
+</body>
+</html>
+"""
+var t = Template.new()
+print(t.process(s))
+for i=1, 100000 {
+    t.process(s)
+}
+//*/
+

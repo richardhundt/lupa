@@ -1,0 +1,288 @@
+package Markup {
+    class Node {
+        has tag
+        method __getitem(idx) {
+            self::[idx]
+        }
+        method __setitem(idx, val) {
+            self::[idx] = val
+        }
+        method __tostring() {
+            return Hash::__tostring(self)
+        }
+    }
+
+    class Parser {
+
+        function backref(s, i, c) {
+            if !c.isa(String) { return nil }
+            var e = #c + i
+            if s.sub(i, e - 1) == c {
+                return e
+            }
+        }
+
+        function Cbr(name) {
+            return LPeg::Cmt(LPeg::Cb(name), backref)
+        }
+
+        function sm_node(name) {
+            return function(node) {
+                Node.bless(node)
+                node.tag = name
+                return node
+            }
+        }
+
+        rule markup {
+            <blank>* {%
+                {:dent: ' '* :} <chunk>
+                (<blank> | (<{ Cbr('dent') }> <chunk>))*
+            %}
+        }
+
+        rule chunk {
+            <heading> | <defn_list> | <para> | <verbatim> | <list>
+        }
+
+        rule verbatim {
+            {% " " <rest> (<{ Cbr('dent') }> " " <rest>)* %} -> sm_node("verbatim")
+        }
+
+        rule heading {
+            {% {:level: "="+ -> String::len :} " " <rest> %} -> sm_node("heading")
+        }
+
+        rule para {
+            {% <line> (<{ Cbr("dent") }> {` " " `} <line>)* %} -> sm_node("para")
+        }
+
+        rule defn_list {
+            {% <defn> (<{ Cbr("dent") }> <defn>)* %} -> sm_node("defn_list")
+        }
+
+        rule defn {
+            <indent> {%
+                {:term: <defn_term> :}
+                {:dent: <{ Cbr("dent") }> " "+ :}
+                <chunk> (<blank> | (<{ Cbr("dent") }> <chunk>))*
+            %} <undent> -> sm_node("defn")
+        }
+
+        rule defn_term {
+            {%
+                (<span> | {~
+                    (<escp> | { !(<span> | "\n" | "::") . })+
+                ~})+ "::\n"
+            %} -> sm_node("defn_term")
+        }
+
+        rule list {
+            {% <item> ((<{ Cbr("dent") }> <item>) | <nest>)* %} -> sm_node("list")
+        }
+
+        rule item {
+            <indent> {%
+                <bullet> {:dent:
+                    {~ =dent {` " " `} { " " }+ ~}
+                :} <chunk> (<blank> | <{ Cbr("dent") }> <chunk>)*
+            %} <undent> -> sm_node("item")
+        }
+
+        rule nest {
+            <indent> {:dent: <{ Cbr("dent") }> " "^2 :} <list> <undent>
+        }
+
+        rule line {
+            !<marker> <text>* "\n"
+        }
+
+        rule rest {
+            { (!"\n" .)* } "\n"
+        }
+
+        rule span {
+            <bold> | <emph> | <code>
+        }
+
+        rule escp {
+            {~ (
+                {: "\\*" {` "*" `} :} |
+                {: "\\_" {` "_" `} :} |
+                {: "\\+" {` "+" `} :} 
+            )+ ~}
+        }
+
+        rule text {
+            <span> | {~ (<escp> | { !(<span> | "\n") . })+ ~}
+        }
+
+        rule bold {
+            "*" !" " {% { (!("\n" | "*").)+ } "*" %} -> sm_node("bold")
+        }
+
+        rule emph {
+            "_" !" " {% { (!("\n" | "_").)+ } "_" %} -> sm_node("emph")
+        }
+
+        rule code {
+            "+" !" " {% { (!("\n" | "+").)+ } "+" %} -> sm_node("code")
+        }
+
+        rule blank {
+            " "* "\n"
+        }
+
+        rule bullet {
+            {:bullet: ("-" | "*") | [0-9]+ "." :}
+        }
+        rule marker {
+            ("[" | "=" | "*" | " ") | [0-9]+ "."
+        }
+        rule indent {
+            {:out: =dent :}
+        }
+        rule undent {
+            {:dent: =out :} {:out: {` nil `} :}
+        }
+
+        method parse(text) {
+            var tab = " ".rep(8)
+            text = text.gsub("\r\n", "\n").gsub("\t", tab)
+            return self.markup.match(text)
+        }
+    }
+
+    class Writer {
+        has _parser = Parser.new()
+        has _buffer = [ ]
+
+        class HTML extends self {
+
+            method parse(input) {
+                return self._parser.parse(input)
+            }
+
+            method transform(input) {
+                var markup = self.parse(input)
+                if markup == nil { return input }
+                for i=1, #markup {
+                    self.write(markup[i])
+                }
+                return self._buffer.concat()
+            }
+
+            method write(node) {
+                if node.isa(String) {
+                    node = node
+                        .gsub('&', '&amp;')
+                        .gsub('<', '&lt;')
+                        .gsub('>', '&gt;')
+                        .gsub('"', '&quot;')
+                        .gsub("'", '&apos;')
+                    self._buffer.push(node)
+                }
+                else {
+                    handler = self::["write_%{node.tag}"]
+                    handler(self, node)
+                }
+            }
+
+            method write_para(node) {
+                self._buffer.push('<p>')
+                self.apply(node)
+                self._buffer.push("</p>\n")
+            }
+
+            method write_heading(node) {
+                var lvl = node['level']
+                var tag = "h%{lvl}"
+                self._buffer.push("<%{tag}>")
+                self.apply(node)
+                self._buffer.push("</%{tag}>\n")
+            }
+
+            method write_list(node) {
+                var bul = node[1]['bullet']
+                var tag = (bul == '*' || bul == "-") ? "ul" : "ol"
+                self._buffer.push("<%{tag}>")
+                self.apply(node)
+                self._buffer.push("</%{tag}>\n")
+            }
+
+            method write_item(node) {
+                self._buffer.push("<li>")
+                node[1] = node[1][1]
+                self.apply(node)
+                self._buffer.push("</li>\n")
+            }
+
+            method write_defn_list(node) {
+                self._buffer.push("<dl>")
+                self.apply(node)
+                self._buffer.push("</dl>\n")
+            }
+
+            method write_defn(node) {
+                self.write(node['term'])
+                self._buffer.push("<dd>")
+                self.apply(node)
+                self._buffer.push("</dd>\n")
+            }
+
+            method write_defn_term(node) {
+                self._buffer.push("<dt>")
+                self.apply(node)
+                self._buffer.push("</dt>\n")
+            }
+
+            method write_bold(node) {
+                self._buffer.push("<b>")
+                self.apply(node)
+                self._buffer.push("</b>")
+            }
+
+            method write_emph(node) {
+                self._buffer.push("<em>")
+                self.apply(node)
+                self._buffer.push("</em>")
+            }
+
+            method write_code(node) {
+                self._buffer.push("<code>")
+                self.apply(node)
+                self._buffer.push("</code>")
+            }
+
+            method write_verbatim(node) {
+                self._buffer.push("<pre>")
+                for i=1, #node {
+                    self._buffer.push(node[i], "\n")
+                }
+                self._buffer.push("</pre>\n")
+            }
+
+            method apply(node) {
+                for i=1, #node {
+                    self.write(node[i])
+                }
+            }
+        }
+    }
+}
+
+var m = Markup::Writer::HTML.new()
+var s = """
+    = This is a heading
+
+    * item a
+    * item b
+
+    this is some *bold* text
+
+      this is verbatim
+
+    Para graph
+"""
+print(m.transform(s))
+

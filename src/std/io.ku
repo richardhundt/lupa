@@ -1,0 +1,33 @@
+class File {
+    has path is readonly
+    has mode is readonly
+
+    has _handle
+
+    method open(path : String, mode : String) {
+        var file = self.bless({
+            path = path,
+            mode = mode,
+            _handle = io::open(path, mode)
+        })
+        return file
+    }
+
+    method read(how) {
+        return self._handle.read(how)
+    }
+
+    method write(...args) {
+        return self._handle.write(...args)
+    }
+
+    method close() {
+        self._handle.close()
+    }
+
+    method __tostring() {
+        'file %q (%s)'.format(self.path, self.mode)
+    }
+}
+
+

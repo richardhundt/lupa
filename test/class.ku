@@ -1,0 +1,103 @@
+trait Guide<M> {
+    method walk { print(M) }
+}
+
+class Point with Guide<"walkies"> {
+
+    has x : Number = 0
+    has y : Number = 0
+
+    has weird is readonly = 42
+    has DEBUG : Boolean = true
+
+    method __init() {
+        print(self, "Point.init")
+    }
+
+    method move(x, y) {
+        self.x = x
+        self.y = y
+    }
+
+    method __missing(key, ...arg) {
+        if #arg > 0 {
+            self::[key] = ...arg
+        }
+        else {
+            return self::[key]
+        }
+    }
+}
+
+
+var p = Point.new()
+print("DOES:", p.does(Guide))
+print("ISA:", p.isa(Point))
+print("CAN:", p.can('move'))
+print("WEIRD: ", p.weird)
+try {
+    p.weird = 69
+}
+catch(ex) {
+    print("Caught: %{ex}")
+    print(/ { 'readonly' } | . /.match(ex))
+}
+
+print("initial: %{p.x}, %{p.y}")
+p.move(1,2)
+
+Point.DEBUG = false
+
+class Point3D extends Point {
+    has z : Number = 0
+
+    method __init() {
+        super::__init(self)
+        print(self, "Point3D.init")
+    }
+
+    method move(x, y, z) {
+        super.move(x, y)
+        self.z = z
+    }
+}
+
+function greetme(whom) {
+    print("Hello %{whom}!")
+    print("HERE = " ~ "THERE")
+}
+
+greetme("Rich")
+
+var p = Point3D.new()
+if p.isa(Point) && p.isa(Point3D) {
+    print("OK")
+}
+
+function grep(item) {
+    return function(block) {
+        var out = [ ]
+        for k,v in item {
+            if block(k,v) {
+                out[#out + 1] = v
+            }
+        }
+        return out
+    }
+}
+
+var a = [ 1, 2, 3, 4, 5 ]
+var b = grep(a) -> { _ % 2 == 0 }
+print("GREPPED:", ...b)
+
+var q = Point.new()
+q.cheseare = 42
+for i=1,10_000_000 {
+    p.move(i+1,i+2,i+3)
+}
+
+print("after loop")
+print(p.x, p.y, p.z)
+
+print("foobar".isa(String))
+

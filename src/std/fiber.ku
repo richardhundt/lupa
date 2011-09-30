@@ -1,0 +1,428 @@
+var sys       = require("sys")
+var sock      = require("sys.sock")
+var coroutine = require("coroutine")
+
+var KWeak = { __mode = "k"  }
+var TWeak = { __mode = "kv" }
+
+var QUEUE = sys::event_queue()
+var READY = bless({ }, TWeak)
+var ALIVE = bless({ }, KWeak)
+var RETVS = bless({ }, KWeak)
+var PARAM = bless({ }, KWeak)
+var STATE = bless({ }, KWeak)
+
+object Scheduler {
+
+    has queue = sys::event_queue()
+    has ready = bless({ }, TWeak)
+    has alive = bless({ }, KWeak)
+    has retvs = bless({ }, KWeak)
+    has param = bless({ }, KWeak)
+
+    method register(coro) {
+        self.alive[coro] = function() {
+            var stat = coroutine::status(coro)
+
+            if (stat == "running") return
+
+            if (ALIVE[coro] && stat != "dead") {
+                var ok, err
+                if (PARAM[coro]) {
+                    var param = PARAM[coro]
+                    PARAM[coro] = nil
+                    ok, err = coroutine::resume(coro, unpack(param))
+                }
+                else {
+                    ok, err = coroutine::resume(coro)
+                }
+                if (!ok) {
+                    if (STATE[coro].on_error) {
+                        Fiber.resume(STATE[coro].on_error, err)
+                    }
+                    else {
+                        throw err
+                    }
+                }
+            }
+            else {
+                QUEUE.del(READY[coro])
+                READY[coro] = nil
+                if (self.state[coro].on_error) {
+                    this.alive[this.state[coro].onError] = nil
+                }
+                STATE[coro] = nil
+                ALIVE[coro] = nil
+            }
+        }
+    }
+
+    function schedule(msec, once) {
+        this.queue.loop(msec, once)
+    }
+}
+
+class Fiber {
+
+    private var state
+
+    function this(func, ...args) {
+        this.state = coroutine::create(func, ...args)
+        Fiber.READY[state] = this
+    }
+
+    static function schedule(msec, once) {
+        Fiber.QUEUE.loop(msec, once)
+    }
+
+    static function current() {
+        return coroutine::running()
+    }
+
+    static function run(func, ...args) {
+        var coro = new Fiber(func)
+        coro.resume(...args)
+        return coro
+    }
+
+   static function create(func, ...args) {
+      var coro = new Fiber(func, ...args)
+      Fiber.PARAM[coro] = args
+      return coro
+   }
+
+   static function sleep(msec) {
+      var coro = coroutine::running()
+      QUEUE.add_timer(function(evq, ev) {
+         evq.del(ev)
+         READY[coro] = QUEUE.add_timer(ALIVE[coro], 0)
+      }, msec)
+      return Fiber.suspend(coro)
+   }
+
+   static function yield(...args) {
+      return coroutine::yield(...args)
+   }
+
+   function ready() {
+      if (READY[this]) { return true }
+      if (ALIVE[this]) {
+         READY[this] = QUEUE.add_timer(ALIVE[this], 0)
+      }
+      return this
+   }
+
+   function suspend() {
+      QUEUE.del(READY[this])
+      READY[this] = nil
+      return coroutine::yield()
+   }
+
+   /*
+   function resume(...)
+      if ALIVE[coro] then
+         Fiber.ready(coro)
+         local ok, err
+         if param[coro] then
+            local param = param[coro]
+            param[coro] = nil
+            ok, err = coroutine::resume(coro, unpack(param))
+         else
+            ok, err = coroutine::resume(coro, ...)
+         end
+         if not ok then
+            if state[coro].on_error then
+               fiber.resume(state[coro].on_error, err)
+            else
+               error(err)
+            end
+         end
+      end
+      return coro
+   end
+
+   function fiber.cancel(coro, ...)
+      alive[coro] = nil
+      if state[coro].on_error then
+         alive[state[coro].on_error] = nil
+      end
+      state[coro] = nil
+      param[coro] = nil
+      retvs[coro] = { ... }
+      return fiber.suspend(coro)
+   end
+
+   function fiber.join(coro)
+      while alive[coro] and coroutine::status(coro) ~= "dead" do
+         coroutine::yield()
+      end
+      local retv = retvs[coro]
+      retvs[coro] = nil
+      return unpack(retv)
+   end
+   */
+}
+
+Lua::debug::setmetatable(coroutine::create(function() { }), Fiber)
+
+/*
+function fiber.terminate(...)
+   local curr = coroutine::running()
+   return fiber.cancel(curr, ...)
+end
+
+function on_error(coro, func)
+   state[coro].on_error = newstate(func)
+end
+
+fiber.Channel = object.Object{ } do
+   local class = fiber.Channel
+
+   function class:__clone(size)
+      self._wget = { }
+      self._wput = { }
+      self._data = { }
+      self._size = size or math.huge;
+   end
+
+   local remove = table.remove
+   function class:get()
+      local data = self._data
+      if #data > 0 then
+         return remove(data, 1)
+      end
+      local wput = self._wput
+      if #wput > 0 then
+         local coro = remove(wput, 1)
+         fiber.resume(coro)
+      else
+         local wget = self._wget
+         local curr = coroutine::running()
+         wget[#wget + 1] = curr
+         fiber.suspend(curr)
+      end
+      return remove(data, 1)
+   end
+
+   function class:put(item)
+      local data = self._data
+      local wget = self._wget
+      data[#data + 1] = item
+      if #wget > 0 then
+         local coro = remove(wget, 1)
+         fiber.resume(coro)
+      elseif #data >= self._size then
+         local wput = self._wput
+         local curr = coroutine::running()
+         wput[#wput + 1] = curr
+         fiber.suspend(curr)
+      end
+   end
+
+end
+
+fiber.Stream = stream.Stream{ } do
+   local class = fiber.Stream
+   local super = stream.Stream
+
+   local KWeak = { __mode = 'k' }
+
+   function class:__clone()
+      super.__clone(self)
+      self._buffer = stream.Buffer()
+      self._wait_r = setmetatable({ }, KWeak)
+      self._wait_w = setmetatable({ }, KWeak)
+      self._hits   = setmetatable({ }, KWeak)
+   end
+
+   function class:add_event(poll, cb)
+      return QUEUE:add(self._handle, poll, cb)
+   end
+
+   function class:wait(poll, msec)
+      if not self._evid then
+         local remove = table.remove
+         self._evid = self:add_event(poll, function(evq,ev,fd,r,w,t,e)
+            if #self._wait_w == 0 and #self._wait_r == 0 then
+               evq:del(ev, true)
+               self._evid = nil
+               return
+            end
+            if r then
+               if #self._wait_r > 0 then
+                  local coro = remove(self._wait_r)
+                  self._hits[coro] = { r, w, t, e }
+                  fiber.ready(coro)
+               else
+                  evq:mod_socket(ev, "-r")
+               end
+            end
+            if w then
+               if #self._wait_w > 0 then
+                  local coro = remove(self._wait_w)
+                  self._hits[coro] = { r, w, t, e }
+                  fiber.ready(coro)
+               else
+                  evq:mod_socket(ev, "-w")
+               end
+            end
+         end, msec)
+      else
+         if poll == "a" then poll = "r" end
+         if poll == "c" then poll = "w" end
+         queue:mod_socket(self._evid, '+'..poll)
+      end
+
+      local curr = fiber.current()
+
+      if poll == "w" or poll == "c" then
+         self._wait_w[#self._wait_w + 1] = curr
+      elseif poll == "r" or poll == "a" then
+         self._wait_r[#self._wait_r + 1] = curr
+      end
+
+      fiber.suspend(curr)
+
+      local hits = self._hits[curr]
+      self._hits[curr] = nil
+
+      return unpack(hits)
+   end
+
+   function class:readable(msec)
+      local R,W,T,E = self:wait('r', msec)
+      return R,T,E
+   end
+   function class:writable(msec)
+      local R,W,T,E = self:wait('w', msec)
+      return W,T
+   end
+
+   function class:read(how, ...)
+      local buf = self._buffer
+      local rfh = self._handle
+      local ofs = buf:seek()
+      if how == nil then
+         if ofs > 0 then
+            local out = buf:read()
+            buf:seek(0)
+            return out
+         else
+            if self:readable() then
+               return rfh:read()
+            end
+         end
+      elseif type(how) == "number" then
+         if ofs >= how then
+            local out = buf:read(how)
+            buf:seek(0)
+            return out
+         else
+            local rem = how
+            while rem > 0 do
+               if self:readable() then
+                  local got = rfh:read(buf, rem)
+                  if not got then break end
+                  rem = rem - got
+               end
+            end
+            local out = buf:read(how)
+            buf:seek(0)
+            return out
+         end
+      elseif type(how) == "userdata" then
+         if ofs > 0 then
+            how:write(buf:read"*a")
+            return ofs
+         else
+            if self:readable() then
+               return rfh:read(how, ...)
+            end
+         end
+      end
+   end
+   function class:readln(irs)
+      irs = irs or "\n"
+      local buf = self._buffer
+      local rfh = self._handle
+      local ofs = 0
+      while true do
+         local idx = buf:index(irs, ofs)
+         if idx then
+            return buf:substr(0, idx + #irs, "")
+         else
+            ofs = ofs + buf:seek() + 1 - #irs
+            if ofs < 0 then ofs = 0 end
+            if self:readable() then
+               if not rfh:read(buf) then break end
+            else
+               break
+            end
+         end
+      end
+   end
+
+   local concat = table.concat
+   function class:write(...)
+      local data = concat({ ... }, "")
+      local rem = #data
+      local wfh = self._handle
+      while rem > 0 do
+         if self:writable() then
+            local ret, len = wfh:write(data)
+            if ret == nil then return nil end
+            rem = rem - len
+            data = data:sub(len + 1)
+         end
+      end
+      return true
+   end
+   function class:writeln(...)
+      return self:write(concat({ ... }, ""), "\n")
+   end
+
+   function class:close()
+      self._handle:close()
+   end
+
+end
+
+fiber.SocketStream = fiber.Stream{ } do
+   local class = fiber.SocketStream
+   local super = fiber.Stream
+
+   object.mixin(class, stream.SocketStream)
+
+   function class:new_handle()
+      local handle = stream.SocketHandle()
+      handle:nonblocking(true)
+      return handle
+   end
+
+   function class:add_event(poll, cb)
+      return queue:add_socket(self._handle, poll, cb)
+   end
+
+   function class:acceptable(msec)
+      local R,W,T,E = self:wait('a', msec)
+      return R,T
+   end
+   function class:connectable(msec)
+      local R,W,T,E = self:wait('c', msec)
+      return W,T
+   end
+
+   function class:accept(...)
+      if self:acceptable() then
+         return stream.SocketStream.accept(self, ...)
+      end
+   end
+   function class:connect(...)
+      if self:connectable() then
+         return stream.SocketStream.connect(self, ...)
+      end
+   end
+end
+
+return fiber
+*/

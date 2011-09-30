@@ -1,0 +1,35 @@
+trait Guide<M> {
+    method walk() { print(M) }
+}
+
+trait Pet<G,N> {
+    has size : G = N
+
+    method wooz() {
+        var x : G = 42
+        print(x)
+    }
+}
+
+class Mammal {
+    has blood = "warm"
+}
+
+class Dog extends Mammal with Guide<"guiding"> with Pet<Int,42> {
+    self::DEBUG = true
+
+    method greet() {
+        print("woof!")
+        print("Size => ", self.size)
+        print("BLOOD => ", self.blood)
+    }
+}
+
+var d = Dog.new()
+d.walk()
+d.greet()
+d.wooz()
+
+print(d is Dog)
+print(Pet(d))
+

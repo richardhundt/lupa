@@ -1,0 +1,178 @@
+package std.socket
+
+enum SockOpts {
+   reuseaddr;
+   type;
+   error;
+   dontroute;
+   sndbuf;
+   rcvbuf;
+   sndlowat;
+   rcvlowat;
+   broadcast;
+   keepalive;
+   oobinline;
+   linger;
+   tcp_nodelay;
+   multicast_ttl;
+   multicast_if;
+   multicast_loop;
+}
+
+class Socket {
+
+    var type   = 'stream'
+    var domain = 'inet'
+    var handle
+    var buffer
+
+    var _nonblocking = false
+
+    def this(type, domain) {
+        if type { this.type = type }
+        if domain { this.domain = domain }
+        this.handle = sys::sock::handle()
+        this.buffer = sys::mem::pointer().alloc()
+        this.handle.socket(this.type, this.domain)
+    }
+
+    static def getaddrinfo(host, addr) {
+       return sys::sock::getaddrinfo(host, addr)
+    }
+
+    static def address() { return sys::sock::addr() }
+    static def inet_pton(txt_addr) { return sys::sock::inet_pton(txt_addr) }
+    static def inet_ntop(bin_addr) { return sys::sock::inet_ntop(bin_addr) }
+
+    static def pack_sockaddr_in(port, host) {
+       var saddr = sys::sock::addr()
+       if !saddr.inet(port, sys::sock::inet_pton(host)) {
+          return false, sys::_ERR
+       }
+       return saddr
+    }
+
+    static def pack_sockaddr_un(path) {
+       var saddr = sys::sock::addr()
+       if !saddr.file(path) {
+          return false, sys::_ERR
+       }
+       return saddr
+    }
+
+    def shutdown(...args) {
+       return this.handle.shutdown(...args)
+    }
+
+    def close() {
+       return this.handle.close()
+    }
+
+    def getfd() {
+       return this.handle.getfd()
+    }
+
+    def setfd(fd) {
+       this.handle.setfd(fd)
+    }
+
+    def nonblocking(flag) {
+       if flag != nil {
+          var prev = this._nonblocking
+          this._nonblocking = flag
+          this.handle.nonblocking(flag)
+          return prev
+       }
+       return this._nonblocking
+    }
+
+    def sockopt(opt, ...args) {
+       if SockOpts[opt] {
+          return assert(this.handle.sockopt(opt, ...args))
+       }
+       else {
+          throw "invalid socket option:" ~ opt
+       }
+    }
+
+    def errstr() {
+       return sys::sock::strerror()
+    }
+
+    def listen(backlog) {
+       return assert(this.handle.listen(backlog))
+    }
+
+    def accept() {
+       var newfd = sys::sock::handle()
+       var val, err = assert(this.handle.accept(newfd))
+       if val {
+          return this.accept_handle(newfd)
+       }
+       return nil, sys::_ERR
+    }
+
+    def accept_handle(newfd) {
+       var sock = new Socket()
+       sock.handle = newfd
+       return sock
+    }
+
+    def read(...args) {
+       return this.handle.read(...args)
+    }
+
+    def write(...args) {
+       return this.handle.write(...args)
+    }
+
+    def readline(irs) {
+       irs = irs || "\n"
+       var rfh = this.handle
+       var buf = this.buffer
+       var got, ofs, idx = 0, 0
+       while true {
+          got = rfh.read(buf, 4096)
+          idx = buf.index(irs, ofs)
+          if got { ofs += got }
+          if !got { break }
+          if idx {
+             return buf.substr(0, idx + irs.length, "")
+          }
+       }
+       return buf.substr(0, nil, "")
+    }
+
+    def connect(host, port) {
+       return this.handle.connect(Socket.pack_sockaddr_in(port, host))
+    }
+
+    def recv(how, from_addr, ...args) {
+       return this.handle.recv(how, from_addr)
+    }
+    def send(data, dest_addr, ...args) {
+       return this.handle.send(data, dest_addr, ...args)
+    }
+    def bind(host, port) {
+       return assert(this.handle.bind(Socket.pack_sockaddr_in(port, host)))
+    }
+    def membership(host, flag) {
+       return this.handle.membership(sys::sock::inet_aton(host), flag)
+    }
+}
+
+var sock = new Socket()
+print("SOCK:", sock)
+assert(sock.bind('127.0.0.1', 8089))
+assert(sock.listen(16))
+while true {
+    var client = sock.accept()
+    print("client:", client)
+    while true {
+        var line = client.readline()
+        print("read:", line)
+        client.write("thanks for:", line)
+    }
+}
+
+

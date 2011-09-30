@@ -1,0 +1,12 @@
+trait WeakTable {
+    has __mode = 'kv'
+}
+
+trait KWeakTable {
+    has __mode = 'k'
+}
+
+trait VWeakTable {
+    has __mode = 'v'
+}
+
