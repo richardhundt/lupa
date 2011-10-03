@@ -98,7 +98,8 @@ readonly.__extend = function(self, attr)
    end
 end
 
-Slot = { }
+Slot = setmetatable({ }, Type)
+Slot.__index = Slot
 Slot.__tostring = function(self)
    return '@'..self.name
 end
@@ -127,7 +128,6 @@ Slot.get = function(self, obj)
    local val = obj[self.name]
    if val == nil then
       val = self.default()
-      obj[self.name] = val
    end
    return val
 end
@@ -138,7 +138,9 @@ Slot.set = function(self, obj, val)
       obj[self.name] = val
    end
 end
-
+Slot.__append = function(self, slot)
+   slot:__extend(self)
+end
 
 Needs = { }
 Needs.__tostring = function(self)
@@ -209,15 +211,18 @@ Super.__tostring = function(self)
 end
 
 Missing = setmetatable({ }, Type)
-Missing.__call = function(self)
-   error("AccessError: attempt to call method "..tostring(self.name), 2)
+Missing.__tostring = function(self)
+   return 'missing '..self.name
 end
-Missing.__index = { }
+Missing.__call = function(self, obj)
+   error("AccessError: attempt to call method "..tostring(self.name).." on "..tostring(obj), 2)
+end
+Missing.__index = Missing
 Missing.__index.get = function(self, obj)
-   error("AccessError: attempt to get "..tostring(self.name), 2)
+   error("AccessError: attempt to get "..tostring(self.name).." in "..tostring(obj), 2)
 end
 Missing.__index.set = function(self, obj, val)
-   error("AccessError: attempt to set "..tostring(self.name), 2)
+   error("AccessError: attempt to set "..tostring(self.name).." in "..tostring(obj), 2)
 end
 
 Object = {
@@ -243,15 +248,24 @@ end
 STable = setmetatable({ }, Type)
 STable.new = function(self, base)
    local stab = { unpack(base) }
-   for i=1, #stab do
-      local slot = stab[i]
-      stab[slot.name] = slot
-   end
-   setmetatable(stab, self)
-   return stab
+   return setmetatable(stab, self)
 end
 STable.__index = function(self, key)
    return setmetatable({ name = key }, Missing)
+end
+STable.build_proto = function(self, proto)
+   if not proto then proto = { } end
+   for i=1, #self do
+      self[self[i].name] = self[i]
+      self[i]:__extend(proto)
+   end
+   proto.__setslot = function(obj, key, val)
+      self[key]:set(obj, val)
+   end
+   proto.__getslot = function(obj, key)
+      return self[key]:get(obj)
+   end
+   return proto
 end
 
 Class = setmetatable({ }, Type)
@@ -264,40 +278,33 @@ end
 Class.__tostring = function(self)
    return 'class '..(rawget(self,'__name') or '<anon>')
 end
+Class.__index = function(self, key)
+   return setmetatable({ name = key }, Missing)
+end
 Class.new = function(self, name, base, body, with)
    if not base then
       base = Object
    end
 
-   local super = STable:new(base)
-   local slots = STable:new(base)
-   local class = {
-      __name = name,
-      __body = body,
-      __base = base,
-      __stab = slots,
-      __does = { },
-      unpack(base)
-   }
+   local proto = { }
+   local super = { }
+   local class = { unpack(base) }
 
-   class.__index = class
+   class.__name = name
+   class.__body = body
+   class.__base = base
+   class.__does = { }
+
+   class.__index = proto
+   class.__proto = proto
 
    if with then
       for i=1, #with do
-         local trait = with[i]
-         Trait.__extend(trait, class)
+         with[i]:__extend(class)
       end
    end
 
-   class.__setslot = function(obj, key, val)
-      slots[key]:set(obj, val)
-   end
-   class.__getslot = function(obj, key)
-      return slots[key]:get(obj)
-   end
-
    class.bless = function(self, that)
-      self.__index = self
       return setmetatable(that or { }, self)
    end
    class.new = function(self, ...)
@@ -307,31 +314,23 @@ Class.new = function(self, name, base, body, with)
       end
       return obj
    end
-
+   class.__append = function(self, slot)
+      self[#self + 1] = slot
+      self[slot.name] = slot
+   end
    class.__tostring = function(self)
       return 'object '..tostring(name)
    end
 
-   local seen = { }
-   for i=1, #super do
-      local slot = super[i]
-      slot:__extend(super)
-      slot:__extend(class)
-      seen[slot] = true
-   end
+   STable.build_proto(base, super)
+   STable.build_proto(base, proto)
+
    setmetatable(super, Super)
    setmetatable(class, Class)
 
    body(class, super)
 
-   for i=1, #class do
-      local slot = class[i]
-      if not seen[slot] then
-         slot:__extend(class)
-         slots[slot.name] = slot
-      end
-   end
-
+   STable.build_proto(class, proto)
    return class
 end
 
@@ -365,9 +364,13 @@ Trait.__make = function(self, ...)
    local want = self.__want - select('#', ...)
    local copy = Trait:new(self.__name, want, self.__body, nil, ...)
    for i=1, #self do
-      copy[i] = self[i]
+      copy:__append(self[i])
    end
    return copy
+end
+Trait.__append = function(self, slot)
+   self[#self + 1] = slot
+   self[slot.name] = slot
 end
 Trait.__extend = function(self, into)
    if self.__want and self.__want > 0 then
@@ -378,7 +381,7 @@ Trait.__extend = function(self, into)
    end
    into.__does[self.__body] = true
    for i=1, #self do
-      into[#into + 1] = self[i]
+      into:__append(self[i])
    end
 end
 
@@ -408,16 +411,16 @@ guard = function(...)
    return Guard:new(...)
 end
 method = function(base, name, code, with)
-   base[#base + 1] = Method:new(name, code, with)
+   base:__append(Method:new(name, code, with))
 end
 has = function(base, name, default, guard, with)
-   base[#base + 1] = Slot:new(name, default, guard, with)
+   base:__append(Slot:new(name, default, guard, with))
 end
 needs = function(base, name, guard)
-   base[#base + 1] = Needs:new(name, guard)
+   base:__append(Needs:new(name, guard))
 end
 rule = function(base, name, patt, with)
-   base[#base + 1] = Rule:new(name, patt, with)
+   base:__append(Rule:new(name, patt, with))
 end
 
 

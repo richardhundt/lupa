@@ -319,7 +319,7 @@ p:match"range" {
 }
 p:match"func_decl" {
    m.P"function" * idsafe * s
-   * m.Cg(m.V"ident", "name") * s * m.V"func_common";
+   * m.Cg(m.V"qname", "name") * s * m.V"func_common";
    ast.FuncDecl;
 }
 p:match"meth_decl" {
