@@ -8,9 +8,9 @@ package DB {
 class Point {
     has x is DB::Field : Number = 0
     has y is DB::Field : Number = 0
-    print(self::x.isa(Missing))
+    assert(!self::x.isa(Missing))
 }
 
 var p = Point.new()
-print(Point::x)
+assert(Point::x.isa(Slot))
 
