@@ -302,18 +302,12 @@ Id.render = function(self, ctx)
    if self.base then return self[1] end
    local info = ctx:lookup(self[1])
    if info then
-      if self[1] == 'deep' then
-         print("deep defined", debug.traceback())
-      end
       if info.base then
          return format("%s.%s", info.base, info.name)
       else
          return format("%s", info.name)
       end
    else
-      if self[1] == 'deep' then
-         print("reference deep", debug.traceback())
-      end
       ctx:define(nil, self[1], self)
       return self[1]
    end
@@ -870,17 +864,7 @@ Import.render = function(self, ctx)
       end
       ctx:fput('local %s=Core.import(%s,%s)', ctx:get(lhs), from, ctx:get(rhs))
    else -- import from <path>
-      error('import from <path> is DEPRECATED')
-   end
-end
-
-Load = class{ }
-Load.render = function(self, ctx)
-   local path = self.path
-   if path.tag == 'qname' then
-      ctx:fput('Core.load(%q)', ctx:get(path))
-   else
-      ctx:fput('Core.load(%s)', ctx:get(path))
+      ctx:fput('Core.require(%q)', ctx:get(self.from))
    end
 end
 

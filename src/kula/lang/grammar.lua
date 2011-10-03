@@ -56,7 +56,6 @@ p:rule"statement" {
    + m.V"continue_stmt"
    --+ m.V"assert_stmt"
    + m.V"expr_stmt"
-   + m.V"load_stmt"
    + s * m.P";";
 }
 p:match"statements" {
@@ -69,7 +68,7 @@ p:rule"keyword" {
       + "nil" + "true" + "false" + "typeof" + "return" + "in" + "for" + "throw"
       + "delete" + "extends" + "as" + "method" + "has" + "from" + "needs"
       + "break" + "continue" + "package" + "import" + "try" + "catch"
-      + "finally" + "if" + "else" + "load" + "yield" + "guard"
+      + "finally" + "if" + "else" + "yield" + "guard"
    ) * idsafe
 }
 
@@ -388,9 +387,16 @@ p:match"class_extends" {
    m.P"extends" * idsafe * s * m.V"qname"
 }
 p:match"class_with" {
-   m.P"with" * idsafe * s * m.V"expr"
-   * (s * m.P"with" * idsafe * s * m.V"expr")^0
+   m.P"with" * idsafe * s * m.V"with_expr"
+   * (s * m.P"with" * idsafe * s * m.V"with_expr")^0
 }
+p:rule"with_expr" {
+   m.Cg(m.V"qname" * (s * m.C"<" * s * m.V"term_list"^-1 * s * m.P">"))
+   / function(a, o, ...)
+      return ast.OpPostCircumfix{ tag = 'op_postcircumfix', pos = a.pos, oper = o, a, ... }
+   end
+}
+
 p:match"class_body" {
    p:expect"{" * s
    * (m.V"class_body_stmt" * (s * m.V"class_body_stmt")^0)^-1 * s
@@ -484,10 +490,6 @@ p:match"package_body_stmt" {
    + m.V"statement";
 }
 
-p:match"load_stmt" {
-   m.P"load" * idsafe * s * m.Cg(m.V"from_path", "path");
-   ast.Load;
-}
 p:match"from_path" {
    m.V"ident" * ("::" * m.V"ident")^0 + m.V"string";
    ast.FromPath;
