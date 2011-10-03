@@ -37,8 +37,6 @@ catch(ex) {
 print("initial: %{p.x}, %{p.y}")
 p.move(1,2)
 
-Point.DEBUG = false
-
 class Point3D extends Point {
     has z : Number = 0
 

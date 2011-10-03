@@ -298,6 +298,11 @@ Class.new = function(self, name, base, body, with)
    class.__index = proto
    class.__proto = proto
 
+   class.__append = function(self, slot)
+      self[#self + 1] = slot
+      self[slot.name] = slot
+   end
+
    if with then
       for i=1, #with do
          with[i]:__extend(class)
@@ -313,10 +318,6 @@ Class.new = function(self, name, base, body, with)
          self.__init(obj, ...)
       end
       return obj
-   end
-   class.__append = function(self, slot)
-      self[#self + 1] = slot
-      self[slot.name] = slot
    end
    class.__tostring = function(self)
       return 'object '..tostring(name)
