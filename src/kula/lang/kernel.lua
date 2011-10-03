@@ -82,8 +82,6 @@ Method.new = function(self, name, code, with)
    return meth
 end
 Method.__extend = function(self, base)
-   self:install_reader(base)
-   self:install_writer(base)
    base[self.name] = self.code
 end
 Method.get = function(self, obj)
@@ -92,24 +90,11 @@ end
 Method.set = function(self, obj, val)
    rawset(obj, self.name, val)
 end
-Method.install_reader = function(self, base)
-   base['__get_'..self.name] = function(obj)
-      return function(...) return self.code(obj, ...) end
-   end
-end
-Method.install_writer = function(self, base)
-   base['__set_'..self.name] = function(obj, val)
-      rawset(obj, self.name, val)
-   end
-end
 
 readonly = { }
 readonly.__extend = function(self, attr)
-   local name = attr.name
-   attr.install_writer = function(self, base)
-      base['__set_'..name] = function(obj)
-         error(string.format('AccessError: %s is readonly', name), 2)
-      end
+   attr.set = function(self, obj)
+      error(string.format('AccessError: %s is readonly', self.name), 2)
    end
 end
 
@@ -136,20 +121,13 @@ Slot.new = function(self, name, default, guard, with)
    return attr
 end
 Slot.__extend = function(self, base)
-   self:install_reader(base)
-   self:install_writer(base)
-end
-Slot.__setslot = function(self, key, val)
-   self[key] = val
-end
-Slot.__getslot = function(self, key)
-   return self[key]
+   base[self.name] = self.default()
 end
 Slot.get = function(self, obj)
-   local val = rawget(obj, self.name)
+   local val = obj[self.name]
    if val == nil then
       val = self.default()
-      rawset(obj, self.name, val)
+      obj[self.name] = val
    end
    return val
 end
@@ -158,29 +136,6 @@ Slot.set = function(self, obj, val)
       obj[self.name] = self.guard:__coerce(val)
    else
       obj[self.name] = val
-   end
-end
-Slot.install_reader = function(self, base)
-   local name, default = self.name, self.default
-   base['__get_'..name] = function(obj)
-      local val = rawget(obj, name)
-      if val == nil then
-         val = default()
-         rawset(obj, name, val)
-      end
-      return val
-   end
-end
-Slot.install_writer = function(self, base)
-   local name, guard = self.name, self.guard
-   if guard then
-      base['__set_'..name] = function(obj, val)
-         obj[name] = guard:__coerce(val)
-      end
-   else
-      base['__set_'..name] = function(obj, val)
-         obj[name] = val
-      end
    end
 end
 
@@ -224,109 +179,79 @@ Rule.new = function(self, name, patt, with)
    return rule
 end
 Rule.__extend = function(self, base)
-   base[self.name] = self
-   base['__get_'..self.name] = function(obj)
-      local key = self.name
-      if not rawget(obj, key) then
-         local gram = { key }
-         for i=1, #base do
-            if getmetatable(base[i]) == Rule then
-               gram[base[i].name] = base[i].patt
-            end
-         end
-         rawset(obj, key, LPeg.P(gram))
-      end
-      return obj[key]
-   end
-   base['__set_'..self.name] = function(obj, val)
-      local key = self.name
-      if not (type(val) == 'userdata' and LPeg.type(val) == 'pattern') then
-         error(string.format("TypeError: %s is not a pattern", tostring(val)), 2)
-      end
-      obj[key] = nil
-      Rule:new(key, val):__extend(obj)
-   end
+   base[self.name] = self.patt
 end
-
+Rule.get = function(self, obj)
+   local key = self.name
+   if not rawget(obj, key) then
+      local base = getmetatable(obj)
+      local gram = { key }
+      for i=1, #base do
+         if getmetatable(base[i]) == Rule then
+            gram[base[i].name] = base[i].patt
+         end
+      end
+      rawset(obj, key, LPeg.P(gram))
+   end
+   return obj[key]
+end
+Rule.set = function(self, obj, val)
+   local key = self.name
+   if not (type(val) == 'userdata' and LPeg.type(val) == 'pattern') then
+      error(string.format("TypeError: %s is not a pattern", tostring(val)), 2)
+   end
+   obj[key] = val
+end
 
 Super = setmetatable({ }, Type)
 Super.__tostring = function(self)
    return 'super '..self.__name
 end
 
+Missing = setmetatable({ }, Type)
+Missing.__call = function(self)
+   error("AccessError: attempt to call method "..tostring(self.name), 2)
+end
+Missing.__index = { }
+Missing.__index.get = function(self, obj)
+   error("AccessError: attempt to get "..tostring(self.name), 2)
+end
+Missing.__index.set = function(self, obj, val)
+   error("AccessError: attempt to set "..tostring(self.name), 2)
+end
+
 Object = {
    Method:new("isa", Type.isa),
    Method:new("can", Type.can),
    Method:new("does", Type.does),
-   Method:new("__getitem", function(self, key)
-      return self['__get_'..key](self)
-   end),
-   Method:new("__setitem", function(self, key, val)
-      self['__set_'..key](self, val)
-   end),
-   Method:new('__missing', function(obj, key)
-      error(string.format(
-         "TypeError: no such member %q in %s", tostring(key), tostring(obj)
-      ), 2)
-   end),
 }
 Object.__index = function(self, key)
-   local __missing = rawget(self, '__missing')
-   if __missing then
-      return function(obj,...) return __missing(obj,key,...) end
-   end
-   return Object[key]
+   return setmetatable({ name = key }, Missing)
 end
 
 setmetatable(Object, Type)
 Object.new = function(self, name, base, body, with)
-   if not base then base = self end
-
-   local does = { }
-   local object = {
-      __name = name,
-      __body = body,
-      __base = base,
-      __does = does,
-   }
-
-   local super = { }
-
-   for i=1, #base do
-      local slot = base[i]
-      object[#object + 1] = slot
-      super[#super + 1] = slot
+   if base and getmetatable(base) ~= Class then
+      base = getmetatable(base)
    end
+   local anon = Class:new('#'..name, base, body, with)
+   anon.__tostring = function() return 'object '..name end
+   local inst = anon:new()
+   return inst
+end
 
-   if with then
-      for i=1, #with do
-         local trait = with[i]
-         Trait.__extend(trait, object)
-      end
+STable = setmetatable({ }, Type)
+STable.new = function(self, base)
+   local stab = { unpack(base) }
+   for i=1, #stab do
+      local slot = stab[i]
+      stab[slot.name] = slot
    end
-
-   object.__tostring = function(self)
-      return 'object '..tostring(name)
-   end
-
-   local seen = { }
-   for i=1, #super do
-      super[i]:__extend(super, i)
-      super[i]:__extend(object,i)
-      seen[super[i]] = true
-   end
-   setmetatable(super, Super)
-   setmetatable(object, Object)
-
-   body(object, super)
-
-   for i=1, #object do
-      if not seen[object[i]] then
-         object[i]:__extend(object, i)
-      end
-   end
-
-   return object
+   setmetatable(stab, self)
+   return stab
+end
+STable.__index = function(self, key)
+   return setmetatable({ name = key }, Missing)
 end
 
 Class = setmetatable({ }, Type)
@@ -339,32 +264,23 @@ end
 Class.__tostring = function(self)
    return 'class '..(rawget(self,'__name') or '<anon>')
 end
-Class.__index = function(class, key)
-   local __missing = rawget(class, '__missing')
-   if __missing then
-      return function(obj,...) return __missing(obj,key,...) end
-   end
-   return Object[key]
-end
 Class.new = function(self, name, base, body, with)
    if not base then
       base = Object
    end
 
+   local super = STable:new(base)
+   local slots = STable:new(base)
    local class = {
       __name = name,
       __body = body,
       __base = base,
+      __stab = slots,
       __does = { },
+      unpack(base)
    }
 
-   local super = { }
-
-   for i=1, #base do
-      local slot = base[i]
-      class[#class + 1] = slot
-      super[#super + 1] = slot
-   end
+   class.__index = class
 
    if with then
       for i=1, #with do
@@ -373,27 +289,17 @@ Class.new = function(self, name, base, body, with)
       end
    end
 
-   class.__index = class
-
-   class.bless = function(self, that)
-      return setmetatable(that or { }, self)
-   end
    class.__setslot = function(obj, key, val)
-      local slot = class[key]
-      if slot then
-         slot:set(obj, val)
-      else
-         error("AttributeError: no such member "..tostring(key), 2)
-      end
+      slots[key]:set(obj, val)
    end
    class.__getslot = function(obj, key)
-      local slot = class[key]
-      if slot then
-         return slot:get(obj)
-      end
-      error("AttributeError: no such member "..tostring(key), 2)
+      return slots[key]:get(obj)
    end
 
+   class.bless = function(self, that)
+      self.__index = self
+      return setmetatable(that or { }, self)
+   end
    class.new = function(self, ...)
       local obj = self:bless({ })
       if rawget(self, '__init') ~= nil then
@@ -408,9 +314,10 @@ Class.new = function(self, name, base, body, with)
 
    local seen = { }
    for i=1, #super do
-      super[i]:__extend(super, i)
-      super[i]:__extend(class, i)
-      seen[super[i]] = true
+      local slot = super[i]
+      slot:__extend(super)
+      slot:__extend(class)
+      seen[slot] = true
    end
    setmetatable(super, Super)
    setmetatable(class, Class)
@@ -418,8 +325,10 @@ Class.new = function(self, name, base, body, with)
    body(class, super)
 
    for i=1, #class do
-      if not seen[class[i]] then
-         class[i]:__extend(class, i)
+      local slot = class[i]
+      if not seen[slot] then
+         slot:__extend(class)
+         slots[slot.name] = slot
       end
    end
 
@@ -443,6 +352,7 @@ Trait.new = function(self, name, want, body, with, ...)
       __name  = name,
       __body  = body,
       __want  = want,
+      __does  = { },
    }, Trait)
 
    if want == 0 then
@@ -453,18 +363,22 @@ Trait.new = function(self, name, want, body, with, ...)
 end
 Trait.__make = function(self, ...)
    local want = self.__want - select('#', ...)
-   return Trait:new(self.__name, want, self.__body, nil, ...)
+   local copy = Trait:new(self.__name, want, self.__body, nil, ...)
+   for i=1, #self do
+      copy[i] = self[i]
+   end
+   return copy
 end
-Trait.__extend = function(trait, object)
-   if trait.__want and trait.__want > 0 then
+Trait.__extend = function(self, into)
+   if self.__want and self.__want > 0 then
       error(string.format(
          "CompositionError: %s expects %s parameters",
-         tostring(trait), trait.__want
+         tostring(self), self.__want
       ), 2)
    end
-   object.__does[trait.__body] = true
-   for i=1, #trait do
-      object[#object + 1] = trait[i]
+   into.__does[self.__body] = true
+   for i=1, #self do
+      into[#into + 1] = self[i]
    end
 end
 
@@ -495,19 +409,15 @@ guard = function(...)
 end
 method = function(base, name, code, with)
    base[#base + 1] = Method:new(name, code, with)
-   base[name] = base[#base]
 end
 has = function(base, name, default, guard, with)
    base[#base + 1] = Slot:new(name, default, guard, with)
-   base[name] = base[#base]
 end
 needs = function(base, name, guard)
    base[#base + 1] = Needs:new(name, guard)
-   base[name] = base[#base]
 end
 rule = function(base, name, patt, with)
    base[#base + 1] = Rule:new(name, patt, with)
-   base[name] = base[#base]
 end
 
 
@@ -942,19 +852,14 @@ Op = {
          error(string.format('TypeError: cannot compose into a %s', type(a)), 2)
       end
 
-      local o = {
-         __name = tostring(getmetatable(a))..' with '..tostring(b)
-      }
+      local o = { __name = tostring(getmetatable(a))..' with '..tostring(b) }
 
       -- shallow copy a into o
-      for k,v in pairs(a) do
-         o[k] = v
-      end
+      for k,v in pairs(a) do o[k] = v end
 
       -- install slots from b
-      for i=1, #b do
-         b[i]:__extend(o)
-      end
+      for i=1, #b do b[i]:__extend(o) end
+      Trait.__extend(b, o)
 
       setmetatable(o, getmetatable(a))
 

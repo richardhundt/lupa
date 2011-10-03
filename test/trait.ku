@@ -1,3 +1,7 @@
+guard Int(v : Number) {
+    return math::floor(v)
+}
+
 trait Guide<M> {
     method walk() { print(M) }
 }
@@ -30,6 +34,5 @@ d.walk()
 d.greet()
 d.wooz()
 
-print(d is Dog)
-print(Pet(d))
+print(d.isa(Dog))
 
