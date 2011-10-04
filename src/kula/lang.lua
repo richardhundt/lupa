@@ -45,17 +45,11 @@ function make(src, name)
    return main
 end
 
-local sys = require"sys"
 function make_eval(src, name)
-   local tic = sys.period()
-   tic:start()
    local ctx = context.Context.new(src, name)
    local ast = grammar.parse(src)
-   print("parse:", tic:get())
    ast.tag = 'eval'
-   tic:start()
    local lua = ctx:compile(ast)
-   print("compile:", tic:get())
    local sid
    if name then
       sid = '='..name

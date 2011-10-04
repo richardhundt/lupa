@@ -139,27 +139,6 @@ Slot.__extend = function(self, base)
    self:install_reader(base)
    self:install_writer(base)
 end
-Slot.__setslot = function(self, key, val)
-   self[key] = val
-end
-Slot.__getslot = function(self, key)
-   return self[key]
-end
-Slot.get = function(self, obj)
-   local val = rawget(obj, self.name)
-   if val == nil then
-      val = self.default()
-      rawset(obj, self.name, val)
-   end
-   return val
-end
-Slot.set = function(self, obj, val)
-   if self.guard then
-      obj[self.name] = self.guard:__coerce(val)
-   else
-      obj[self.name] = val
-   end
-end
 Slot.install_reader = function(self, base)
    local name, default = self.name, self.default
    base['__get_'..name] = function(obj)
@@ -275,7 +254,14 @@ Object.__index = function(self, key)
    if __missing then
       return function(obj,...) return __missing(obj,key,...) end
    end
-   return Object[key]
+   local slot = Object[key]
+   if slot then
+      return slot
+   end
+   --return Object[key]
+   error(string.format(
+      "TypeError: no such member %q in %s", tostring(key), tostring(obj)
+   ), 2)
 end
 
 setmetatable(Object, Type)
@@ -377,21 +363,6 @@ Class.new = function(self, name, base, body, with)
 
    class.bless = function(self, that)
       return setmetatable(that or { }, self)
-   end
-   class.__setslot = function(obj, key, val)
-      local slot = class[key]
-      if slot then
-         slot:set(obj, val)
-      else
-         error("AttributeError: no such member "..tostring(key), 2)
-      end
-   end
-   class.__getslot = function(obj, key)
-      local slot = class[key]
-      if slot then
-         return slot:get(obj)
-      end
-      error("AttributeError: no such member "..tostring(key), 2)
    end
 
    class.new = function(self, ...)

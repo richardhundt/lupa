@@ -61,5 +61,5 @@ print(q.x, q.y, q.z)
 print(Point)
 print(Point3D)
 
-assert(q is Point)
-assert(q is Point3D)
+assert(q.isa(Point))
+assert(q.isa(Point3D))

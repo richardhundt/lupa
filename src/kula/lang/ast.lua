@@ -125,9 +125,9 @@ OpInfix.render = function(self, ctx, rhs)
          end
       else
          if rhs then
-            return format("%s:__setslot(%q,%s)", a, b, ctx:get(rhs))
+            return format("%s:__set_%s(%s)", a, b, ctx:get(rhs))
          else
-            return format("%s:__getslot(%q)", a, b)
+            return format("%s:__get_%s()", a, b)
          end
       end
    elseif self.oper == "->" then
