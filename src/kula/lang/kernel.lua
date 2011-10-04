@@ -237,28 +237,8 @@ Object = {
    Method:new("isa", Type.isa),
    Method:new("can", Type.can),
    Method:new("does", Type.does),
-   Method:new("__getitem", function(self, key)
-      return self['__get_'..key](self)
-   end),
-   Method:new("__setitem", function(self, key, val)
-      self['__set_'..key](self, val)
-   end),
-   Method:new('__missing', function(obj, key)
-      error(string.format(
-         "TypeError: no such member %q in %s", tostring(key), tostring(obj)
-      ), 2)
-   end),
 }
 Object.__index = function(self, key)
-   local __missing = rawget(self, '__missing')
-   if __missing then
-      return function(obj,...) return __missing(obj,key,...) end
-   end
-   local slot = Object[key]
-   if slot then
-      return slot
-   end
-   --return Object[key]
    error(string.format(
       "TypeError: no such member %q in %s", tostring(key), tostring(obj)
    ), 2)
@@ -266,53 +246,8 @@ end
 
 setmetatable(Object, Type)
 Object.new = function(self, name, base, body, with)
-   if not base then base = self end
-
-   local does = { }
-   local object = {
-      __name = name,
-      __body = body,
-      __base = base,
-      __does = does,
-   }
-
-   local super = { }
-
-   for i=1, #base do
-      local slot = base[i]
-      object[#object + 1] = slot
-      super[#super + 1] = slot
-   end
-
-   if with then
-      for i=1, #with do
-         local trait = with[i]
-         Trait.__extend(trait, object)
-      end
-   end
-
-   object.__tostring = function(self)
-      return 'object '..tostring(name)
-   end
-
-   local seen = { }
-   for i=1, #super do
-      super[i]:__extend(super, i)
-      super[i]:__extend(object,i)
-      seen[super[i]] = true
-   end
-   setmetatable(super, Super)
-   setmetatable(object, Object)
-
-   body(object, super)
-
-   for i=1, #object do
-      if not seen[object[i]] then
-         object[i]:__extend(object, i)
-      end
-   end
-
-   return object
+   local anon = Class:new('#'..name, base, body, with)
+   return anon.new()
 end
 
 Class = setmetatable({ }, Type)
@@ -325,13 +260,7 @@ end
 Class.__tostring = function(self)
    return 'class '..(rawget(self,'__name') or '<anon>')
 end
-Class.__index = function(class, key)
-   local __missing = rawget(class, '__missing')
-   if __missing then
-      return function(obj,...) return __missing(obj,key,...) end
-   end
-   return Object[key]
-end
+Class.__index = Object
 Class.new = function(self, name, base, body, with)
    if not base then
       base = Object
@@ -466,19 +395,15 @@ guard = function(...)
 end
 method = function(base, name, code, with)
    base[#base + 1] = Method:new(name, code, with)
-   base[name] = base[#base]
 end
 has = function(base, name, default, guard, with)
    base[#base + 1] = Slot:new(name, default, guard, with)
-   base[name] = base[#base]
 end
 needs = function(base, name, guard)
    base[#base + 1] = Needs:new(name, guard)
-   base[name] = base[#base]
 end
 rule = function(base, name, patt, with)
    base[#base + 1] = Rule:new(name, patt, with)
-   base[name] = base[#base]
 end
 
 
@@ -865,6 +790,7 @@ Op = {
       return (
          rawget(obj, key) or
          rawget(obj, '__get_'..key) or
+         rawget(getmetatable(obj), '__get_'..key) or
          Type.can(obj, key)
       ) ~= nil
    end,
