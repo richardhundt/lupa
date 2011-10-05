@@ -14,10 +14,6 @@ class Point {
         self.x = x
         self.y = y
     }
-    method bork(x, y) {
-        self.x = x
-        self.y = y
-    }
 }
 
 class Explosive {
@@ -47,10 +43,6 @@ print(p)
 p.move(1,2)
 print(p.x, p.y)
 
-print(p.x, p.y)
-p.bork(123,456)
-print(p.x, p.y)
-
 var q = Point3D.new()
 print(q.x, q.y, q.z)
 print(q)
@@ -59,7 +51,7 @@ for i=1, 10000000 {
 }
 print(q.x, q.y, q.z)
 print(Point)
-print(Point3D)
+print(q, Point3D)
 
-assert(q is Point)
-assert(q is Point3D)
+assert(q.isa(Point))
+assert(q.isa(Point3D))
