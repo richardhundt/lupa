@@ -36,7 +36,6 @@ p:match"unit_body_stmt" {
    --]]
    + m.V"class_decl"
    + m.V"trait_decl"
-   + m.V"guard_decl"
    + m.V"object_decl"
    + #m.V"return_stmt" * p:error"return outside of function body"
    + m.V"statement";
@@ -56,7 +55,6 @@ p:rule"statement" {
    + m.V"continue_stmt"
    --+ m.V"assert_stmt"
    + m.V"expr_stmt"
-   + m.V"load_stmt"
    + s * m.P";";
 }
 p:match"statements" {
@@ -67,24 +65,12 @@ p:rule"keyword" {
    (
       m.P"var" + "function" + "class" + "is" + "with" + "like" --+ "assert"
       + "nil" + "true" + "false" + "typeof" + "return" + "in" + "for" + "throw"
-      + "delete" + "extends" + "as" + "method" + "has" + "from" + "needs"
+      + "delete" + "extends" + "as" + "method" + "has" + "from"
       + "break" + "continue" + "package" + "import" + "try" + "catch"
-      + "finally" + "if" + "else" + "load" + "yield" + "guard"
+      + "finally" + "if" + "else" + "yield"
    ) * idsafe
 }
 
-p:rule"guard" {
-   m.P":" * s * m.Cg(m.V"guard_expr" + p:error"invalid guard expression")
-}
-p:rule"guard_term" {
-   m.V"ident"
-}
-p:rule"guarded_ident" {
-   m.Cg(m.V"ident" * (s * m.V"guard")^-1) / function(id, g)
-      id.guard = g
-      return id
-   end
-}
 p:match"ident" {
    (m.C((m.V"alpha" + "_") * (m.V"alnum" + "_")^0) - m.V"keyword");
    ast.Id;
@@ -167,7 +153,7 @@ p:rule"tail_expr" {
 p:match"nil"    { m.P"nil"   * idsafe; ast.Nil   }
 p:match"true"   { m.P"true"  * idsafe; ast.True  }
 p:match"false"  { m.P"false" * idsafe; ast.False }
-p:match"rest"   { m.P"..."   * m.V"guarded_ident"; ast.Rest }
+p:match"rest"   { m.P"..."   * m.V"ident"; ast.Rest }
 p:match"spread" { m.P"..."   * m.V"expr"; ast.Spread }
 
 p:match"var_decl" {
@@ -176,8 +162,7 @@ p:match"var_decl" {
    ast.VarDecl;
 }
 p:match"var_list" {
-   #((m.P"self" + "super") * idsafe * p:error"protected name in variable declaration")
-   + m.V"guarded_ident" * (s * "," * s * m.V"guarded_ident")^0;
+   m.V"ident" * (s * "," * s * m.V"ident")^0;
    ast.VarList;
 }
 p:match"expr_list" {
@@ -324,16 +309,11 @@ p:match"func_decl" {
    ast.FuncDecl;
 }
 p:match"meth_decl" {
-   m.P"method" * idsafe * s
+   m.Cg(m.P"meta" * idsafe * s * m.Cc(ast.True), "meta")^-1
+   * m.P"method" * idsafe * s
    * m.Cg(m.V"ident", "name") * s
-   * m.Cg(m.Ct((s * m.P"is" * idsafe * s * m.V"ident")^1), "trait")^-1 * s
    * m.V"func_common";
    ast.Method;
-}
-p:match"guard_decl" {
-   m.P"guard" * idsafe * s
-   * m.Cg(m.V"ident", "name") * s * m.V"func_common";
-   ast.GuardDecl;
 }
 p:match"func_literal" {
    m.P"function" * idsafe * s * m.V"func_common";
@@ -345,22 +325,10 @@ p:rule"func_common" {
       * m.Cg((m.V"func_params" * s + p:error"invalid parameter list"), "head")
       * p:expect")" * s
    )^-1
-   * m.Cg(m.V"func_guard", "guard")^-1 * s
    * m.Cg(m.V"block", "body")
 }
-p:match"func_guard" {
-   m.P":" * s * (
-      ((m.V"guard_expr" * (s * m.P"," * s * m.V"guard_expr")^0)^-1
-      * (s * "," * s * m.V"guard_rest")^-1) * (s * m.V"guard_rest")^-1
-      + p:error"invalid guard expression"
-   );
-   ast.FuncGuard;
-}
-p:match"guard_rest" {
-   m.P"..." * m.V"guard_expr"
-}
 p:match"func_params" {
-   ((m.V"guarded_ident" * (s * "," * s * m.V"guarded_ident")^0)^-1
+   ((m.V"ident" * (s * "," * s * m.V"ident")^0)^-1
    * (s * "," * s * m.V"rest")^-1) * (s * m.V"rest")^-1
    + m.P(true);
    ast.FuncParams;
@@ -408,23 +376,15 @@ p:rule"class_body_decl" {
    + m.V"rule_decl"
    + m.V"meth_decl"
    + m.V"func_decl"
-   + m.V"needs_decl"
    + m.V"class_decl"
    + m.V"trait_decl"
-   + m.V"guard_decl"
    + m.V"object_decl";
 }
 p:match"slot_decl" {
-   m.P"has" * idsafe * s
+   m.Cg(m.P"meta" * idsafe * s * m.Cc(ast.True), "meta")^-1
+   * m.P"has" * idsafe * s
    * m.Cg(m.V"ident", "name")
-   * m.Cg(m.Ct((s * m.P"is" * idsafe * s * m.V"qname")^1), "trait")^-1
-   * (s * m.Cg(m.V"guard", "guard"))^-1
    * (s * m.P"=" * s * m.V"expr" * semicolon)^-1;
-}
-
-p:match"needs_decl" {
-   m.P"needs" * idsafe * s * m.Cg(m.V"guarded_ident", "name");
-   ast.Needs;
 }
 
 p:match"trait_decl" {
@@ -478,16 +438,11 @@ p:match"package_body_stmt" {
    --]]
    + m.V"class_decl"
    + m.V"trait_decl"
-   + m.V"guard_decl"
    + m.V"object_decl"
    + #m.V"return_stmt" * p:error"return outside of function body"
    + m.V"statement";
 }
 
-p:match"load_stmt" {
-   m.P"load" * idsafe * s * m.Cg(m.V"from_path", "path");
-   ast.Load;
-}
 p:match"from_path" {
    m.V"ident" * ("::" * m.V"ident")^0 + m.V"string";
    ast.FromPath;
@@ -691,14 +646,6 @@ list_expr:op_listfix"," :prec(1) :make(ast.OpListfix)
 ------------------------------------------------------------------------------
 local list_expr_noin = p:express"list_expr_noin" :primary"expr_noin" :make(ast.Expr)
 list_expr_noin:op_listfix"," :prec(1) :make(ast.OpListfix)
-
-
-------------------------------------------------------------------------------
--- Guard Expressions
-------------------------------------------------------------------------------
-local guard_expr = p:express"guard_expr" :primary"guard_term" :make(ast.GuardExpr)
-guard_expr:op_infix "|" :prec(3) :make(ast.OpInfix)
-guard_expr:op_prefix"?" :prec(4) :make(ast.OpPrefix)
 
 function parse(source)
    return assert(p:parse(source), "failed to parse")

@@ -214,11 +214,7 @@ Bind.render = function(self, ctx)
             local expr = ctx:get(expr_list[1] or Nil)
             local iden = dest_expr[1]
             local info = ctx:lookup(iden[1])
-            if info.guard then
-               ctx:fput('%s=%s', dest, ctx:get(info.guard,expr))
-            else
-               ctx:fput("%s=%s", dest, expr)
-            end
+            ctx:fput("%s=%s", dest, expr)
          else
             ctx:put(ctx:get(dest_expr, expr_list[1] or Nil))
          end
@@ -242,11 +238,7 @@ Bind.render = function(self, ctx)
             local dest = ctx:get(dest_expr,temp)
             local iden = dest_expr[1]
             local info = ctx:lookup(iden[1])
-            if info.guard then
-               ctx:fput('%s=%s', info.name, ctx:get(info.guard,temp))
-            else
-               ctx:fput("%s=%s", dest, temp)
-            end
+            ctx:fput("%s=%s", dest, temp)
          else
             ctx:put(ctx:get(dest_expr, temp))
          end
@@ -256,9 +248,6 @@ Bind.render = function(self, ctx)
          local a, b = ctx:get(self[1]), ctx:get(self[2])
          local expr = format(binops[bassops[self.oper]], a, b)
          local info = ctx:lookup(self[1][1])
-         if info.guard then
-            expr = ctx:get(info.guard, expr)
-         end
          ctx:fput("%s=%s", a, expr)
       else
          ctx:put(ctx:get(self[1], self[2]))
@@ -275,9 +264,6 @@ VarDecl.render = function(self, ctx)
       local info = ctx:define(nil, name[1], name)
       lhs[#lhs + 1] = info.name
       rhs[#rhs + 1] = expr_list[i] and ctx:get(expr_list[i])
-      if info.guard then
-         grd[#grd + 1] = info
-      end
    end
 
    local buf = { }
@@ -285,10 +271,6 @@ VarDecl.render = function(self, ctx)
       buf[#buf + 1] = format('local %s=%s;', ctx:get(lhs), ctx:get(rhs))
    else
       buf[#buf + 1] = format('local %s;', ctx:get(lhs))
-   end
-   for i=1, #grd do
-      local info = grd[i]
-      buf[#buf + 1] = format('%s=%s;', info.name, ctx:get(info.guard, info.name))
    end
 
    return concat(buf)
@@ -388,16 +370,7 @@ Function.render_before = function(self, ctx)
          local info
          if item.tag == 'rest' then
             info = ctx:lookup(item[1][1])
-            if info.guard then
-               buf[#buf + 1] = format('local %s=Core.Tuple:new(%s);', info.name, ctx:get(info.guard,'...'))
-            else
-               buf[#buf + 1] = format('local %s=Core.Tuple:new(...);', info.name)
-            end
-         else
-            info = ctx:lookup(item[1])
-            if info.guard then
-               buf[#buf + 1] = format('%s=%s', info.name, ctx:get(info.guard, info.name))
-            end
+            buf[#buf + 1] = format('local %s=Core.Tuple:new(...);', info.name)
          end
       end
    end
@@ -409,12 +382,6 @@ Function.render_common = function(self, ctx)
       head = ctx:get(self.head)
    end
    local before = Function.render_before(self, ctx)
-
-   if self.guard then
-      ctx.scope.stash.guard = ctx:get(self.guard)
-   else
-      ctx.scope.stash.guard = false
-   end
 
    ctx:enter"code"
    for i=1, #self.body do
@@ -671,11 +638,7 @@ Return.render = function(self, ctx)
          scope.set_return, ctx:get(list), tostring(#list)
       )
    else
-      if ctx.scope.stash.guard then
-         buf[#buf + 1] = format("do return %s(%s) end", ctx.scope.stash.guard, ctx:get(list))
-      else
-         buf[#buf + 1] = format("do return %s end", ctx:get(list))
-      end
+      buf[#buf + 1] = format("do return %s end", ctx:get(list))
    end
    return concat(buf)
 end
@@ -749,13 +712,6 @@ ForIn.render = function(self, ctx)
       ctx:get(self.head.vars),
       ctx:get(self.head.iter)
    )
-   for i=1, #self.head.vars do
-      local iden = self.head.vars[i]
-      local info = ctx:lookup(iden[1])
-      if info.guard then
-         ctx:fput('%s=%s', info.name, ctx:get(info.guard, info.name))
-      end
-   end
 
    ctx:enter"block"
    for i=1, #self.body do
@@ -874,16 +830,6 @@ Import.render = function(self, ctx)
    end
 end
 
-Load = class{ }
-Load.render = function(self, ctx)
-   local path = self.path
-   if path.tag == 'qname' then
-      ctx:fput('Core.load(%q)', ctx:get(path))
-   else
-      ctx:fput('Core.load(%s)', ctx:get(path))
-   end
-end
-
 Unit = class{ }
 Unit.render = function(self, ctx)
    ctx:enter"unit"
@@ -967,45 +913,28 @@ Class.render_body = function(self, ctx, body, name)
       local decl = body[i]
       ctx:put(ctx:sync(decl))
 
+      local meta = decl.meta or False
       if decl.tag == 'slot_decl' then
          local iden, expr = decl.name, decl[1] or Nil
          local info = ctx:lookup(iden[1])
 
-         local guard = decl.guard or Nil
-         local trait = decl.trait or Nil
-
          ctx:fput(
-            'Core.has(%s,%q,function() return %s end,%s,{%s});',
-            base, info.name, ctx:get(expr), ctx:get(guard), ctx:get(List(trait))
+            'Core.has(%s,%q,function() return %s end,%s);',
+            base, info.name, ctx:get(expr), ctx:get(meta)
          )
       elseif decl.tag == 'meth_decl' then
          local expr = ctx:get(decl)
          local info = ctx:lookup(decl.name[1])
-         local trait = decl.trait or Nil
-         ctx:fput('Core.method(%s,%q,%s,{%s});', base, info.name, expr, ctx:get(List(trait)))
+         ctx:fput('Core.method(%s,%q,%s,%s);', base, info.name, expr, ctx:get(meta))
       elseif decl.tag == 'rule_decl' then
          local expr = ctx:get(decl)
          local info = ctx:lookup(decl.name[1])
-         local trait = decl.trait or Nil
-         ctx:fput('Core.rule(%s,%q,%s,{%s});', base, info.name, expr, ctx:get(List(trait)))
-      elseif decl.tag == 'needs_decl' then
-         local iden = decl.name
-         local info = ctx:lookup(decl.name[1])
-         if iden.guard then
-            ctx:fput('Core.needs(%s,%q,%s);', base, info.name, ctx:get(iden.guard))
-         else
-            ctx:fput('Core.needs(%s,%q);', base, info.name)
-         end
+         ctx:fput('Core.rule(%s,%q,%s);', base, info.name, expr)
       elseif decl.tag == 'class_decl' or decl.tag == 'trait_decl' then
          local expr = ctx:get(decl)
          local info = ctx:lookup(decl.name[1])
          ctx:fput('%s.%s=%s;', base, info.name, expr)
       else
-         --[[ this breaks lexical functions in class body
-         if decl.name then
-            ctx:define(base, decl.name[1], decl)
-         end
-         --]]
          ctx:put(decl)
       end
    end
@@ -1060,11 +989,6 @@ Object.render = function(self, ctx)
    return format('Core.object(%q,%s,function(self,super) %s end,{%s})', name, extends, body, with)
 end
 
-Needs = class{ }
-Needs.render = function(self, ctx)
-   return format('error(tostring(self).." needs %s")', self.name[1])
-end
-
 Method = class{ }
 Method.render = function(self, ctx)
    if not self.head then
@@ -1076,117 +1000,9 @@ Method.render = function(self, ctx)
    return Function.render(self, ctx)
 end
 
-Grammar = class{ }
-Grammar.render = function(self, ctx)
-   local name = self.name and self.name[1]
-   local extends = 'nil'
-   if self.extends then
-      extends = ctx:get(self.extends[1])
-   end
-
-   ctx:enter"grammar"
-   ctx:define(nil, "super", self)
-   ctx:define(nil, 'self', self)
-
-   self:render_body(ctx, self[1], name)
-
-   local body = ctx:leave()
-   local with = ''
-   if self.with then
-      with = ctx:get(List{ unpack(self.with) })
-   end
-
-   return format('Core.grammar(%q,%s,function(self,super) %s end,{%s})', name, extends, body, with)
-end
-Grammar.render_body = function(self, ctx, body, name)
-   local base = 'self'
-
-   for i=1, #body do
-      local decl = body[i]
-      if decl.tag:match'_decl$' then
-         if decl.tag ~= 'var_decl' and decl.tag ~= 'func_decl' then
-            ctx:define(base, decl.name[1], decl)
-         end
-      end
-   end
-
-   for i=1, #body do
-      local decl = body[i]
-      ctx:put(ctx:sync(decl))
-
-      if decl.tag == 'rule_decl' then
-         local expr = ctx:get(decl)
-         local info = ctx:lookup(decl.name[1])
-         local trait = decl.trait or Nil
-         ctx:fput('Core.rule(%s,%q,%s,%s);', base, info.name, expr, ctx:get(trait))
-      else
-         ctx:put(decl)
-      end
-   end
-end
-
-
 Spread = class{ }
 Spread.render = function(self, ctx)
    return format('Op.spread(%s)', ctx:get(self[1]))
-end
-
-GuardDecl = class{ }
-GuardDecl.render = function(self, ctx)
-   return format(
-      "Core.guard(%q,function(%s) %s %s end)",
-      ctx:get(self.name), Function.render_common(self, ctx)
-   )
-end
-
-GuardExpr = class{ }
-GuardExpr.render = function(self, ctx, val)
-   if self[1].tag == 'ident' then
-      if val then
-         return format('Op.coerce(%s,%s)', ctx:get(self[1]), ctx:get(val))
-      else
-         return ctx:get(self[1])
-      end
-   else
-      local expr = self[1]
-      if expr.oper == '?' then
-         local temp = ctx:genid()
-         if ctx.scope.tag == 'class' or ctx.scope.tag == 'trait'
-         or ctx.scope.tag == 'module' or ctx.scope.tag == 'object' then
-            -- in a declaration context, so no need to hoist
-            hoist = ctx.scope
-         else
-            hoist = ctx.scope.outer
-         end
-         hoist:put(format('local %s=Core.nilOk(%s);', temp, ctx:get(expr[1])))
-         if val then
-            return format('Op.coerce(%s,%s)', temp, ctx:get(val))
-         else
-            return temp
-         end
-      end
-   end
-end
-
-FuncGuard = class{ }
-FuncGuard.render = function(self, ctx, expr)
-   local buf = { }
-   local temp = ctx:genid()
-   local head, body = { }, { }
-   for i=1, #self do
-      if self[i].tag == 'guard_rest' or i==#self then
-         head[#head + 1] = '...'
-         body[#body + 1] = ctx:get(self[i], '...')
-      else -- guard_expr
-         local test = ctx:genid()
-         head[#head + 1] = test
-         body[#body + 1] = ctx:get(self[i], test)
-      end
-   end
-   body = concat(body, ',')
-   head = concat(head, ',')
-   ctx.scope.outer:put(format("local %s=function(%s) return %s end", temp, head, body))
-   return temp
 end
 
 Range = class{ }

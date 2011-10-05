@@ -50,245 +50,55 @@ Type.can = function(obj, key)
    if can ~= nil then return can end
    local meta = getmetatable(obj)
    if getmetatable(meta) == Type then meta = obj end
-   return rawget(meta, key)
-end
-Type.does = function(this, that)
-   if getmetatable(that) ~= Trait then
-      error(string.format("TypeError: %s is not a trait", tostring(that)), 2)
-   end
-   local meta = getmetatable(this)
-   local does = rawget(meta, '__does')
-   return does and does[that.__body]
+   return rawget(meta.__proto, key)
 end
 
-Method = setmetatable({ }, Type)
-Method.__tostring = function(self)
-   return '<method>'..self.name
-end
-Method.__call = function(self, ...)
-   return self.code(...)
-end
-Method.new = function(self, name, code, with)
-   self.__index = self
-   local meth = setmetatable({
-      name = name,
-      code = code,
-   }, self)
-   if with then
-      for i=1, #with do
-         with[i]:__extend(meth)
-      end
-   end
-   return meth
-end
-Method.__extend = function(self, base)
-   self:install_reader(base)
-   self:install_writer(base)
-   base[self.name] = self.code
-end
-Method.get = function(self, obj)
-   return function(...) return self.code(obj, ...) end
-end
-Method.set = function(self, obj, val)
-   rawset(obj, self.name, val)
-end
-Method.install_reader = function(self, base)
-   base['__get_'..self.name] = function(obj)
-      return function(...) return self.code(obj, ...) end
-   end
-end
-Method.install_writer = function(self, base)
-   base['__set_'..self.name] = function(obj, val)
-      rawset(obj, self.name, val)
-   end
-end
+Object = setmetatable({ }, Type)
+Object.__proto = Object
+Object.__index = Object.__proto
 
-readonly = { }
-readonly.__extend = function(self, attr)
-   local name = attr.name
-   attr.install_writer = function(self, base)
-      base['__set_'..name] = function(obj)
-         error(string.format('AccessError: %s is readonly', name), 2)
-      end
-   end
-end
-
-Slot = { }
-Slot.__tostring = function(self)
-   return '@'..self.name
-end
-Slot.new = function(self, name, default, guard, with)
-   self.__index = self
-   local attr = setmetatable({
-      name    = name,
-      default = default,
-      guard   = guard,
-      __does  = { },
-   }, self)
-   if with then
-      for i=1, #with do
-         if not with[i].__extend then
-            error("TypeError: "..tostring(with[i]).." cannot extend", 2)
-         end
-         with[i]:__extend(attr)
-      end
-   end
-   return attr
-end
-Slot.__extend = function(self, base)
-   self:install_reader(base)
-   self:install_writer(base)
-end
-Slot.install_reader = function(self, base)
-   local name, default = self.name, self.default
-   base['__get_'..name] = function(obj)
-      local val = rawget(obj, name)
-      if val == nil then
-         val = default()
-         rawset(obj, name, val)
-      end
-      return val
-   end
-end
-Slot.install_writer = function(self, base)
-   local name, guard = self.name, self.guard
-   if guard then
-      base['__set_'..name] = function(obj, val)
-         obj[name] = guard:__coerce(val)
-      end
-   else
-      base['__set_'..name] = function(obj, val)
-         obj[name] = val
-      end
-   end
-end
-
-
-Needs = { }
-Needs.__tostring = function(self)
-   return 'needs '..self.name..':'..tostring(self.guard and self.guard.__name or 'Any')
-end
-Needs.new = function(self, name, guard)
-   self.__index = self
-   return setmetatable({ name = name, guard = guard }, self)
-end
-Needs.__extend = function(self, base)
-   local found
-   for i=1, #base do
-      local slot = base[i]
-      if slot.name == self.name and getmetatable(slot) ~= Needs then
-         found = slot
-         break
-      end
-   end
-   if not found then
-      error(string.format('CompositionError: missing member %q',self.name), 3)
-   end
-end
-
-Rule = setmetatable({ }, Type)
-Rule.__name = 'Rule'
-Rule.__tostring = function(self) return 'rule '..tostring(self.name) end
-Rule.new = function(self, name, patt, with)
-   self.__index = self
-   local rule = setmetatable({
-      name = name,
-      patt = patt,
-   }, self)
-   if with then
-      for i=1, #with do
-         with[i]:__extend(rule)
-      end
-   end
-   return rule
-end
-Rule.__extend = function(self, base)
-   base[self.name] = self
-   base['__get_'..self.name] = function(obj)
-      local key = self.name
-      if not rawget(obj, key) then
-         local gram = { key }
-         for i=1, #base do
-            if getmetatable(base[i]) == Rule then
-               gram[base[i].name] = base[i].patt
-            end
-         end
-         rawset(obj, key, LPeg.P(gram))
-      end
-      return obj[key]
-   end
-   base['__set_'..self.name] = function(obj, val)
-      local key = self.name
-      if not (type(val) == 'userdata' and LPeg.type(val) == 'pattern') then
-         error(string.format("TypeError: %s is not a pattern", tostring(val)), 2)
-      end
-      obj[key] = nil
-      Rule:new(key, val):__extend(obj)
-   end
-end
-
-
-Super = setmetatable({ }, Type)
-Super.__tostring = function(self)
-   return 'super '..self.__name
-end
-
-Object = {
-   Method:new("isa", Type.isa),
-   Method:new("can", Type.can),
-   Method:new("does", Type.does),
-}
-Object.__index = function(self, key)
-   error(string.format(
-      "TypeError: no such member %q in %s", tostring(key), tostring(obj)
-   ), 2)
-end
-
-setmetatable(Object, Type)
 Object.new = function(self, name, base, body, with)
    local anon = Class:new('#'..name, base, body, with)
-   return anon.new()
+   local inst = anon:new()
+   inst.__proto = inst
+   return inst
 end
 
 Class = setmetatable({ }, Type)
-Class.__coerce = function(self, that)
-   if not Type.isa(that, self) then
-      error('GuardError: cannot coerce '..tostring(that)..' to '..tostring(self))
-   end
-   return that
-end
 Class.__tostring = function(self)
    return 'class '..(rawget(self,'__name') or '<anon>')
 end
-Class.__index = Object
+Class.__index = Class
 Class.new = function(self, name, base, body, with)
-   if not base then
-      base = Object
-   end
+   if not base then base = Object end
 
    local class = {
       __name = name,
       __body = body,
       __base = base,
-      __does = { },
    }
 
-   local super = { }
+   local proto = setmetatable({ }, { __index = base.__proto })
+   class.__proto = proto
+   class.__index = function(obj, key)
+      local method = proto[key]
+      if method then return method end
+      local __missing = proto.__missing
+      if __missing then
+         return __missing(obj, key)
 
-   for i=1, #base do
-      local slot = base[i]
-      class[#class + 1] = slot
-      super[#super + 1] = slot
+      end
+      error("AccessError: no such member "..key.." in "..tostring(obj), 2)
    end
+
+   local super = setmetatable({ }, { __index = base.__proto })
 
    if with then
       for i=1, #with do
          local trait = with[i]
-         Trait.__extend(trait, class)
+         Trait.__extend(trait, proto)
       end
    end
-
-   class.__index = class
 
    class.bless = function(self, that)
       return setmetatable(that or { }, self)
@@ -306,34 +116,14 @@ Class.new = function(self, name, base, body, with)
       return 'object '..tostring(name)
    end
 
-   local seen = { }
-   for i=1, #super do
-      super[i]:__extend(super, i)
-      super[i]:__extend(class, i)
-      seen[super[i]] = true
-   end
-   setmetatable(super, Super)
    setmetatable(class, Class)
 
    body(class, super)
-
-   for i=1, #class do
-      if not seen[class[i]] then
-         class[i]:__extend(class, i)
-      end
-   end
 
    return class
 end
 
 Trait = setmetatable({ }, Type)
-Trait.__coerce = function(self, that)
-   local with = that.__does
-   if with and with[self.__body] then
-      return that
-   end
-   error('GuardError: '..tostring(that)..' does not compose '..tostring(self))
-end
 Trait.__tostring = function(self)
    return 'trait '..self.__name
 end
@@ -343,6 +133,7 @@ Trait.new = function(self, name, want, body, with, ...)
       __name  = name,
       __body  = body,
       __want  = want,
+      __proto = { },
    }, Trait)
 
    if want == 0 then
@@ -355,30 +146,16 @@ Trait.__make = function(self, ...)
    local want = self.__want - select('#', ...)
    return Trait:new(self.__name, want, self.__body, nil, ...)
 end
-Trait.__extend = function(trait, object)
-   if trait.__want and trait.__want > 0 then
+Trait.__extend = function(self, into)
+   if self.__want and self.__want > 0 then
       error(string.format(
          "CompositionError: %s expects %s parameters",
-         tostring(trait), trait.__want
+         tostring(self), self.__want
       ), 2)
    end
-   object.__does[trait.__body] = true
-   for i=1, #trait do
-      object[#object + 1] = trait[i]
+   for k,v in pairs(self.__proto) do
+      into.__proto[k] = v
    end
-end
-
-Guard = setmetatable({ }, Type)
-Guard.__tostring = function(self)
-   return '<guard>'..self.__name
-end
-Guard.new = function(self, name, body)
-   return setmetatable({
-      __name = name,
-      __coerce = function(self, ...)
-         return body(...)
-      end,
-   }, self)
 end
 
 class = function(...)
@@ -390,22 +167,33 @@ end
 object = function(...)
    return Object:new(...)
 end
-guard = function(...)
-   return Guard:new(...)
+method = function(base, name, code, meta)
+   local into = meta and base or base.__proto
+   into[name] = code
 end
-method = function(base, name, code, with)
-   base[#base + 1] = Method:new(name, code, with)
+has = function(base, name, default, meta)
+   local into = meta and base or base.__proto
+   into['__set_'..name] = function(obj, val)
+      obj[name] = val
+   end
+   into['__get_'..name] = function(obj)
+      local val = rawget(obj,name)
+      if val == nil then return default() end
+      return val
+   end
 end
-has = function(base, name, default, guard, with)
-   base[#base + 1] = Slot:new(name, default, guard, with)
+rule = function(base, name, patt, meta)
+   local into = meta and base or base.__proto
+   into['__set_'..name] = function(obj, val)
+      assert(LPeg.type(patt) == 'pattern', 'TypeError: not a pattern')
+      obj[name] = val
+   end
+   into['__get_'..name] = function(obj)
+      local val = rawget(obj,name)
+      if val == nil then return patt end
+      return val
+   end
 end
-needs = function(base, name, guard)
-   base[#base + 1] = Needs:new(name, guard)
-end
-rule = function(base, name, patt, with)
-   base[#base + 1] = Rule:new(name, patt, with)
-end
-
 
 Hash = setmetatable({ }, Type)
 Hash.__index = Hash
@@ -546,15 +334,7 @@ Nil = setmetatable({ }, Type)
 Nil.__name = 'Nil'
 debug.setmetatable(nil, Nil)
 
-Number = setmetatable({
-   __coerce = function(_,v)
-      local n = tonumber(v)
-      if n == nil then
-         error("GuardError: cannot coerce "..tostring(v).." to Number", 2)
-      end
-      return n
-   end,
-}, Type)
+Number = setmetatable({ }, Type)
 Number.__name = 'Number'
 Number.__index = Number
 Number.times = function(self, block)
@@ -565,12 +345,6 @@ end
 debug.setmetatable(0, Number)
 
 String = setmetatable({
-   __coerce = function(_,v)
-      if type(v) == 'nil' then
-         error('TypeError: attempt to coerce a nil value to String', 2)
-      end
-      return tostring(v)
-   end,
    __match = function(a,p)
       return LPeg.P(p):match(a)
    end
@@ -607,16 +381,12 @@ end
 debug.setmetatable("", String)
 
 
-Boolean = setmetatable({
-   __coerce = function(_,v) return not(not v) end,
-}, Type)
+Boolean = setmetatable({ }, Type)
 Boolean.__name = 'Boolean'
 Boolean.__index = Boolean
 debug.setmetatable(true, Boolean)
 
-Function = setmetatable({
-   __coerce = function(_,v) return assert(loadstring(v)) end,
-}, Type)
+Function = setmetatable({ }, Type)
 Function.__name = 'Function'
 Function.__index = Function
 Function.__get_gen = function(code)
@@ -652,33 +422,6 @@ end
 Pattern.__index.__match = function(patt, subj)
    return patt:match(subj)
 end
-
-None = setmetatable({
-   __coerce = function(_, ...)
-      if select('#',...) > 0 then
-         error('GuardError: got a value where None expected', 2)
-      end
-   end
-}, Type)
-
-Some = setmetatable({
-   __coerce = function(_, ...)
-      if select('#',...) < 1 then
-         error('GuardError: got no value where Some expected', 2)
-      end
-   end
-}, Type)
-
-nilOk = function(guard)
-   return setmetatable({
-      __coerce = function(_, ...)
-         if ... == nil then return ... end
-         return guard:__coerce(...)
-      end
-   }, Type)
-end
-
-magic = _G
 
 import = function(from, ...)
    local num = select('#', ...)
@@ -795,10 +538,6 @@ Op = {
       ) ~= nil
    end,
 
-   coerce = function(guard, ...)
-      return guard:__coerce(...)
-   end,
-
    like = function(this, that)
       for k,v in pairs(that) do
          local this_v = rawget(this, k)
@@ -844,14 +583,10 @@ Op = {
       }
 
       -- shallow copy a into o
-      for k,v in pairs(a) do
-         o[k] = v
-      end
+      for k,v in pairs(a) do o[k] = v end
 
       -- install slots from b
-      for i=1, #b do
-         b[i]:__extend(o)
-      end
+      for k,v in pairs(b) do o[k] = v end
 
       setmetatable(o, getmetatable(a))
 

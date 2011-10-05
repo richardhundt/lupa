@@ -2,11 +2,11 @@ trait Guide<M> {
     method walk() { print(M) }
 }
 
-trait Pet<G,N> {
-    has size : G = N
+trait Pet<N> {
+    has size = N
 
     method wooz() {
-        var x : G = 42
+        var x = N
         print(x)
     }
 }
@@ -15,7 +15,7 @@ class Mammal {
     has blood = "warm"
 }
 
-class Dog extends Mammal with Guide<"guiding"> with Pet<Int,42> {
+class Dog extends Mammal with Guide<"guiding"> with Pet<42> {
     self::DEBUG = true
 
     method greet() {
@@ -30,6 +30,5 @@ d.walk()
 d.greet()
 d.wooz()
 
-print(d is Dog)
-print(Pet(d))
+print(d.isa(Dog))
 
