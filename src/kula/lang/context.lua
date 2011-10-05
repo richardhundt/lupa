@@ -92,7 +92,6 @@ Context.sync = function(self, node)
          end
          self.pos = node.pos
       end
-      self.pos = node.pos
    end
    return pad
 end
