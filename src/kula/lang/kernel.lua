@@ -106,8 +106,8 @@ Class.new = function(self, name, base, body, with)
 
    class.new = function(self, ...)
       local obj = self:bless({ })
-      if rawget(self, '__init') ~= nil then
-         self.__init(obj, ...)
+      if rawget(self.__proto, '__init') ~= nil then
+         self.__proto.__init(obj, ...)
       end
       return obj
    end
