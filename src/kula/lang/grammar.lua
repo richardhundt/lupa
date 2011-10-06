@@ -129,7 +129,7 @@ p:rule"primary" {
 p:rule"term" {
    m.Cf(m.Cg(m.V"primary")
    * m.Cg(s * m.V"tail_expr")^0, function(a, o, b, ...)
-      if o == '.' or o == '::' or o == 'with' or o == 'as' or o == 'like' or o == '->' then
+      if o == '.' or o == '::' or o == 'as' or o == '->' then
          return ast.OpInfix{ tag = 'op_infix', pos = a.pos, oper = o, a, b }
       elseif o then
          return ast.OpPostCircumfix{ tag = 'op_postcircumfix', pos = a.pos, oper = o, a, b, ... }
@@ -143,11 +143,8 @@ p:rule"tail_expr" {
    + m.C"." * s * m.V"ident"
    + m.P"::" * s * m.P"[" * m.Cc"::[" * s * m.V"expr" * s * p:expect"]"
    + m.C"::" * s * m.V"ident"
-   + m.C"with" * idsafe * s * m.V"expr"
-   + m.C"like" * idsafe * s * m.V"expr"
    + m.C"as" * idsafe * s * m.V"expr"
    + m.C"(" * s * m.V"expr_list"^-1 * s * p:expect")"
-   + m.C"<" * s * m.V"term_list"^-1 * s * ">"
    + m.C"->" * s * m.Ct(m.V"func_common")
 }
 p:match"nil"    { m.P"nil"   * idsafe; ast.Nil   }
@@ -305,12 +302,11 @@ p:match"range" {
 }
 p:match"func_decl" {
    m.P"function" * idsafe * s
-   * m.Cg(m.V"ident", "name") * s * m.V"func_common";
+   * m.Cg(m.V"qname", "name") * s * m.V"func_common";
    ast.FuncDecl;
 }
 p:match"meth_decl" {
-   m.Cg(m.P"meta" * idsafe * s * m.Cc(ast.True), "meta")^-1
-   * m.P"method" * idsafe * s
+   m.P"method" * idsafe * s
    * m.Cg(m.V"ident", "name") * s
    * m.V"func_common";
    ast.Method;
@@ -381,15 +377,14 @@ p:rule"class_body_decl" {
    + m.V"object_decl";
 }
 p:match"slot_decl" {
-   m.Cg(m.P"meta" * idsafe * s * m.Cc(ast.True), "meta")^-1
-   * m.P"has" * idsafe * s
+   m.P"has" * idsafe * s
    * m.Cg(m.V"ident", "name")
    * (s * m.P"=" * s * m.V"expr" * semicolon)^-1;
 }
 
 p:match"trait_decl" {
    m.P"trait" * idsafe * s * m.Cg(m.V"ident", "name") * s
-   * (m.P"<" * s * m.Cg(m.V"func_params", "params")^-1 * s * p:expect">")^-1 * s
+   * (m.P"(" * s * m.Cg(m.V"func_params", "params")^-1 * s * p:expect")")^-1 * s
    * m.Cg(m.V"class_with", "with")^-1 * s
    * m.V"class_body";
    ast.Trait;
@@ -613,14 +608,13 @@ expr_base:op_infix("&&") :prec(3) :make(ast.OpInfix)
 expr_base:op_infix("||") :prec(4) :make(ast.OpInfix)
 expr_base:op_infix("|", "^", "&"):prec(6) :make(ast.OpInfix)
 expr_base:op_prefix("!"):prec(6) :make(ast.OpPrefix)
-expr_base:op_infix("!=", "==", "=~", "!~"):prec(7) :make(ast.OpInfix)
-expr_base:op_infix("<-", ">>>", ">>", "<<"):prec(9) :make(ast.OpInfix)
+expr_base:op_infix("like", "!=", "==", "=~", "!~"):prec(7) :make(ast.OpInfix)
+expr_base:op_infix(">>>", ">>", "<<"):prec(9) :make(ast.OpInfix)
 expr_base:op_infix("~", "+", "-"):prec(10) :make(ast.OpInfix)
 expr_base:op_infix("*", "/", "%"):prec(20) :make(ast.OpInfix)
 expr_base:op_prefix("typeof", "delete", "+", "-"):prec(30) :make(ast.OpPrefix)
 expr_base:op_infix("**"):prec(35) :make(ast.OpInfix)
 expr_base:op_prefix("~","#"):prec(35) :make(ast.OpPrefix)
-expr_base:op_prefix("<-"):prec(40) :make(ast.OpPrefix)
 expr_base:op_ternary"?:":prec(2) :make(ast.OpTernary)
 
 ------------------------------------------------------------------------------

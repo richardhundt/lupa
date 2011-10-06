@@ -50,7 +50,7 @@ package Markup {
         }
 
         rule heading {
-            {% {:level: "="+ -> String::len :} " " <rest> %} -> sm_node("heading")
+            {% {:level: "="+ -> String::__index::len :} " " <rest> %} -> sm_node("heading")
         }
 
         rule para {

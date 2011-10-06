@@ -9,3 +9,5 @@ class B {
 }
 
 print("B => ", B.new().b)
+print(insert, concat)
+

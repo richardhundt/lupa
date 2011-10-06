@@ -177,9 +177,6 @@ OpPostCircumfix.render = function(self, ctx, rhs)
          self[1].call = self[2]
          return ctx:get(self[1])
       end
-   elseif self.oper == '<' then
-      if self[2] == nil then self[2] = List{ } end
-      return format('Op.make(%s,%s)', ctx:get(self[1]), ctx:get(self[2]))
    end
 end
 
@@ -646,6 +643,7 @@ end
 If = class{ }
 If.render = function(self, ctx)
    for i=1, #self, 2 do
+      ctx:put(ctx:sync(self[i]))
       if i == #self and i % 2 == 1 then
          ctx:put'else'
          for j=1, #self[i] do
@@ -836,7 +834,7 @@ Unit.render = function(self, ctx)
    Package.render_body(self, ctx)
    local body = ctx:leave()
    if self.tag == "unit" then
-      return format('return require"kula.lang".unit(function(package,...) %s end,...);\n', body)
+      return format('return require"kula.lang".unit(function(self,...) %s end,...);\n', body)
    else
       return body
    end
@@ -848,7 +846,7 @@ Package.render = function(self, ctx)
    ctx:enter"package"
    self:render_body(ctx)
    local body = ctx:leave()
-   return format('Core.package(package,{%s},function(package) %s end);', ctx:get(path), body)
+   return format('Core.package(self,{%s},function(self) %s end);', ctx:get(path), body)
 end
 Package.render_body = function(self, ctx)
    for i=1, #self do
@@ -948,10 +946,8 @@ Trait.render = function(self, ctx)
    ctx:define(nil, 'self', self)
    
    local params = '...'
-   local want = 0
    if self.params then
       params = ctx:get(self.params)
-      want = #self.params
    end
    Class.render_body(self, ctx, self[1], name)
 
@@ -962,7 +958,7 @@ Trait.render = function(self, ctx)
       with = ctx:get(List{ unpack(self.with) })
    end
 
-   return format('Core.trait(%q,%s,function(self,%s) %s end,{%s})', name, want, params, body, with)
+   return format('Core.trait(%q,function(self,%s) %s end,{%s})', name, params, body, with)
 end
 
 Object = class{ }

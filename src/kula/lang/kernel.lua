@@ -35,127 +35,119 @@ Core = _M
 
 Type = { }
 Type.__name = 'Type'
-Type.__index = Type
-Type.isa = function(this, that)
-   local base = getmetatable(this)
+Type.__index = { }
+Type.__index.isa = function(this, that)
+   local base = this
    while base do
       if base == that then return true end
-      base = rawget(base, '__base')
+      base = base.__base
       if not base then break end
    end
    return false
 end
-Type.can = function(obj, key)
-   local can = rawget(obj, key)
-   if can ~= nil then return can end
-   local meta = getmetatable(obj)
-   if getmetatable(meta) == Type then meta = obj end
-   return rawget(meta.__proto, key)
+Type.__index.can = function(obj, key)
+   return obj[key]
+end
+Type.__tostring = function(self)
+   return 'type '..(getmetatable(self).__name or 'Type')
 end
 
 Object = setmetatable({ }, Type)
-Object.__proto = Object
-Object.__index = Object.__proto
-
-Object.new = function(self, name, base, body, with)
-   local anon = Class:new('#'..name, base, body, with)
-   local inst = anon:new()
-   inst.__proto = inst
-   return inst
+Object.__name = 'Object'
+Object.__tostring = function(self)
+   return 'object '..tostring(getmetatable(self))
+end
+Object.__index = { }
+Object.__index.isa = function(this, that)
+   local base = getmetatable(this)
+   while base do
+      if base == that then return true end
+      base = base.__base
+      if not base then break end
+   end
+   return false
+end
+Object.__index.can = function(obj, key)
+   return obj[key]
+end
+Object.new = function(self)
+   local obj = { }
+   obj.__index = obj
+   return setmetatable(obj, Object)
 end
 
 Class = setmetatable({ }, Type)
-Class.__tostring = function(self)
-   return 'class '..(rawget(self,'__name') or '<anon>')
-end
-Class.__index = Class
 Class.new = function(self, name, base, body, with)
    if not base then base = Object end
 
    local class = {
       __name = name,
-      __body = body,
       __base = base,
    }
 
-   local proto = setmetatable({ }, { __index = base.__proto })
-   class.__proto = proto
-   class.__index = function(obj, key)
-      local method = proto[key]
-      if method then return method end
-      local __missing = proto.__missing
-      if __missing then
-         return __missing(obj, key)
+   local proto = setmetatable({ }, base)
+   local super = setmetatable({ }, base)
 
-      end
-      error("AccessError: no such member "..key.." in "..tostring(obj), 2)
-   end
-
-   local super = setmetatable({ }, { __index = base.__proto })
-
-   if with then
-      for i=1, #with do
-         local trait = with[i]
-         Trait.__extend(trait, proto)
-      end
-   end
-
-   class.bless = function(self, that)
-      return setmetatable(that or { }, self)
-   end
-
-   class.new = function(self, ...)
-      local obj = self:bless({ })
-      if rawget(self.__proto, '__init') ~= nil then
-         self.__proto.__init(obj, ...)
-      end
-      return obj
-   end
-
+   class.__index = proto
    class.__tostring = function(self)
       return 'object '..tostring(name)
    end
 
    setmetatable(class, Class)
 
+   if with then
+      for i=1, #with do
+         with[i]:compose(class)
+      end
+   end
+
    body(class, super)
 
    return class
 end
+Class.__tostring = function(self)
+   return 'class '..(self.__name or '<anon>')
+end
+Class.__index = { }
+Class.__index.bless = function(self, that)
+   return setmetatable(that or { }, self)
+end
+Class.__index.new = function(self, ...)
+   local obj = self:bless({ })
+   if obj.__init ~= nil then
+      obj:__init(...)
+   end
+   return obj
+end
 
 Trait = setmetatable({ }, Type)
+Trait.__call = function(self, ...)
+   local copy = Trait:new(self.__name, self.__body, self.__with)
+   local make = self.compose
+   local args = { ... }
+   copy.compose = function(self, into)
+      return make(self, into, unpack(args))
+   end
+   return copy
+end
 Trait.__tostring = function(self)
    return 'trait '..self.__name
 end
-Trait.new = function(self, name, want, body, with, ...)
-   self.__index = self
+Trait.new = function(self, name, body, with)
    local trait = setmetatable({
-      __name  = name,
-      __body  = body,
-      __want  = want,
-      __proto = { },
+      __name = name,
+      __body = body,
+      __with = with,
    }, Trait)
-
-   if want == 0 then
-      body(trait, ...)
-   end
-
    return trait
 end
-Trait.__make = function(self, ...)
-   local want = self.__want - select('#', ...)
-   return Trait:new(self.__name, want, self.__body, nil, ...)
-end
-Trait.__extend = function(self, into)
-   if self.__want and self.__want > 0 then
-      error(string.format(
-         "CompositionError: %s expects %s parameters",
-         tostring(self), self.__want
-      ), 2)
+Trait.__index = { }
+Trait.__index.compose = function(self, into, ...)
+   for i=1, #self.__with do
+      self.__with[i]:compose(into)
    end
-   for k,v in pairs(self.__proto) do
-      into.__proto[k] = v
-   end
+   self.__body(into, ...)
+   return into
 end
 
 class = function(...)
@@ -165,32 +157,48 @@ trait = function(...)
    return Trait:new(...)
 end
 object = function(...)
-   return Object:new(...)
+   local anon = Class:new(...)
+   return anon:new()
 end
-method = function(base, name, code, meta)
-   local into = meta and base or base.__proto
-   into[name] = code
+
+method = function(into, name, code)
+   into.__index[name] = code
 end
-has = function(base, name, default, meta)
-   local into = meta and base or base.__proto
-   into['__set_'..name] = function(obj, val)
+has = function(into, name, default)
+   local setter = '__set_'..name
+   local getter = '__get_'..name
+   into.__index[setter] = function(obj, val)
       obj[name] = val
    end
-   into['__get_'..name] = function(obj)
-      local val = rawget(obj,name)
-      if val == nil then return default() end
+   into.__index[getter] = function(obj)
+      local val = obj[name]
+      if val == nil then
+         val = default()
+         obj[setter](obj, val)
+      end
       return val
    end
 end
-rule = function(base, name, patt, meta)
-   local into = meta and base or base.__proto
-   into['__set_'..name] = function(obj, val)
+rule = function(into, name, patt)
+   local setter = '__set_'..name
+   local getter = '__get_'..name
+   into.__index[name] = patt
+   into.__index[setter] = function(obj, val)
       assert(LPeg.type(patt) == 'pattern', 'TypeError: not a pattern')
       obj[name] = val
    end
-   into['__get_'..name] = function(obj)
+   into.__index[getter] = function(obj)
       local val = rawget(obj,name)
-      if val == nil then return patt end
+      if val == nil then
+         local grammar = { name }
+         for k,p in pairs(into.__index) do
+            if LPeg.type(p) == 'pattern' then
+               grammar[k] = p
+            end
+         end
+         val = LPeg.P(grammar)
+         obj[setter](obj, val)
+      end
       return val
    end
 end
@@ -223,16 +231,10 @@ Hash.__each = pairs
 
 Array = setmetatable({ }, Type)
 Array.__name = 'Array'
-Array.__index = Array
 Array.new = function(self, ...)
    return setmetatable({ ... }, self)
 end
-Array.__getitem = rawget
-Array.__setitem = rawset
 Array.__size = function(self)
-   return #self
-end
-Array.__get_size = function(self, name)
    return #self
 end
 Array.__tostring = function(self)
@@ -248,15 +250,22 @@ Array.__tostring = function(self)
 end
 Array.__each = ipairs
 Array.__spread = unpack
-Array.unpack = unpack
-Array.insert = table.insert
-Array.remove = table.remove
-Array.concat = table.concat
-Array.sort   = table.sort
-Array.each = function(self, block)
+
+Array.__index = setmetatable({ }, Object)
+Array.__index.__getitem = rawget
+Array.__index.__setitem = rawset
+Array.__index.__get_size = function(self, name)
+   return #self
+end
+Array.__index.unpack = unpack
+Array.__index.insert = table.insert
+Array.__index.remove = table.remove
+Array.__index.concat = table.concat
+Array.__index.sort   = table.sort
+Array.__index.each = function(self, block)
    for i=1, #self do block(self[i]) end
 end
-Array.map = function(self, block)
+Array.__index.map = function(self, block)
    local out = Array:new()
    for i=1, #self do
       local v = self[i]
@@ -264,7 +273,7 @@ Array.map = function(self, block)
    end
    return out
 end
-Array.grep = function(self, block)
+Array.__index.grep = function(self, block)
    local out = Array:new()
    for i=1, #self do
       local v = self[i]
@@ -274,15 +283,15 @@ Array.grep = function(self, block)
    end
    return out
 end
-Array.push = function(self, v)
+Array.__index.push = function(self, v)
    self[#self + 1] = v
 end
-Array.pop = function(self)
+Array.__index.pop = function(self)
    local v = self[#self]
    self[#self] = nil
    return v
 end
-Array.shift = function(self)
+Array.__index.shift = function(self)
    local v = self[1]
    for i=2, #self do
       self[i-1] = self[i]
@@ -290,13 +299,13 @@ Array.shift = function(self)
    self[#self] = nil
    return v
 end
-Array.unshift = function(self, v)
+Array.__index.unshift = function(self, v)
    for i=1, #self + 1 do
       self[i+1] = self[i]
    end
    self[1] = v
 end
-Array.reverse = function(self)
+Array.__index.reverse = function(self)
    local out = Array:new()
    for i=1, #self do
       out[i] = self[(#self - i) + 1]
@@ -305,8 +314,8 @@ Array.reverse = function(self)
 end
 
 Range = setmetatable({ },Type)
-Range.__index = Range
 Range.__name = 'Range'
+Range.__index = setmetatable({ }, Object)
 Range.new = function(self, min, max, inc)
    min = assert(tonumber(min), "range min is not a number")
    max = assert(tonumber(max), "range max is not a number")
@@ -324,8 +333,8 @@ Range.__each = function(self)
       end
    end
 end
-Range.each = function(self, block)
-   for i in self:__iter() do
+Range.__index.each = function(self, block)
+   for i in Range:__each() do
       block(i)
    end
 end
@@ -336,8 +345,8 @@ debug.setmetatable(nil, Nil)
 
 Number = setmetatable({ }, Type)
 Number.__name = 'Number'
-Number.__index = Number
-Number.times = function(self, block)
+Number.__index = setmetatable({ }, Object)
+Number.__index.times = function(self, block)
    for i=1, self do
       block(i)
    end
@@ -350,12 +359,12 @@ String = setmetatable({
    end
 }, Type)
 String.__name = 'String'
-String.__index = String
+String.__index = setmetatable({ }, Object)
 
-for k,v in pairs(string) do String[k] = v end
+for k,v in pairs(string) do String.__index[k] = v end
 do
    local strfind, strgmatch, strsub = string.find, string.gmatch, string.sub
-   String.split = function(str, sep, max)
+   String.__index.split = function(str, sep, max)
       if not strfind(str, sep) then
          return { str }
       end
@@ -383,33 +392,32 @@ debug.setmetatable("", String)
 
 Boolean = setmetatable({ }, Type)
 Boolean.__name = 'Boolean'
-Boolean.__index = Boolean
+Boolean.__index = setmetatable({ }, Object)
 debug.setmetatable(true, Boolean)
 
 Function = setmetatable({ }, Type)
 Function.__name = 'Function'
-Function.__index = Function
-Function.__get_gen = function(code)
-   return coroutine.wrap(code)
+Function.__index = setmetatable({ }, Object)
+Function.__index.__get_gen = function(self)
+   return coroutine.wrap(self)
 end
 debug.setmetatable(function() end, Function)
 
 Coroutine = setmetatable({ }, Type)
 Coroutine.__name = 'Coroutine'
-Coroutine.__index = Coroutine
+Coroutine.__index = setmetatable({ }, Object)
 for k,v in pairs(coroutine) do
-   Coroutine[k] = v
+   Coroutine.__index[k] = v
 end
 debug.setmetatable(coroutine.create(function() end), Coroutine)
 
 Tuple = setmetatable({ }, Type)
 Tuple.__name = "Tuple"
-Tuple.__index = Tuple
 Tuple.new = function(self, ...)
-   self.__index = self
    return setmetatable({ size = select('#', ...), ... }, Tuple)
 end
-Tuple.__getitem = rawget
+Tuple.__index = setmetatable({ }, Object)
+Tuple.__index.__getitem = rawget
 Tuple.__spread = unpack
 Tuple.__size = function(self)
    return self.size
@@ -419,9 +427,10 @@ Pattern = setmetatable(getmetatable(LPeg.P(1)), Type)
 Pattern.__call = function(patt, subj)
    return patt:match(subj)
 end
-Pattern.__index.__match = function(patt, subj)
+Pattern.__match = function(patt, subj)
    return patt:match(subj)
 end
+setmetatable(Pattern.__index, Object)
 
 import = function(from, ...)
    local num = select('#', ...)
@@ -540,58 +549,14 @@ Op = {
 
    like = function(this, that)
       for k,v in pairs(that) do
-         local this_v = rawget(this, k)
-         if getmetatable(v) == Class then
-            if not Type.isa(this_v, v) then
-               return false
-            end
-         elseif getmetatable(v) == Trait then
-            if not Type.does(this_v, v) then
-               return false
-            end
-         elseif getmetatable(v) ~= getmetatable(this_v) then
+         if type(this[k]) ~= type(v) then
             return false
-         elseif v ~= this_v then
+         end
+         if not this[k]:isa(getmetatable(v)) then
             return false
          end
       end
       return true
-   end,
-
-   make = function(self, ...)
-      local meta = getmetatable(self)
-      if meta and meta.__make then
-         return meta.__make(self, ...)
-      elseif self.__make then
-         return self:__make(...)
-      else
-         error("ComposeError: cannot compose "..tostring(self), 2)
-      end
-      return made
-   end,
-
-   with = function(a, b)
-      if getmetatable(b) ~= Trait then
-         error(string.format('TypeError: %s is not a trait', tostring(b)), 2)
-      end
-      if type(a) ~= 'table' then
-         error(string.format('TypeError: cannot compose into a %s', type(a)), 2)
-      end
-
-      local o = {
-         __name = tostring(getmetatable(a))..' with '..tostring(b)
-      }
-
-      -- shallow copy a into o
-      for k,v in pairs(a) do o[k] = v end
-
-      -- install slots from b
-      for k,v in pairs(b) do o[k] = v end
-
-      setmetatable(o, getmetatable(a))
-
-      -- o now quacks like a, but it has a new identity
-      return o
    end,
 
    spread = function(a)
@@ -606,8 +571,8 @@ Op = {
       return #a
    end,
 
-   each = function(a)
-      if type(a) == 'function' then return a end
+   each = function(a, ...)
+      if type(a) == 'function' then return a, ... end
       local __each = rawget(getmetatable(a), '__each')
       if __each then return __each(a) end
       return pairs(a)
@@ -647,16 +612,6 @@ Op = {
       local __match = rawget(getmetatable(a), '__match')
       if __match then return __match(a, b) end
       return a == b
-   end,
-   getitem = function(o, k)
-      local __getitem = rawget(getmetatable(o), '__getitem')
-      if __getitem then return __getitem(o, k) end
-      return o[k]
-   end,
-   setitem = function(o, k, v)
-      local __setitem = rawget(getmetatable(o), '__setitem')
-      if __setitem then __setitem(o, k, v) return end
-      o[k] = v
    end,
 }
 
