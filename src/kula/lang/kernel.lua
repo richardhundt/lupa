@@ -883,8 +883,8 @@ Op = {
       return #a
    end,
 
-   each = function(a)
-      if type(a) == 'function' then return a end
+   each = function(a, ...)
+      if type(a) == 'function' then return a, ... end
       local __each = rawget(getmetatable(a), '__each')
       if __each then return __each(a) end
       return pairs(a)

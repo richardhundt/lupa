@@ -26,14 +26,18 @@ print("DOES:", p.does(Guide))
 print("ISA:", p.isa(Point))
 print("CAN:", p.can('move'))
 print("WEIRD: ", p.weird)
+
+var seen_barf = false
 try {
     p.weird = 69
 }
 catch(ex) {
     print("Caught: %{ex}")
     print(/ { 'readonly' } | . /.match(ex))
+    seen_barf = true
 }
 
+assert(seen_barf)
 print("initial: %{p.x}, %{p.y}")
 p.move(1,2)
 
