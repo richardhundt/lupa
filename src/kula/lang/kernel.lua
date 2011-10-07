@@ -189,6 +189,16 @@ object = function(into, name, from, ...)
 end
 method = function(into, name, code)
    into[name] = code
+   local setter = '__set_'..name
+   local getter = '__get_'..name
+   into[getter] = function(obj)
+      return function(...)
+         return code(obj, ...)
+      end
+   end
+   into[setter] = function(obj, code)
+      method(obj, name, code)
+   end
 end
 has = function(into, name, default)
    local setter = '__set_'..name

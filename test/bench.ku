@@ -7,7 +7,7 @@ class Point {
     }
 }
 
-class Point3D extends Point {
+class Point3D from Point {
     has z = 0
     method move(x, y, z) {
         super::move(self, x, y)
@@ -15,9 +15,9 @@ class Point3D extends Point {
     }
 }
 
-var p = Point.new()
+var p = Point3D()
 for i=1,10000000 {
-    p.move(i, i+1)
+    p.move(i, i+1, i+2)
 }
-print(p.x, p.y)
+print(p.x, p.y, p.z)
 
