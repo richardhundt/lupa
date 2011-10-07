@@ -503,7 +503,7 @@ String.render = function(self, ctx)
    if self.oper == '"""' then
       local buf = { }
       for i=1, #self do
-         if self[i].tag == 'expr' then
+         if type(self[i]) == 'table' and self[i].tag == 'expr' then
             buf[#buf + 1] = format('tostring(%s)', ctx:get(self[i]))
          else
             buf[#buf + 1] = format('%q', self[1])
@@ -513,7 +513,7 @@ String.render = function(self, ctx)
    elseif self.oper == '"' then
       local buf = { }
       for i=1, #self do
-         if self[i].tag == 'expr' then
+         if type(self[i]) == 'table' and self[i].tag == 'expr' then
             buf[#buf + 1] = format('tostring(%s)', ctx:get(self[i]))
          else
             buf[#buf + 1] = format('"%s"', self[i])

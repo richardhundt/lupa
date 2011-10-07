@@ -32,7 +32,5 @@ class Point3D extends Point {
 }
 
 var p = Point3D.new()
-for i=1, 10000000 {
-    p.move(i, i+1, i+2)
-}
+p.move(11,22,33)
 
