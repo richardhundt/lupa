@@ -469,7 +469,7 @@ Package.__tostring = function(self)
 end
 Package.__apply = function(self, name, base)
    local pkg = {
-      __name   = name,
+      __name   = name or '<main>',
       __parent = base or _M,
    }
    return setmetatable(pkg, self)

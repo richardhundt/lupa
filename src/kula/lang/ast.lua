@@ -769,7 +769,7 @@ Import.render = function(self, ctx)
          ctx:fput('local %s=Core.import(%s,%q);', alias[1], from, name[1])
       elseif self.into then
          local into = ctx:get(self.into)
-         ctx:fput('if not self.%s then %s={} end', into, into, into, into)
+         ctx:fput('if rawget(self,%q) == nil then %s={} end', into, into, into, into)
          ctx:fput('%s.%s=Core.import(%s,%q);', into, name[1], from, name[1])
       else
          ctx:fput('local %s=Core.import(%s,%q);', name[1], from, name[1])
