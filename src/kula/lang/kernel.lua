@@ -67,16 +67,6 @@ end
 Class.__call = function(self, ...)
    return self:__apply(...)
 end
-Class.__apply = function(self, ...)
-   local obj = setmetatable({ }, self)
-   if rawget(self, '__init') ~= nil then
-      local ret = obj:__init(...)
-      if ret ~= nil then
-         return ret
-      end
-   end
-   return obj
-end
 
 Object = setmetatable({ }, Class)
 Object.__name = 'Object'
@@ -150,6 +140,16 @@ class = function(into, name, from, with, body)
    end
 
    class.__index = class
+   class.__apply = function(self, ...)
+      local obj = setmetatable({ }, self)
+      if rawget(self, '__init') ~= nil then
+         local ret = obj:__init(...)
+         if ret ~= nil then
+            return ret
+         end
+      end
+      return obj
+   end
 
    setmetatable(class, Class)
 

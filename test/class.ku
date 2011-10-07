@@ -13,11 +13,11 @@ class Point {
 }
 
 
-var p = Point.new()
+var p = Point()
 print("ISA:", p.isa(Point))
 print("CAN:", p.can('move'))
 
-class Point3D extends Point {
+class Point3D from Point {
     has z = 0
 
     method __init() {
@@ -31,6 +31,6 @@ class Point3D extends Point {
     }
 }
 
-var p = Point3D.new()
+var p = Point3D()
 p.move(11,22,33)
 
