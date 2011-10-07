@@ -54,7 +54,7 @@ Type.__index = function(self, key)
    return val
 end
 Type.__tostring = function(self)
-   return 'type '..(self.__name or 'Type')
+   return 'type '..(rawget(self, '__name') or 'Type')
 end
 
 Class = setmetatable({ }, Type)
