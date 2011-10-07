@@ -443,11 +443,14 @@ end
 import = function(from, ...)
    local num = select('#', ...)
    local mod = load(from)
-   local out = { }
-   for i,sym in ipairs{ ... } do
-      out[i] = rawget(mod, sym)
+   if num > 0 then
+      local out = { }
+      for i,sym in ipairs{ ... } do
+         out[i] = rawget(mod, sym)
+      end
+      return unpack(out,1,num)
    end
-   return unpack(out,1,num)
+   return mod
 end
 
 load = function(from)
@@ -455,7 +458,14 @@ load = function(from)
    if type(from) == 'table' then
       path = table.concat(from, '.')
    end
-   return require(path)
+   local mod = require(path)
+   if mod == true then
+      mod = _G
+      for i=1, #from do
+         mod = mod[from[i]]
+      end
+   end
+   return mod
 end
 
 Package = setmetatable({ }, Type)

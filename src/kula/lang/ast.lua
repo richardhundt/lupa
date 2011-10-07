@@ -769,7 +769,7 @@ Import.render = function(self, ctx)
          ctx:fput('local %s=Core.import(%s,%q);', alias[1], from, name[1])
       elseif self.into then
          local into = ctx:get(self.into)
-         ctx:fput('if rawget(self,%q) == nil then %s={} end', into, into, into, into)
+         ctx:fput('if Core.rawget(self,%q) == nil then %s={} end', into, into, into, into)
          ctx:fput('%s.%s=Core.import(%s,%q);', into, name[1], from, name[1])
       else
          ctx:fput('local %s=Core.import(%s,%q);', name[1], from, name[1])
@@ -784,7 +784,7 @@ Import.render = function(self, ctx)
       end
       ctx:fput('local %s=Core.import(%s,%s)', ctx:get(lhs), from, ctx:get(rhs))
    else -- import from <path>
-      error('import from <path> is DEPRECATED')
+      ctx:fput('local %s=Core.import(%s)', name[1], from)
    end
 end
 
