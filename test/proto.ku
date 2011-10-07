@@ -28,7 +28,7 @@ class Explosive {
     }
 }
 
-class Point3D extends Point {
+class Point3D from Point {
     has z = 0
 
     method __init(x, y, z) {
@@ -42,7 +42,7 @@ class Point3D extends Point {
     }
 }
 
-var p = Point.new()
+var p = Point()
 print(p)
 p.move(1,2)
 print(p.x, p.y)
@@ -51,7 +51,7 @@ print(p.x, p.y)
 p.bork(123,456)
 print(p.x, p.y)
 
-var q = Point3D.new()
+var q = Point3D()
 print(q.x, q.y, q.z)
 print(q)
 for i=1, 10000000 {

@@ -1,8 +1,0 @@
-enum Foo {
-    one;
-    two;
-    three;
-}
-
-class B { }
-print(Foo.one)
