@@ -12,7 +12,7 @@ function runfile(file,...)
 
    --print("AST:", ast)
    local lua = ctx:compile(ast)
-   print("LUA:", lua)
+   --print("LUA:", lua)
 
    --local main = coroutine.wrap(assert(loadstring(lua,'='..file)))
    local main = assert(loadstring(lua,'='..file))

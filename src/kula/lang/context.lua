@@ -14,12 +14,10 @@ Scope = { }
 Scope.__index = Scope
 Scope.new = function(outer, tag)
    local self = {
-      outer   = outer;
-      stash   = { };
-      entries = { };
-      exports = { };
-      code    = { };
-      tag     = tag or 'block';
+      outer = outer;
+      stash = { };
+      code  = { };
+      tag   = tag or 'block';
    }
    if outer then
       setmetatable(self.stash, { __index = outer.stash })
@@ -32,33 +30,6 @@ end
 Scope.fput = function(self, fmt, ...)
    local frag = string.format(fmt, ...)
    self.code[#self.code + 1] = frag
-end
-Scope.define = function(self, base, name, pos, guard)
-   local safe = name
-   if native_reserved[name] then
-      safe = native_reserved[name]
-   end
-   local info = {
-      base  = base;
-      name  = safe;
-      pos   = pos;
-      scope = self;
-      guard = guard;
-   }
-   self.entries[safe] = info
-   return info
-end
-Scope.lookup = function(self, name)
-   local safe = name
-   if native_reserved[name] then
-      safe = native_reserved[name]
-   end
-   if self.entries[safe] then
-      return self.entries[safe], self
-   end
-   if self.outer then
-      return self.outer:lookup(name)
-   end
 end
 
 Context = { }
@@ -88,7 +59,7 @@ Context.sync = function(self, node)
          end
          if need > 0 then
             pad = string.rep("\n", need)
-            self.line = self.line + need
+            self.line = line + need
          end
          self.pos = node.pos
       end
@@ -121,19 +92,6 @@ Context.genid = function(self, prefix)
    self.idgen = self.idgen + 1
    prefix = prefix or ''
    return '_'..prefix..self.idgen
-end
-Context.define = function(self, base, name, node)
-   local pos = node.pos or self.pos
-   if type(name) == 'table' then
-      return self.scope:define(base, name[1], pos, node.guard)
-   end
-   return self.scope:define(base, name, pos, node.guard)
-end
-Context.lookup = function(self, name)
-   return self.scope:lookup(name)
-end
-Context.export = function(self, name)
-   self.scope.exports[#self.scope.exports + 1] = name
 end
 Context.get = function(self, node, ...)
    if type(node) ~= 'table' then

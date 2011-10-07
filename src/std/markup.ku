@@ -183,7 +183,7 @@ package Markup {
                     self._buffer.push(node)
                 }
                 else {
-                    handler = self::["write_%{node.tag}"]
+                    handler = self::["write_${node.tag}"]
                     handler(self, node)
                 }
             }
@@ -196,18 +196,18 @@ package Markup {
 
             method write_heading(node) {
                 var lvl = node['level']
-                var tag = "h%{lvl}"
-                self._buffer.push("<%{tag}>")
+                var tag = "h${lvl}"
+                self._buffer.push("<${tag}>")
                 self.apply(node)
-                self._buffer.push("</%{tag}>\n")
+                self._buffer.push("</${tag}>\n")
             }
 
             method write_list(node) {
                 var bul = node[1]['bullet']
                 var tag = (bul == '*' || bul == "-") ? "ul" : "ol"
-                self._buffer.push("<%{tag}>")
+                self._buffer.push("<${tag}>")
                 self.apply(node)
-                self._buffer.push("</%{tag}>\n")
+                self._buffer.push("</${tag}>\n")
             }
 
             method write_item(node) {

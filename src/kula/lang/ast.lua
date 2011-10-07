@@ -109,9 +109,6 @@ OpInfix.render = function(self, ctx, rhs)
    elseif self.oper == '.' then
       self[2].base = self[1]
       local a, b = ctx:get(self[1]), ctx:get(self[2])
-      if b:match'^_' and not (a == 'self' or a == 'super') then
-         ctx:error(format('CompileError: %s is private',b))
-      end
       if self.call then
          if self[1].tag == 'ident' and self[1][1] == 'super' then
             table.insert(self.call, 1, Id{ "self", pos = self[1].pos })
@@ -142,7 +139,6 @@ OpInfix.render = function(self, ctx, rhs)
       self.oper = '('
       return OpPostCircumfix.render(self, ctx)
    else
-      local a, b = ctx:get(self[1]), ctx:get(self[2])
       return format(binops[self.oper], ctx:get(self[1]), ctx:get(self[2]))
    end
 end
@@ -209,8 +205,6 @@ Bind.render = function(self, ctx)
          if dest_expr[1].tag == 'ident' then
             local dest = ctx:get(dest_expr[1])
             local expr = ctx:get(expr_list[1] or Nil)
-            local iden = dest_expr[1]
-            local info = ctx:lookup(iden[1])
             ctx:fput("%s=%s", dest, expr)
          else
             ctx:put(ctx:get(dest_expr, expr_list[1] or Nil))
@@ -233,8 +227,6 @@ Bind.render = function(self, ctx)
          local temp = tmp[i]
          if dest_expr[1].tag == 'ident' then
             local dest = ctx:get(dest_expr,temp)
-            local iden = dest_expr[1]
-            local info = ctx:lookup(iden[1])
             ctx:fput("%s=%s", dest, temp)
          else
             ctx:put(ctx:get(dest_expr, temp))
@@ -244,7 +236,6 @@ Bind.render = function(self, ctx)
       if self[1].tag == 'ident' then
          local a, b = ctx:get(self[1]), ctx:get(self[2])
          local expr = format(binops[bassops[self.oper]], a, b)
-         local info = ctx:lookup(self[1][1])
          ctx:fput("%s=%s", a, expr)
       else
          ctx:put(ctx:get(self[1], self[2]))
@@ -257,9 +248,7 @@ VarDecl.render = function(self, ctx)
    local lhs, rhs, grd = List{ }, List{ }, { }
    local var_list, expr_list = self[1], self[2] or List{ }
    for i=1, #var_list do
-      local name = var_list[i]
-      local info = ctx:define(nil, name[1], name)
-      lhs[#lhs + 1] = info.name
+      lhs[#lhs + 1] = ctx:get(var_list[i])
       rhs[#rhs + 1] = expr_list[i] and ctx:get(expr_list[i])
    end
 
@@ -279,23 +268,7 @@ Id.render = function(self, ctx)
       self[1] = ctx.native_reserved[self[1]]
    end
    if self.base then return self[1] end
-   local info = ctx:lookup(self[1])
-   if info then
-      if self[1] == 'deep' then
-         print("deep defined", debug.traceback())
-      end
-      if info.base then
-         return format("%s.%s", info.base, info.name)
-      else
-         return format("%s", info.name)
-      end
-   else
-      if self[1] == 'deep' then
-         print("reference deep", debug.traceback())
-      end
-      ctx:define(nil, self[1], self)
-      return self[1]
-   end
+   return self[1]
 end
 QName = class{ }
 QName.render = function(self, ctx)
@@ -307,7 +280,6 @@ QName.render = function(self, ctx)
 end
 QName.to_list = function(self, ctx)
    local path = List{ }
-   ctx:define(nil, self[1][1], self[1])
    for i=1, #self do
       path[#path + 1] = String{ self[i][1] }
    end
@@ -315,7 +287,6 @@ QName.to_list = function(self, ctx)
 end
 QName.to_name = function(self, ctx)
    local buf = { }
-   ctx:define(nil, self[1][1], self[1])
    for i=1, #self do
       buf[#buf + 1] = self[i][1]
    end
@@ -364,10 +335,8 @@ Function.render_before = function(self, ctx)
    if self.head then
       for i=1, #self.head do
          local item = self.head[i]
-         local info
          if item.tag == 'rest' then
-            info = ctx:lookup(item[1][1])
-            buf[#buf + 1] = format('local %s=Core.Tuple:new(...);', info.name)
+            buf[#buf + 1] = format('local %s=Core.Tuple:new(...);', ctx:get(item[1]))
          end
       end
    end
@@ -425,7 +394,6 @@ FuncParams.render = function(self, ctx)
          ident = self[i]
          code  = ident
       end
-      ctx:define(nil, ident[1], ident)
       buf[#buf + 1] = ctx:get(code)
    end
    return concat(buf, ',')
@@ -433,7 +401,7 @@ end
 
 Throw = class{ }
 Throw.render = function(self, ctx)
-   local trace = Table{ file = String{ctx.name}, pos = Table(self.pos) }
+   local trace = Table{ file = String{ctx.name}, pos = Number(self.pos) }
    return format('Op.throw(%s,%s)', ctx:get(self[1]), ctx:get(trace))
 end
 
@@ -485,7 +453,6 @@ Catch.render = function(self, ctx)
    ctx:enter"lambda".set_return = self.set_return
    local head = ''
    if self.head then
-      ctx:define(nil, self.head[1], self.head)
       head = ctx:get(self.head)
    end
    ctx:fput('function(%s)', head)
@@ -583,7 +550,7 @@ end
 Pair = class{ }
 Pair.render = function(self, ctx)
    if self[1].tag == "ident" then
-      return format("[%q]=%s", self[1][1], ctx:get(self[2]))
+      return format("[%q]=%s", ctx:get(self[1]), ctx:get(self[2]))
    else
       return format("[%s]=%s", ctx:get(self[1]), ctx:get(self[2]))
    end
@@ -668,7 +635,6 @@ end
 For = class{ }
 For.render = function(self, ctx)
    ctx:enter"loop"
-   ctx:define(nil, self.head[1][1], self.head[1])
 
    ctx:fput(
       "for %s=%s,%s",
@@ -684,6 +650,7 @@ For.render = function(self, ctx)
 
    ctx:enter"block"
    for i=1, #self.body do
+      ctx:put(ctx:sync(self.body[i]))
       ctx:put(self.body[i])
    end
    local body = ctx:leave()
@@ -702,9 +669,6 @@ end
 ForIn = class{ }
 ForIn.render = function(self, ctx)
    ctx:enter"loop"
-   for i=1, #self.head.vars do
-      ctx:define(nil, self.head.vars[i][1], self.head.vars[i])
-   end
    ctx:fput(
       "for %s in Op.each(%s) do",
       ctx:get(self.head.vars),
@@ -713,6 +677,7 @@ ForIn.render = function(self, ctx)
 
    ctx:enter"block"
    for i=1, #self.body do
+      ctx:put(ctx:sync(self.body[i]))
       ctx:put(self.body[i])
    end
    local body = ctx:leave()
@@ -737,6 +702,7 @@ While.render = function(self, ctx)
 
    ctx:enter"block"
    for i=1, #self.body do
+      ctx:put(ctx:sync(self.body[i]))
       ctx:put(self.body[i])
    end
    local body = ctx:leave()
@@ -800,17 +766,12 @@ Import.render = function(self, ctx)
       local name = self.name
       if self.alias then
          local alias = self.alias
-         ctx:define(nil, alias[1], alias)
          ctx:fput('local %s=Core.import(%s,%q);', alias[1], from, name[1])
       elseif self.into then
-         local into = self.into
-         if not ctx:lookup(into[1]) then
-            ctx:define(nil, into[1], into)
-            ctx:fput('local %s={};', into[1], into[1])
-         end
-         ctx:fput('%s.%s=Core.import(%s,%q);', into[1], name[1], from, name[1])
+         local into = ctx:get(self.into)
+         ctx:fput('if not self.%s then %s={} end', into, into, into, into)
+         ctx:fput('%s.%s=Core.import(%s,%q);', into, name[1], from, name[1])
       else
-         ctx:define(nil, name[1], name)
          ctx:fput('local %s=Core.import(%s,%q);', name[1], from, name[1])
       end
    elseif self.list then -- import <name_list> from <path>
@@ -818,7 +779,6 @@ Import.render = function(self, ctx)
       local lhs, rhs = List{ }, List{ }
       for i=1, #list do
          local name = list[i]
-         ctx:define(nil, name[1], name)
          lhs[#lhs + 1] = name[1]
          rhs[#rhs + 1] = format('%q', name[1])
       end
@@ -849,6 +809,7 @@ Package.render = function(self, ctx)
    return format('Core.package(self,{%s},function(self) %s end);', ctx:get(path), body)
 end
 Package.render_body = function(self, ctx)
+   ctx:put(ctx:sync(self))
    for i=1, #self do
       local stmt = self[i]
       ctx:put(ctx:sync(stmt))
@@ -862,8 +823,7 @@ Package.render_body = function(self, ctx)
             if decl.tag == 'func_decl' then
                ctx:put(decl)
             else
-               local info = ctx:define(nil, decl.name[1], decl)
-               ctx:fput('%s=%s;', info.name, ctx:get(decl))
+               ctx:fput('%s=%s;', decl.name[1], ctx:get(decl))
             end
          end
       else
@@ -881,9 +841,6 @@ Class.render = function(self, ctx)
    end
 
    ctx:enter"class"
-   ctx:define(nil, "super", self)
-   ctx:define(nil, 'self', self)
-
    self:render_body(ctx, self[1], name)
 
    local body = ctx:leave()
@@ -900,38 +857,25 @@ Class.render_body = function(self, ctx, body, name)
 
    for i=1, #body do
       local decl = body[i]
-      if decl.tag:match'_decl$' then
-         if decl.tag ~= 'var_decl' and decl.tag ~= 'func_decl' then
-            ctx:define(base, decl.name[1], decl)
-         end
-      end
-   end
-
-   for i=1, #body do
-      local decl = body[i]
       ctx:put(ctx:sync(decl))
 
       local meta = decl.meta or False
       if decl.tag == 'slot_decl' then
          local iden, expr = decl.name, decl[1] or Nil
-         local info = ctx:lookup(iden[1])
 
          ctx:fput(
             'Core.has(%s,%q,function() return %s end,%s);',
-            base, info.name, ctx:get(expr), ctx:get(meta)
+            base, iden[1], ctx:get(expr), ctx:get(meta)
          )
       elseif decl.tag == 'meth_decl' then
          local expr = ctx:get(decl)
-         local info = ctx:lookup(decl.name[1])
-         ctx:fput('Core.method(%s,%q,%s,%s);', base, info.name, expr, ctx:get(meta))
+         ctx:fput('Core.method(%s,%q,%s,%s);', base, decl.name[1], expr, ctx:get(meta))
       elseif decl.tag == 'rule_decl' then
          local expr = ctx:get(decl)
-         local info = ctx:lookup(decl.name[1])
-         ctx:fput('Core.rule(%s,%q,%s);', base, info.name, expr)
+         ctx:fput('Core.rule(%s,%q,%s,%s);', base, decl.name[1], expr, meta)
       elseif decl.tag == 'class_decl' or decl.tag == 'trait_decl' then
          local expr = ctx:get(decl)
-         local info = ctx:lookup(decl.name[1])
-         ctx:fput('%s.%s=%s;', base, info.name, expr)
+         ctx:fput('%s.%s=%s;', base, decl.name[1], expr)
       else
          ctx:put(decl)
       end
@@ -943,7 +887,6 @@ Trait.render = function(self, ctx)
    local name = self.name and self.name[1]
 
    ctx:enter"trait"
-   ctx:define(nil, 'self', self)
    
    local params = '...'
    if self.params then
@@ -970,8 +913,6 @@ Object.render = function(self, ctx)
    end
 
    ctx:enter"object"
-   ctx:define(nil, "super", self)
-   ctx:define(nil, 'self', self)
 
    Class.render_body(self, ctx, self[1], name)
 

@@ -29,14 +29,14 @@ package My::Shapes {
         method move(x, y, z) {
             super.move(x, y)
             if DEBUG {
-                print("moving %{self} to %{x}, %{y}, %{z}")
+                print("moving ${self} to ${x}, ${y}, ${z}")
             }
             self.z = z
         }
     }
 
     function greet(whom) {
-        print("Hello %{whom}!")
+        print("Hello ${whom}!")
     }
 }
 

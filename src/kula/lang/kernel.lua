@@ -79,6 +79,12 @@ end
 Class = setmetatable({ }, Type)
 Class.new = function(self, name, base, body, with)
    if not base then base = Object end
+   if type(base) ~= 'table' then
+      error("TypeError: cannot inherit from "..tostring(base), 2)
+   end
+   if rawget(base, '__index') == nil then
+      base.__index = base
+   end
 
    local class = {
       __name = name,
@@ -108,7 +114,7 @@ end
 Class.__tostring = function(self)
    return 'class '..(self.__name or '<anon>')
 end
-Class.__index = { }
+Class.__index = setmetatable({ }, Object)
 Class.__index.bless = function(self, that)
    return setmetatable(that or { }, self)
 end
@@ -158,19 +164,22 @@ trait = function(...)
 end
 object = function(...)
    local anon = Class:new(...)
-   return anon:new()
+   local inst = anon:new()
+   inst.__index = inst
+   return inst
 end
-
-method = function(into, name, code)
-   into.__index[name] = code
+method = function(base, name, code, meta)
+   local into = meta and base or base.__index
+   into[name] = code
 end
-has = function(into, name, default)
+has = function(base, name, default, meta)
+   local into = meta and base or base.__index
    local setter = '__set_'..name
    local getter = '__get_'..name
-   into.__index[setter] = function(obj, val)
+   into[setter] = function(obj, val)
       obj[name] = val
    end
-   into.__index[getter] = function(obj)
+   into[getter] = function(obj)
       local val = obj[name]
       if val == nil then
          val = default()
@@ -179,19 +188,20 @@ has = function(into, name, default)
       return val
    end
 end
-rule = function(into, name, patt)
+rule = function(into, name, patt, meta)
+   local into = meta and base or base.__index
    local setter = '__set_'..name
    local getter = '__get_'..name
-   into.__index[name] = patt
-   into.__index[setter] = function(obj, val)
+   into[name] = patt
+   into[setter] = function(obj, val)
       assert(LPeg.type(patt) == 'pattern', 'TypeError: not a pattern')
       obj[name] = val
    end
-   into.__index[getter] = function(obj)
+   into[getter] = function(obj)
       local val = rawget(obj,name)
       if val == nil then
          local grammar = { name }
-         for k,p in pairs(into.__index) do
+         for k,p in pairs(into) do
             if LPeg.type(p) == 'pattern' then
                grammar[k] = p
             end
@@ -204,7 +214,6 @@ rule = function(into, name, patt)
 end
 
 Hash = setmetatable({ }, Type)
-Hash.__index = Hash
 Hash.new = function(self, table)
    return setmetatable(table or { }, self)
 end
@@ -225,8 +234,9 @@ Hash.__tostring = function(self)
    end
    return '{'..table.concat(buf, ',')..'}'
 end
-Hash.__getitem = rawget
-Hash.__setitem = rawset
+Hash.__index = setmetatable({ }, Object)
+Hash.__index.__getitem = rawget
+Hash.__index.__setitem = rawset
 Hash.__each = pairs
 
 Array = setmetatable({ }, Type)

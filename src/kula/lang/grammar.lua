@@ -105,7 +105,7 @@ p:match"string" {
    ast.String;
 }
 p:rule"string_expr" {
-   m.P"%{" * m.V"expr" * m.P"}"
+   m.P"${" * s * m.V"expr" * s * m.P"}"
 }
 p:rule"primary" {
      m.V"ident"
@@ -306,7 +306,8 @@ p:match"func_decl" {
    ast.FuncDecl;
 }
 p:match"meth_decl" {
-   m.P"method" * idsafe * s
+   m.Cg(m.P"meta" * idsafe * s * m.Cc(ast.True), "meta")^-1
+   * m.P"method" * idsafe * s
    * m.Cg(m.V"ident", "name") * s
    * m.V"func_common";
    ast.Method;
@@ -377,7 +378,8 @@ p:rule"class_body_decl" {
    + m.V"object_decl";
 }
 p:match"slot_decl" {
-   m.P"has" * idsafe * s
+   m.Cg(m.P"meta" * idsafe * s * m.Cc(ast.True), "meta")^-1
+   * m.P"has" * idsafe * s
    * m.Cg(m.V"ident", "name")
    * (s * m.P"=" * s * m.V"expr" * semicolon)^-1;
 }

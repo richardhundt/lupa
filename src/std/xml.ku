@@ -11,16 +11,16 @@ package XML {
         method as_string() {
             var type = self.type
             if type == 'COMMENT_NODE' {
-                return "<!--%{self.data}-->"
+                return "<!--${self.data}-->"
             }
             else if type == 'DOCTYPE_DECLARATION' {
-                return "<!DOCTYPE%{self.data}>"
+                return "<!DOCTYPE${self.data}>"
             }
             else if type == 'PROCESSING_INSTRUCTION_NODE' {
-                return "<?%{self.data}>"
+                return "<?${self.data}>"
             }
             else if type == 'CDATA_SECTION_NODE' {
-                return "<![CDATA[%{self.data}]]>"
+                return "<![CDATA[${self.data}]]>"
             }
             else {
                 return self.data
@@ -74,14 +74,14 @@ package XML {
             var atts = self.attributes_as_string()
 
             if #atts > 0 {
-                atts = " %{atts}"
+                atts = " ${atts}"
             }
 
             if #self == 0 {
-                return "<%{name}%{atts} />"
+                return "<${name}${atts} />"
             }
             var kids = self.children_as_string()
-            return "<%{name}%{atts}>%{kids}</%{name}>"
+            return "<${name}${atts}>${kids}</${name}>"
         }
 
         method __each() {

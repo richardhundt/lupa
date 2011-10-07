@@ -1,14 +1,99 @@
+import DB from kyotocabinet in kc
+
 package DB {
-    trait Field {
+    class Field {
         has store
         has fetch
+        method __init(desc) {
+            self.store = desc['store']
+            self.fetch = desc['fetch']
+        }
+    }
+
+    class Assoc {
+        has store
+        has fetch
+        method __init(desc) {
+            self.store = desc['store']
+            self.fetch = desc['fetch']
+        }
+    }
+
+    trait Object {
+        meta method __set_SCHEMA(schema) {
+            self::SCHEMA = schema
+            for k,v in schema['fields'] {
+                self::__index::["__set_${k}"] = v
+            }
+        }
+    }
+    class Driver {
+        class KDB extends self {
+        }
     }
 }
 
-class Point {
-    has x is DB::Field : Number = 0
-    has y is DB::Field : Number = 0
+package Acme {
+    class Address with DB::Object {
+        self.SCHEMA = {
+            source = 'address',
+            driver = DB::Driver::KDB.new(),
+            fields = {
+                line_1 = DB::Field.new({
+                    store =-> {
+                        
+                    },
+                    fetch =-> {
+                        
+                    },
+                }),
+                line_2 = DB::Field.new({
+                    store =-> {
+
+                    },
+                    fetch =-> {
+
+                    },
+                }),
+            }
+        }
+    }
+    class Person with DB::Object {
+        self.SCHEMA = {
+            fields = {
+                name = DB::Field.new({
+                    store =-> {
+
+                    },
+                    fetch =-> {
+
+                    },
+                }),
+                email = DB::Field.new({
+                    store =-> {
+
+                    },
+                    fetch =-> {
+
+                    },
+                })
+            },
+            assocs = {
+                address = {
+                    dest = DB::Assoc.new({
+                        klass = Acme::Address,
+                        store =-> {
+
+                        },
+                        fetch =-> {
+
+                        },
+                    })
+                }
+            },
+        }
+    }
 }
 
-var p = Point.new()
+var p = Acme::Person.new()
 

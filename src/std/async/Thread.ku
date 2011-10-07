@@ -5,11 +5,11 @@ class Thread {
 
     var llthreads = require('llthreads')
 
-    method __init(func, detach : ?Boolean) {
+    method __init(func, detach) {
         var dump = string::dump(func)
         var code =
-            "package.path='%{magic::['package']::path}';" ~
-            "package.cpath='%{magic::['package']::cpath}';"~
+            "package.path='${_G::['package']::path}';" ~
+            "package.cpath='${_G::['package']::cpath}';"~
             "require('kula.lang').unit(loadstring(%q))".format(dump)
         self._state = llthreads::new(code)
         self._state.start(detach)
@@ -22,12 +22,12 @@ class Thread {
 
 var t1 = Thread.new -> {
     for i=1, 10 {
-        print("thread 1 - %{i}")
+        print("thread 1 - ${i}")
     }
 }
 var t2 = Thread.new -> {
     for i=1, 10 {
-        print("thread 2 - %{i}")
+        print("thread 2 - ${i}")
     }
 }
 t1.join()

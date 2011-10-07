@@ -24,7 +24,7 @@ class Explosive {
     has mesg = "KABOOM!"
 
     method ignite() {
-        print("%{self} => %{self.mesg}")
+        print("${self} => ${self.mesg}")
     }
 }
 
