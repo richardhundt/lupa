@@ -369,7 +369,7 @@ FuncDecl = class{ }
 FuncDecl.render = function(self, ctx)
    ctx:enter"function"
    local name = self.name
-   if name.tag == 'ident' and ctx.scope.outer.tag ~= 'package' then
+   if #name == 1 and ctx.scope.outer.tag ~= 'package' then
       ctx:fput('local function %s(%s) %s %s end', ctx:get(name), Function.render_common(self, ctx))
    else
       ctx:fput('function %s(%s) %s %s end', ctx:get(name), Function.render_common(self, ctx))
@@ -947,7 +947,10 @@ end
 Grammar = class{ }
 Grammar.render = function(self, ctx)
    ctx:enter"grammar"
-   for i=1, #self do ctx:put(self[i]) end
+   for i=1, #self do
+      ctx:put(ctx:sync(self[i]))
+      ctx:put(self[i])
+   end
    local body = ctx:leave()
    return format("Core.grammar(self,%q,function(self) %s end)", ctx:get(self.name), body)
 end

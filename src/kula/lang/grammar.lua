@@ -436,6 +436,8 @@ p:match"grammar_decl" {
 }
 p:rule"grammar_body_stmt" {
    m.V"rule_decl"
+   + m.V"var_decl"
+   + m.V"func_decl"
    + #m.V"return_stmt" * p:error"return outside of function body"
    + m.V"statement"
 }

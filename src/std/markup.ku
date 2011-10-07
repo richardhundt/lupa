@@ -13,26 +13,31 @@ package Markup {
     }
 
     class Parser {
-        function backref(s, i, c) {
-            if !c.isa(String) { return nil }
-            var e = #c + i
-            if s.sub(i, e - 1) == c {
-                return e
-            }
+        method parse(text) {
+            var tab = " ".rep(8)
+            text = text.gsub("\r\n", "\n").gsub("\t", tab)
+            return self::Markup.match(text)
         }
-
-        function Cbr(name) {
-            return LPeg::Cmt(LPeg::Cb(name), backref)
-        }
-
-        function sm_node(name) {
-            return function(node) {
-                node::tag = name
-                return node as Node
-            }
-        }
-
         grammar Markup {
+            function backref(s, i, c) {
+                if !c.isa(String) { return nil }
+                var e = #c + i
+                if s.sub(i, e - 1) == c {
+                    return e
+                }
+            }
+
+            function Cbr(name) {
+                return LPeg::Cmt(LPeg::Cb(name), backref)
+            }
+
+            function sm_node(name) {
+                return function(node) {
+                    node::tag = name
+                    return node as Node
+                }
+            }
+
             rule __init {
                 <blank>* {%
                     {:dent: ' '* :} <chunk>
@@ -49,7 +54,7 @@ package Markup {
             }
 
             rule heading {
-                {% {:level: "="+ -> String::__index::len :} " " <rest> %} -> sm_node("heading")
+                {% {:level: "="+ -> String::len :} " " <rest> %} -> sm_node("heading")
             }
 
             rule para {
@@ -144,12 +149,6 @@ package Markup {
             rule undent {
                 {:dent: =out :} {:out: {` nil `} :}
             }
-        }
-
-        method parse(text) {
-            var tab = " ".rep(8)
-            text = text.gsub("\r\n", "\n").gsub("\t", tab)
-            return Parser::Markup.match(text)
         }
     }
 
