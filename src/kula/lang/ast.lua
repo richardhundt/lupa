@@ -336,7 +336,7 @@ Function.render_before = function(self, ctx)
       for i=1, #self.head do
          local item = self.head[i]
          if item.tag == 'rest' then
-            buf[#buf + 1] = format('local %s=Core.Tuple:new(...);', ctx:get(item[1]))
+            buf[#buf + 1] = format('local %s=Core.Tuple(...);', ctx:get(item[1]))
          end
       end
    end
@@ -492,7 +492,7 @@ end
 Rest = class{ }
 Rest.render = function(self, ctx)
    local name = ctx:get(self[1])
-   return format('local %s=Core.Tuple:new(...)', name)
+   return format('local %s=Core.Tuple(...)', name)
 end
 
 String = class{ }
@@ -539,12 +539,12 @@ end
 
 Array = class{ }
 Array.render = function(self, ctx)
-   return format("Core.Array:new(%s)", ctx:get(List{ unpack(self) }))
+   return format("Core.Array(%s)", ctx:get(List{ unpack(self) }))
 end
 
 Hash = class{ }
 Hash.render = function(self, ctx)
-   return format("Core.Hash:new(%s)", ctx:get(Table{ unpack(self) }))
+   return format("Core.Hash(%s)", ctx:get(Table{ unpack(self) }))
 end
 
 Pair = class{ }
@@ -588,7 +588,7 @@ Tuple.render = function(self, ctx)
    for i=1, #self do
       elems[i] = ctx:get(self[i])
    end
-   return format('Core.Tuple:new(%s)', ctx:get(elems))
+   return format('Core.Tuple(%s)', ctx:get(elems))
 end
 
 Return = class{ }
@@ -598,7 +598,7 @@ Return.render = function(self, ctx)
    local buf = { }
    if scope and scope.set_return then
       buf[#buf + 1] = format(
-         'do %s=Core.Tuple:new(%s); return %s end',
+         'do %s=Core.Tuple(%s); return %s end',
          scope.set_return, ctx:get(list), tostring(#list)
       )
    else
@@ -835,24 +835,23 @@ Class.render = function(self, ctx)
       with = ctx:get(List{ unpack(self.with) })
    end
 
-   return format('Core.class(self,%q,{%s},function(self,super) %s end,{%s})', name, from, body, with)
+   return format('Core.class(self,%q,{%s},{%s},function(self,super) %s end)', name, from, with, body)
 end
 Class.render_body = function(self, ctx, body, name)
    for i=1, #body do
       local decl = body[i]
       ctx:put(ctx:sync(decl))
 
-      local meta = decl.meta or False
       if decl.tag == 'slot_decl' then
          local expr = decl[1] or Nil
          ctx:fput(
-            'Core.has(self,%q,function() return %s end,%s);',
-            ctx:get(decl.name), ctx:get(expr), ctx:get(meta)
+            'Core.has(self,%q,function() return %s end);',
+            ctx:get(decl.name), ctx:get(expr)
          )
       elseif decl.tag == 'meth_decl' then
          ctx:fput(
-            'Core.method(self,%q,%s,%s);',
-            ctx:get(decl.name), ctx:get(decl), ctx:get(meta)
+            'Core.method(self,%q,%s);',
+            ctx:get(decl.name), ctx:get(decl)
          )
       else
          ctx:put(decl)
@@ -879,7 +878,7 @@ Trait.render = function(self, ctx)
       with = ctx:get(List{ unpack(self.with) })
    end
 
-   return format('Core.trait(self,%q,function(self,%s) %s end,{%s})', name, params, body, with)
+   return format('Core.trait(self,%q,{%s},function(self,%s) %s end)', name, params, with, body)
 end
 
 Object = class{ }
@@ -901,7 +900,7 @@ Object.render = function(self, ctx)
       with = ctx:get(List{ unpack(self.with) })
    end
 
-   return format('Core.object(self,%q,{%s},function(self,super) %s end,{%s})', name, from, body, with)
+   return format('Core.object(self,%q,{%s},{%s},function(self,super) %s end)', name, from, with, body)
 end
 
 Method = class{ }
@@ -922,7 +921,7 @@ end
 
 Range = class{ }
 Range.render = function(self, ctx)
-   return format('Core.Range:new(%s,%s,%s)', ctx:get(self[1]), ctx:get(self[2]), ctx:get(self[3]))
+   return format('Core.Range(%s,%s,%s)', ctx:get(self[1]), ctx:get(self[2]), ctx:get(self[3]))
 end
 
 Lambda = class{ }

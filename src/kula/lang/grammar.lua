@@ -37,7 +37,6 @@ p:rule"statement" {
    + m.V"try_catch"
    + m.V"break_stmt"
    + m.V"continue_stmt"
-   --+ m.V"assert_stmt"
    + m.V"expr_stmt"
    + s * m.P";";
 }
@@ -281,8 +280,7 @@ p:match"func_decl" {
    ast.FuncDecl;
 }
 p:match"meth_decl" {
-   m.Cg(m.P"meta" * idsafe * s * m.Cc(ast.True), "meta")^-1
-   * m.P"method" * idsafe * s
+   m.P"method" * idsafe * s
    * m.Cg(m.V"ident", "name") * s
    * m.V"func_common";
    ast.Method;
@@ -350,8 +348,7 @@ p:rule"class_body_decl" {
    + m.V"grammar_decl";
 }
 p:match"slot_decl" {
-   m.Cg(m.P"meta" * idsafe * s * m.Cc(ast.True), "meta")^-1
-   * m.P"has" * idsafe * s
+   m.P"has" * idsafe * s
    * m.Cg(m.V"ident", "name")
    * (s * m.P"=" * s * m.V"expr" * semicolon)^-1;
 }
@@ -598,13 +595,13 @@ expr_base:op_ternary"?:":prec(2) :make(ast.OpTernary)
 -- Full Expression
 ------------------------------------------------------------------------------
 local expr = expr_base:clone"expr"
-expr:op_infix(">=", "<=>", "<=", "<", ">", "in"):prec(8) :make(ast.OpInfix)
+expr:op_infix(">=", "<=", "<", ">", "in"):prec(8) :make(ast.OpInfix)
 
 ------------------------------------------------------------------------------
 -- No-in Expression
 ------------------------------------------------------------------------------
 local expr_noin = expr_base:clone"expr_noin"
-expr_noin:op_infix(">=", "<=>", "<=", "<", ">"):prec(8) :make(ast.OpInfix)
+expr_noin:op_infix(">=", "<=", "<", ">"):prec(8) :make(ast.OpInfix)
 
 ------------------------------------------------------------------------------
 -- List Expression

@@ -15,4 +15,4 @@ for i=1, 10_000_000 {
 print(h["num"])
 print(h)
 h['greet']()
-
+assert(h.isa(Hash))

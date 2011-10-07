@@ -20,15 +20,15 @@ package DB {
     }
 
     trait Object {
-        meta method __set_SCHEMA(schema) {
+        method __set_SCHEMA(schema) {
             self::SCHEMA = schema
             for k,v in schema['fields'] {
-                self::__index::["__set_${k}"] = v
+                self::["__set_${k}"] = v
             }
         }
     }
     class Driver {
-        class KDB extends self {
+        class KDB from self {
         }
     }
 }
@@ -37,9 +37,9 @@ package Acme {
     class Address with DB::Object {
         self.SCHEMA = {
             source = 'address',
-            driver = DB::Driver::KDB.new(),
+            driver = DB::Driver::KDB(),
             fields = {
-                line_1 = DB::Field.new({
+                line_1 = DB::Field({
                     store =-> {
                         
                     },
@@ -47,7 +47,7 @@ package Acme {
                         
                     },
                 }),
-                line_2 = DB::Field.new({
+                line_2 = DB::Field({
                     store =-> {
 
                     },
@@ -61,7 +61,7 @@ package Acme {
     class Person with DB::Object {
         self.SCHEMA = {
             fields = {
-                name = DB::Field.new({
+                name = DB::Field({
                     store =-> {
 
                     },
@@ -69,7 +69,7 @@ package Acme {
 
                     },
                 }),
-                email = DB::Field.new({
+                email = DB::Field({
                     store =-> {
 
                     },
@@ -80,7 +80,7 @@ package Acme {
             },
             assocs = {
                 address = {
-                    dest = DB::Assoc.new({
+                    dest = DB::Assoc({
                         klass = Acme::Address,
                         store =-> {
 
@@ -95,5 +95,5 @@ package Acme {
     }
 }
 
-var p = Acme::Person.new()
+var p = Acme::Person()
 

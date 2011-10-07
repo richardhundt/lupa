@@ -13,7 +13,6 @@ package Markup {
     }
 
     class Parser {
-
         function backref(s, i, c) {
             if !c.isa(String) { return nil }
             var e = #c + i
@@ -28,136 +27,137 @@ package Markup {
 
         function sm_node(name) {
             return function(node) {
-                Node.bless(node)
-                node.tag = name
-                return node
+                node::tag = name
+                return node as Node
             }
         }
 
-        rule markup {
-            <blank>* {%
-                {:dent: ' '* :} <chunk>
-                (<blank> | (<{ Cbr('dent') }> <chunk>))*
-            %}
-        }
+        grammar Markup {
+            rule __init {
+                <blank>* {%
+                    {:dent: ' '* :} <chunk>
+                    (<blank> | (<{ Cbr('dent') }> <chunk>))*
+                %}
+            }
 
-        rule chunk {
-            <heading> | <defn_list> | <para> | <verbatim> | <list>
-        }
+            rule chunk {
+                <heading> | <defn_list> | <para> | <verbatim> | <list>
+            }
 
-        rule verbatim {
-            {% " " <rest> (<{ Cbr('dent') }> " " <rest>)* %} -> sm_node("verbatim")
-        }
+            rule verbatim {
+                {% " " <rest> (<{ Cbr('dent') }> " " <rest>)* %} -> sm_node("verbatim")
+            }
 
-        rule heading {
-            {% {:level: "="+ -> String::__index::len :} " " <rest> %} -> sm_node("heading")
-        }
+            rule heading {
+                {% {:level: "="+ -> String::__index::len :} " " <rest> %} -> sm_node("heading")
+            }
 
-        rule para {
-            {% <line> (<{ Cbr("dent") }> {` " " `} <line>)* %} -> sm_node("para")
-        }
+            rule para {
+                {% <line> (<{ Cbr("dent") }> {` " " `} <line>)* %} -> sm_node("para")
+            }
 
-        rule defn_list {
-            {% <defn> (<{ Cbr("dent") }> <defn>)* %} -> sm_node("defn_list")
-        }
+            rule defn_list {
+                {% <defn> (<{ Cbr("dent") }> <defn>)* %} -> sm_node("defn_list")
+            }
 
-        rule defn {
-            <indent> {%
-                {:term: <defn_term> :}
-                {:dent: <{ Cbr("dent") }> " "+ :}
-                <chunk> (<blank> | (<{ Cbr("dent") }> <chunk>))*
-            %} <undent> -> sm_node("defn")
-        }
+            rule defn {
+                <indent> {%
+                    {:term: <defn_term> :}
+                    {:dent: <{ Cbr("dent") }> " "+ :}
+                    <chunk> (<blank> | (<{ Cbr("dent") }> <chunk>))*
+                %} <undent> -> sm_node("defn")
+            }
 
-        rule defn_term {
-            {%
-                (<span> | {~
-                    (<escp> | { !(<span> | "\n" | "::") . })+
-                ~})+ "::\n"
-            %} -> sm_node("defn_term")
-        }
+            rule defn_term {
+                {%
+                    (<span> | {~
+                        (<escp> | { !(<span> | "\n" | "::") . })+
+                    ~})+ "::\n"
+                %} -> sm_node("defn_term")
+            }
 
-        rule list {
-            {% <item> ((<{ Cbr("dent") }> <item>) | <nest>)* %} -> sm_node("list")
-        }
+            rule list {
+                {% <item> ((<{ Cbr("dent") }> <item>) | <nest>)* %} -> sm_node("list")
+            }
 
-        rule item {
-            <indent> {%
-                <bullet> {:dent:
-                    {~ =dent {` " " `} { " " }+ ~}
-                :} <chunk> (<blank> | <{ Cbr("dent") }> <chunk>)*
-            %} <undent> -> sm_node("item")
-        }
+            rule item {
+                <indent> {%
+                    <bullet> {:dent:
+                        {~ =dent {` " " `} { " " }+ ~}
+                    :} <chunk> (<blank> | <{ Cbr("dent") }> <chunk>)*
+                %} <undent> -> sm_node("item")
+            }
 
-        rule nest {
-            <indent> {:dent: <{ Cbr("dent") }> " "^2 :} <list> <undent>
-        }
+            rule nest {
+                <indent> {:dent: <{ Cbr("dent") }> " "^2 :} <list> <undent>
+            }
 
-        rule line {
-            !<marker> <text>* "\n"
-        }
+            rule line {
+                !<marker> <text>* "\n"
+            }
 
-        rule rest {
-            { (!"\n" .)* } "\n"
-        }
+            rule rest {
+                { (!"\n" .)* } "\n"
+            }
 
-        rule span {
-            <bold> | <emph> | <code>
-        }
+            rule span {
+                <bold> | <emph> | <code>
+            }
 
-        rule escp {
-            {~ (
-                {: "\\*" {` "*" `} :} |
-                {: "\\_" {` "_" `} :} |
-                {: "\\+" {` "+" `} :} 
-            )+ ~}
-        }
+            rule escp {
+                {~ (
+                    {: "\\*" {` "*" `} :} |
+                    {: "\\_" {` "_" `} :} |
+                    {: "\\+" {` "+" `} :} 
+                )+ ~}
+            }
 
-        rule text {
-            <span> | {~ (<escp> | { !(<span> | "\n") . })+ ~}
-        }
+            rule text {
+                <span> | {~ (<escp> | { !(<span> | "\n") . })+ ~}
+            }
 
-        rule bold {
-            "*" !" " {% { (!("\n" | "*").)+ } "*" %} -> sm_node("bold")
-        }
+            rule bold {
+                "*" !" " {% { (!("\n" | "*").)+ } "*" %} -> sm_node("bold")
+            }
 
-        rule emph {
-            "_" !" " {% { (!("\n" | "_").)+ } "_" %} -> sm_node("emph")
-        }
+            rule emph {
+                "_" !" " {% { (!("\n" | "_").)+ } "_" %} -> sm_node("emph")
+            }
 
-        rule code {
-            "+" !" " {% { (!("\n" | "+").)+ } "+" %} -> sm_node("code")
-        }
+            rule code {
+                "+" !" " {% { (!("\n" | "+").)+ } "+" %} -> sm_node("code")
+            }
 
-        rule blank {
-            " "* "\n"
-        }
+            rule blank {
+                " "* "\n"
+            }
 
-        rule bullet {
-            {:bullet: ("-" | "*") | [0-9]+ "." :}
-        }
-        rule marker {
-            ("[" | "=" | "*" | " ") | [0-9]+ "."
-        }
-        rule indent {
-            {:out: =dent :}
-        }
-        rule undent {
-            {:dent: =out :} {:out: {` nil `} :}
+            rule bullet {
+                {:bullet: ("-" | "*") | [0-9]+ "." :}
+            }
+            rule marker {
+                ("[" | "=" | "*" | " ") | [0-9]+ "."
+            }
+            rule indent {
+                {:out: =dent :}
+            }
+            rule undent {
+                {:dent: =out :} {:out: {` nil `} :}
+            }
         }
 
         method parse(text) {
             var tab = " ".rep(8)
             text = text.gsub("\r\n", "\n").gsub("\t", tab)
-            return self.markup.match(text)
+            return Parser::Markup.match(text)
         }
     }
 
     class Writer {
-        has _parser = Parser.new()
+        has _parser = Parser()
         has _buffer = [ ]
 
-        class HTML extends self {
+        class HTML from self {
 
             method parse(input) {
                 return self._parser.parse(input)
@@ -271,7 +271,7 @@ package Markup {
     }
 }
 
-var m = Markup::Writer::HTML.new()
+var m = Markup::Writer::HTML()
 var s = """
     = This is a heading
 

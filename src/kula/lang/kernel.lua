@@ -34,18 +34,24 @@ Core = _M
 
 Type = { }
 Type.__name = 'Type'
-Type.__index = { }
-Type.__index.isa = function(this, that)
-   local base = this
-   while base do
-      if base == that then return true end
-      base = base.__base
-      if not base then break end
-   end
+Type.__call = function(self, ...)
+   return self:__apply(...)
+end
+Type.isa = function(self, that)
+   return getmetatable(self) == that
+end
+Type.can = function(self, key)
+   return rawget(getmetatable(self), key)
+end
+Type.does = function(self, that)
    return false
 end
-Type.__index.can = function(obj, key)
-   return obj[key]
+Type.__index = function(self, key)
+   local val = Type[key]
+   if val == nil then
+      error("AccessError: no such member "..key.." in "..tostring(self), 2)
+   end
+   return val
 end
 Type.__tostring = function(self)
    return 'type '..(getmetatable(self).__name or 'Type')
@@ -59,6 +65,9 @@ Class.__index = function(self, key)
    error("AccessError: no such member "..key.." in "..self.__name, 2)
 end
 Class.__call = function(self, ...)
+   return self:__apply(...)
+end
+Class.__apply = function(self, ...)
    local obj = setmetatable({ }, self)
    if rawget(self, '__init') ~= nil then
       local ret = obj:__init(...)
@@ -70,20 +79,23 @@ Class.__call = function(self, ...)
 end
 
 Object = setmetatable({ }, Class)
-
 Object.__name = 'Object'
 Object.__from = { }
+Object.__with = { }
 Object.__tostring = function(self)
    return '<object '..tostring(getmetatable(self))..'>'
 end
 Object.__index = Object
-Object.__index.isa = function(self, that)
+Object.isa = function(self, that)
    local meta = getmetatable(self)
    return meta == that or (meta.__from and (meta.__from[that] ~= nil))
 end
-Object.__index.can = function(self, key)
+Object.can = function(self, key)
    local meta = getmetatable(self)
    return rawget(meta, key)
+end
+Object.does = function(self, that)
+   return self.__with[that.__body] ~= nil
 end
 
 Trait = setmetatable({ }, Type)
@@ -105,10 +117,11 @@ Trait.__index.compose = function(self, into, ...)
       self.__with[i]:compose(into)
    end
    self.__body(into, ...)
+   into.__with[self.__body] = true
    return into
 end
 
-class = function(into, name, from, body, with)
+class = function(into, name, from, with, body)
    if #from == 0 then
       from[#from + 1] = Object
    end
@@ -150,7 +163,7 @@ class = function(into, name, from, body, with)
    body(class, super)
    return class
 end
-trait = function(into, name, body, with)
+trait = function(into, name, with, body)
    local trait = setmetatable({
       __name = name,
       __body = body,
@@ -174,10 +187,10 @@ object = function(into, name, from, ...)
    end
    return inst
 end
-method = function(into, name, code, meta)
+method = function(into, name, code)
    into[name] = code
 end
-has = function(into, name, default, meta)
+has = function(into, name, default)
    local setter = '__set_'..name
    local getter = '__get_'..name
    into[setter] = function(obj, val)
@@ -204,9 +217,10 @@ rule = function(into, name, patt)
    into[name] = patt
 end
 
-
 Hash = setmetatable({ }, Type)
-Hash.new = function(self, table)
+Hash.__name = 'Hash'
+Hash.__index = Hash
+Hash.__apply = function(self, table)
    return setmetatable(table or { }, self)
 end
 Hash.__tostring = function(self)
@@ -226,14 +240,14 @@ Hash.__tostring = function(self)
    end
    return '{'..table.concat(buf, ',')..'}'
 end
-Hash.__index = setmetatable({ }, Object)
-Hash.__index.__getitem = rawget
-Hash.__index.__setitem = rawset
+Hash.__getitem = rawget
+Hash.__setitem = rawset
 Hash.__each = pairs
 
 Array = setmetatable({ }, Type)
 Array.__name = 'Array'
-Array.new = function(self, ...)
+Array.__index = Array
+Array.__apply = function(self, ...)
    return setmetatable({ ... }, self)
 end
 Array.__size = function(self)
@@ -252,31 +266,29 @@ Array.__tostring = function(self)
 end
 Array.__each = ipairs
 Array.__spread = unpack
-
-Array.__index = setmetatable({ }, Object)
-Array.__index.__getitem = rawget
-Array.__index.__setitem = rawset
-Array.__index.__get_size = function(self, name)
+Array.__getitem = rawget
+Array.__setitem = rawset
+Array.__get_size = function(self, name)
    return #self
 end
-Array.__index.unpack = unpack
-Array.__index.insert = table.insert
-Array.__index.remove = table.remove
-Array.__index.concat = table.concat
-Array.__index.sort   = table.sort
-Array.__index.each = function(self, block)
+Array.unpack = unpack
+Array.insert = table.insert
+Array.remove = table.remove
+Array.concat = table.concat
+Array.sort   = table.sort
+Array.each = function(self, block)
    for i=1, #self do block(self[i]) end
 end
-Array.__index.map = function(self, block)
-   local out = Array:new()
+Array.map = function(self, block)
+   local out = Array()
    for i=1, #self do
       local v = self[i]
       out[#out + 1] = block(v)
    end
    return out
 end
-Array.__index.grep = function(self, block)
-   local out = Array:new()
+Array.grep = function(self, block)
+   local out = Array()
    for i=1, #self do
       local v = self[i]
       if block(v) then
@@ -285,15 +297,15 @@ Array.__index.grep = function(self, block)
    end
    return out
 end
-Array.__index.push = function(self, v)
+Array.push = function(self, v)
    self[#self + 1] = v
 end
-Array.__index.pop = function(self)
+Array.pop = function(self)
    local v = self[#self]
    self[#self] = nil
    return v
 end
-Array.__index.shift = function(self)
+Array.shift = function(self)
    local v = self[1]
    for i=2, #self do
       self[i-1] = self[i]
@@ -301,14 +313,14 @@ Array.__index.shift = function(self)
    self[#self] = nil
    return v
 end
-Array.__index.unshift = function(self, v)
+Array.unshift = function(self, v)
    for i=1, #self + 1 do
       self[i+1] = self[i]
    end
    self[1] = v
 end
-Array.__index.reverse = function(self)
-   local out = Array:new()
+Array.reverse = function(self)
+   local out = Array()
    for i=1, #self do
       out[i] = self[(#self - i) + 1]
    end
@@ -317,8 +329,8 @@ end
 
 Range = setmetatable({ },Type)
 Range.__name = 'Range'
-Range.__index = setmetatable({ }, Object)
-Range.new = function(self, min, max, inc)
+Range.__index = Range
+Range.__apply = function(self, min, max, inc)
    min = assert(tonumber(min), "range min is not a number")
    max = assert(tonumber(max), "range max is not a number")
    inc = assert(tonumber(inc or 1), "range inc is not a number")
@@ -335,7 +347,7 @@ Range.__each = function(self)
       end
    end
 end
-Range.__index.each = function(self, block)
+Range.each = function(self, block)
    for i in Range:__each() do
       block(i)
    end
@@ -347,77 +359,74 @@ debug.setmetatable(nil, Nil)
 
 Number = setmetatable({ }, Type)
 Number.__name = 'Number'
-Number.__index = setmetatable({ }, Object)
-Number.__index.times = function(self, block)
+Number.__index = Number
+Number.times = function(self, block)
    for i=1, self do block(i) end
 end
 debug.setmetatable(0, Number)
 
-String = setmetatable({
-   __match = function(a,p)
-      return LPeg.P(p):match(a)
-   end
-}, Type)
+String = setmetatable({ }, Type)
 String.__name = 'String'
-String.__index = setmetatable({ }, Object)
-
-for k,v in pairs(string) do String.__index[k] = v end
-do
-   local strfind, strgmatch, strsub = string.find, string.gmatch, string.sub
-   String.__index.split = function(str, sep, max)
-      if not strfind(str, sep) then
-         return { str }
-      end
-      if max == nil or max < 1 then
-         max = 0
-      end
-      local pat = "(.-)"..sep.."()"
-      local idx = 0
-      local list = { }
-      local last
-      for part, pos in strgmatch(str, pat) do
-         idx = idx + 1
-         list[idx] = part
-         last = pos
-         if idx == max then break end
-      end
-      if idx ~= max then
-         list[idx + 1] = strsub(str, last)
-      end
-      return list
+String.__index = String
+String.__match = function(a,p)
+   return LPeg.P(p):match(a)
+end
+for k,v in pairs(string) do
+   String[k] = v
+end
+local strfind, strgmatch, strsub = string.find, string.gmatch, string.sub
+String.split = function(str, sep, max)
+   if not strfind(str, sep) then
+      return { str }
    end
+   if max == nil or max < 1 then
+      max = 0
+   end
+   local pat = "(.-)"..sep.."()"
+   local idx = 0
+   local list = { }
+   local last
+   for part, pos in strgmatch(str, pat) do
+      idx = idx + 1
+      list[idx] = part
+      last = pos
+      if idx == max then break end
+   end
+   if idx ~= max then
+      list[idx + 1] = strsub(str, last)
+   end
+   return list
 end
 debug.setmetatable("", String)
 
-
 Boolean = setmetatable({ }, Type)
 Boolean.__name = 'Boolean'
-Boolean.__index = setmetatable({ }, Object)
+Boolean.__index = Boolean
 debug.setmetatable(true, Boolean)
 
 Function = setmetatable({ }, Type)
 Function.__name = 'Function'
-Function.__index = setmetatable({ }, Object)
-Function.__index.__get_gen = function(self)
+Function.__index = Function
+Function.__get_gen = function(self)
    return coroutine.wrap(self)
 end
 debug.setmetatable(function() end, Function)
 
 Coroutine = setmetatable({ }, Type)
 Coroutine.__name = 'Coroutine'
-Coroutine.__index = setmetatable({ }, Object)
+Coroutine.__index = Coroutine
 for k,v in pairs(coroutine) do
-   Coroutine.__index[k] = v
+   Coroutine[k] = v
 end
 debug.setmetatable(coroutine.create(function() end), Coroutine)
 
 Tuple = setmetatable({ }, Type)
 Tuple.__name = "Tuple"
-Tuple.new = function(self, ...)
+Tuple.__index = Tuple
+Tuple.__apply = function(self, ...)
    return setmetatable({ size = select('#', ...), ... }, Tuple)
 end
-Tuple.__index = setmetatable({ }, Object)
-Tuple.__index.__getitem = rawget
+Tuple.__getitem = rawget
 Tuple.__spread = unpack
 Tuple.__size = function(self)
    return self.size
@@ -430,7 +439,6 @@ end
 Pattern.__match = function(patt, subj)
    return patt:match(subj)
 end
-setmetatable(Pattern.__index, Object)
 
 import = function(from, ...)
    local num = select('#', ...)
@@ -600,10 +608,10 @@ Op = {
 }
 
 do
-   local function capt_hash(tab) return Core.Hash:new(tab) end
+   local function capt_hash(tab) return Core.Hash(tab) end
    LPeg.Ch = function(patt) return LPeg.Ct(patt) / capt_hash end
 
-   local function capt_array(tab) return Core.Array:new(unpack(tab)) end
+   local function capt_array(tab) return Core.Array(unpack(tab)) end
    LPeg.Ca = function(patt) return LPeg.Ct(patt) / capt_array end
    local Predef = { nl = LPeg.P("\n") }
    local any = LPeg.P(1)
