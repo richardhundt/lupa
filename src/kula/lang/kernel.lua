@@ -458,7 +458,7 @@ load = function(from)
    return require(path)
 end
 
-Package = { }
+Package = setmetatable({ }, Type)
 Package.__tostring = function(self)
    local path = table.concat(Package.get_path(self), '::')
    if path == '' then
@@ -467,7 +467,7 @@ Package.__tostring = function(self)
       return 'package '..path
    end
 end
-Package.new = function(self, name, base)
+Package.__apply = function(self, name, base)
    local pkg = {
       __name   = name,
       __parent = base or _M,
@@ -478,7 +478,7 @@ Package.__index = function(self, key)
    return self.__parent[key]
 end
 
-Package.MAIN = Package:new()
+Package.MAIN = Package()
 
 Package.get_path = function(self)
    local path = { }
@@ -504,7 +504,7 @@ package = function(outer, path, body)
    for i=1, #canon_path do
       local name = canon_path[i]
       if rawget(curr, name) == nil then
-         local pckg = Package:new(name, curr)
+         local pckg = Package(name, curr)
          curr[name] = pckg
       end
       curr = curr[name]
