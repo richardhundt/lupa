@@ -1,10 +1,12 @@
 package XML {
-
     class Node {
         has data
         has type
         has parent
 
+        method __each() {
+            return ipairs(self)
+        }
         method __tostring() {
             return self.as_string()
         }
@@ -28,7 +30,7 @@ package XML {
         }
     }
 
-    class Element extends Node {
+    class Element from Node {
         has name
         has attributes = { }
 
@@ -84,9 +86,6 @@ package XML {
             return "<${name}${atts}>${kids}</${name}>"
         }
 
-        method __each() {
-            return ipairs(self)
-        }
         method __getitem(key) {
             return self.attributes[key]
         }
@@ -111,7 +110,7 @@ package XML {
         }
     }
     
-    class Document extends Element {
+    class Document from Element {
         has elements = { }
 
         method init() {
@@ -139,7 +138,7 @@ package XML {
     class Parser {
 
         method parse(xmlstr) {
-            var xmldoc = self.xml.match(xmlstr)
+            var xmldoc = Parser::XMLGrammar.match(xmlstr)
             xmldoc.init()
             return xmldoc
         }
@@ -170,95 +169,96 @@ package XML {
         }
 
         function create_document(xdoc) {
-            return Document.bless(xdoc)
+            return xdoc as Document
         }
         function create_doctype_node(node) {
-            return Node.bless(node)
+            return node as Node
         }
         function create_element_node(node) {
-            return Element.bless(node)
+            return node as Element
         }
         function create_cdata_node(node) {
-            return Node.bless(node)
+            return node as Node
         }
         function create_text_node(node) {
-            return Node.bless(node)
+            return node as Node
         }
         function create_comment_node(node) {
-            return Node.bless(node)
+            return node as Node
         }
         function create_procins_node(node) {
-            return Node.bless(node)
+            return node as Node
         }
 
-        rule xml {
-            <ws>* {% <document> %} -> create_document | <eos>
-        }
-        rule document {
-            <doctype>? <markup> (<eos> | <{parse_error}>)
-        }
-        rule doctype {
-            {% "<!DOCTYPE" {:data: [^>]+ :} {:type: {`"DOCTYPE_DECLARATION"`} :} ">" %}
-            -> create_doctype_node
-        }
-        rule markup {
-            ( {% <element> %} -> create_element_node
-            | {% <cdata>   %} -> create_cdata_node
-            | {% <text>    %} -> create_text_node
-            | {% <comment> %} -> create_comment_node
-            | {% <procins> %} -> create_procins_node
-            )*
-        }
-        rule element {
-            <tagOpen> <markup> (&<tagClose> | <{parse_error}>)
-            <tagClose> | <tagOpenEmpty>
-        }
+        grammar XMLGrammar {
+            rule __init {
+                <ws>* {% <document> %} -> create_document | <eos>
+            }
+            rule document {
+                <doctype>? <markup> (<eos> | <{parse_error}>)
+            }
+            rule doctype {
+                {% "<!DOCTYPE" {:data: [^>]+ :} {:type: {`"DOCTYPE_DECLARATION"`} :} ">" %}
+                -> create_doctype_node
+            }
+            rule markup {
+                ( {% <element> %} -> create_element_node
+                | {% <cdata>   %} -> create_cdata_node
+                | {% <text>    %} -> create_text_node
+                | {% <comment> %} -> create_comment_node
+                | {% <procins> %} -> create_procins_node
+                )*
+            }
+            rule element {
+                <tagOpen> <markup> (&<tagClose> | <{parse_error}>)
+                <tagClose> | <tagOpenEmpty>
+            }
 
-        rule tagOpen {
-            "<" (<tagName> <attrs> <ws>* ">" | <ws>* ">")
+            rule tagOpen {
+                "<" (<tagName> <attrs> <ws>* ">" | <ws>* ">")
+            }
+            
+            rule tagOpenEmpty {
+                "<" (<tagName> <attrs> <ws>* "/>" | <ws>* "/>")
+            }
+            rule tagClose {
+                "</" <{Cbr("name")}> <ws>* ">"
+            }
+            rule tagName {
+                {:name: <ident> :} {:type: {`"ELEMENT_NODE"`} :}
+            }
+            rule text {
+                {:data: [^><]+ :} {:type: {`"TEXT_NODE"`} :}
+            }
+            rule cdata {
+                "<![CDATA[" {:data: (!"]]>" .)* :} "]]>" {:type: {`"CDATA_SECTION_NODE"`} :}
+            }
+            rule comment {
+                "<!--" {:data: (!"-->" .)* :} "-->" {:type: {`"COMMENT_NODE"`} :}
+            }
+            rule procins {
+                "<?" {:data: (!"?>" .)* :} "?>" {:type: {`"PROCESSING_INSTRUCTION_NODE"`} :}
+            }
+            rule attrs {
+                {:attributes: {% <attr>* %} -> fold_attributes :}
+            }
+            rule attr {
+                <ws>+ { <ident> } "=" <str>
+            }
+            rule str {
+                '"' { (!'"' .)* } '"' | "'" { (!"'" .)* } "'"
+            }
+            rule ident {
+                [a-zA-Z0-9_.:-]+
+            }
+            rule ws {
+                %space
+            }
+            rule eos { !. }
         }
-        
-        rule tagOpenEmpty {
-            "<" (<tagName> <attrs> <ws>* "/>" | <ws>* "/>")
-        }
-        rule tagClose {
-            "</" <{Cbr("name")}> <ws>* ">"
-        }
-        rule tagName {
-            {:name: <ident> :} {:type: {`"ELEMENT_NODE"`} :}
-        }
-        rule text {
-            {:data: [^><]+ :} {:type: {`"TEXT_NODE"`} :}
-        }
-        rule cdata {
-            "<![CDATA[" {:data: (!"]]>" .)* :} "]]>" {:type: {`"CDATA_SECTION_NODE"`} :}
-        }
-        rule comment {
-            "<!--" {:data: (!"-->" .)* :} "-->" {:type: {`"COMMENT_NODE"`} :}
-        }
-        rule procins {
-            "<?" {:data: (!"?>" .)* :} "?>" {:type: {`"PROCESSING_INSTRUCTION_NODE"`} :}
-        }
-        rule attrs {
-            {:attributes: {% <attr>* %} -> fold_attributes :}
-        }
-        rule attr {
-            <ws>+ { <ident> } "=" <str>
-        }
-        rule str {
-            '"' { (!'"' .)* } '"' | "'" { (!"'" .)* } "'"
-        }
-        rule ident {
-            [a-zA-Z0-9_.:-]+
-        }
-        rule ws {
-            %space
-        }
-        rule eos { !. }
     }
 }
 
-/*
 var xmlstr = """
 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
    "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
@@ -284,7 +284,7 @@ var xmlstr = """
 </body>
 </html>
 """
-var p = XML::Parser.new()
+var p = XML::Parser()
 var d = p.parse(xmlstr)
 print(d)
-*/
+

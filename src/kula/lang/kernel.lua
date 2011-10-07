@@ -3,7 +3,6 @@ module("kula.lang.kernel", package.seeall)
 require"kula.lang.strict"
 
 local math = math
---local ffi = require'ffi'
 local bit = require"bit"
 LPeg = require"lpeg"
 
@@ -52,83 +51,44 @@ Type.__tostring = function(self)
    return 'type '..(getmetatable(self).__name or 'Type')
 end
 
-Object = setmetatable({ }, Type)
-Object.__name = 'Object'
-Object.__tostring = function(self)
-   return 'object '..tostring(getmetatable(self))
-end
-Object.__index = { }
-Object.__index.isa = function(this, that)
-   local base = getmetatable(this)
-   while base do
-      if base == that then return true end
-      base = base.__base
-      if not base then break end
-   end
-   return false
-end
-Object.__index.can = function(obj, key)
-   return obj[key]
-end
-Object.new = function(self)
-   local obj = { }
-   obj.__index = obj
-   return setmetatable(obj, Object)
-end
-
 Class = setmetatable({ }, Type)
-Class.new = function(self, name, base, body, with)
-   if not base then base = Object end
-   if type(base) ~= 'table' then
-      error("TypeError: cannot inherit from "..tostring(base), 2)
-   end
-   if rawget(base, '__index') == nil then
-      base.__index = base
-   end
-
-   local class = {
-      __name = name,
-      __base = base,
-   }
-
-   local proto = setmetatable({ }, base)
-   local super = setmetatable({ }, base)
-
-   class.__index = proto
-   class.__tostring = function(self)
-      return 'object '..tostring(name)
-   end
-
-   setmetatable(class, Class)
-
-   if with then
-      for i=1, #with do
-         with[i]:compose(class)
-      end
-   end
-
-   body(class, super)
-
-   return class
-end
 Class.__tostring = function(self)
-   return 'class '..(self.__name or '<anon>')
+   return self.__name
 end
-Class.__index = setmetatable({ }, Object)
-Class.__index.bless = function(self, that)
-   return setmetatable(that or { }, self)
+Class.__index = function(self, key)
+   error("AccessError: no such member "..key.." in "..self.__name, 2)
 end
-Class.__index.new = function(self, ...)
-   local obj = self:bless({ })
-   if obj.__init ~= nil then
-      obj:__init(...)
+Class.__call = function(self, ...)
+   local obj = setmetatable({ }, self)
+   if rawget(self, '__init') ~= nil then
+      local ret = obj:__init(...)
+      if ret ~= nil then
+         return ret
+      end
    end
    return obj
 end
 
+Object = setmetatable({ }, Class)
+
+Object.__name = 'Object'
+Object.__from = { }
+Object.__tostring = function(self)
+   return '<object '..tostring(getmetatable(self))..'>'
+end
+Object.__index = Object
+Object.__index.isa = function(self, that)
+   local meta = getmetatable(self)
+   return meta == that or (meta.__from and (meta.__from[that] ~= nil))
+end
+Object.__index.can = function(self, key)
+   local meta = getmetatable(self)
+   return rawget(meta, key)
+end
+
 Trait = setmetatable({ }, Type)
 Trait.__call = function(self, ...)
-   local copy = Trait:new(self.__name, self.__body, self.__with)
+   local copy = trait(nil, self.__name, self.__body, self.__with)
    local make = self.compose
    local args = { ... }
    copy.compose = function(self, into)
@@ -139,15 +99,7 @@ end
 Trait.__tostring = function(self)
    return 'trait '..self.__name
 end
-Trait.new = function(self, name, body, with)
-   local trait = setmetatable({
-      __name = name,
-      __body = body,
-      __with = with,
-   }, Trait)
-   return trait
-end
-Trait.__index = { }
+Trait.__index = Trait
 Trait.__index.compose = function(self, into, ...)
    for i=1, #self.__with do
       self.__with[i]:compose(into)
@@ -156,31 +108,83 @@ Trait.__index.compose = function(self, into, ...)
    return into
 end
 
-class = function(...)
-   return Class:new(...)
+class = function(into, name, from, body, with)
+   if #from == 0 then
+      from[#from + 1] = Object
+   end
+   local class = {
+      __name = name,
+      __from = from,
+   }
+
+   local super = { }
+   local queue = { unpack(from) }
+   while #queue > 0 do
+      local base = table.remove(queue, 1)
+      if getmetatable(base) ~= Class then
+         error("TypeError: "..tostring(base).." is not a Class", 2)
+      end
+      from[base] = true
+      for k,v in pairs(base) do
+         if class[k] == nil then class[k] = v end
+         if super[k] == nil then super[k] = v end
+      end
+      if base.__from then
+         for i=1, #base.__from do
+            queue[#queue + 1] = base.__from[i]
+         end
+      end
+   end
+
+   class.__index = class
+
+   setmetatable(class, Class)
+
+   if with then
+      for i=1, #with do
+         with[i]:compose(class)
+      end
+   end
+
+   into[name] = class
+   body(class, super)
+   return class
 end
-trait = function(...)
-   return Trait:new(...)
+trait = function(into, name, body, with)
+   local trait = setmetatable({
+      __name = name,
+      __body = body,
+      __with = with,
+   }, Trait)
+   if into then
+      into[name] = trait
+   end
+   return trait
 end
-object = function(...)
-   local anon = Class:new(...)
-   local inst = anon:new()
-   inst.__index = inst
+object = function(into, name, from, ...)
+   for i=1, #from do
+      if getmetatable(from[i]) ~= Class then
+         from[i] = getmetatable(from[i])
+      end
+   end
+   local anon = class(into,'#'..name, from, ...)
+   local inst = anon()
+   if into then
+      into[name] = inst
+   end
    return inst
 end
-method = function(base, name, code, meta)
-   local into = meta and base or base.__index
+method = function(into, name, code, meta)
    into[name] = code
 end
-has = function(base, name, default, meta)
-   local into = meta and base or base.__index
+has = function(into, name, default, meta)
    local setter = '__set_'..name
    local getter = '__get_'..name
    into[setter] = function(obj, val)
       obj[name] = val
    end
    into[getter] = function(obj)
-      local val = obj[name]
+      local val = rawget(obj,name)
       if val == nil then
          val = default()
          obj[setter](obj, val)
@@ -188,30 +192,18 @@ has = function(base, name, default, meta)
       return val
    end
 end
-rule = function(into, name, patt, meta)
-   local into = meta and base or base.__index
-   local setter = '__set_'..name
-   local getter = '__get_'..name
-   into[name] = patt
-   into[setter] = function(obj, val)
-      assert(LPeg.type(patt) == 'pattern', 'TypeError: not a pattern')
-      obj[name] = val
-   end
-   into[getter] = function(obj)
-      local val = rawget(obj,name)
-      if val == nil then
-         local grammar = { name }
-         for k,p in pairs(into) do
-            if LPeg.type(p) == 'pattern' then
-               grammar[k] = p
-            end
-         end
-         val = LPeg.P(grammar)
-         obj[setter](obj, val)
-      end
-      return val
-   end
+grammar = function(into, name, body)
+   local grammar = { }
+   body(grammar)
+   into[name] = LPeg.P(grammar)
 end
+rule = function(into, name, patt)
+   if name == '__init' or into[1] == nil then
+      into[1] = name
+   end
+   into[name] = patt
+end
+
 
 Hash = setmetatable({ }, Type)
 Hash.new = function(self, table)
@@ -357,9 +349,7 @@ Number = setmetatable({ }, Type)
 Number.__name = 'Number'
 Number.__index = setmetatable({ }, Object)
 Number.__index.times = function(self, block)
-   for i=1, self do
-      block(i)
-   end
+   for i=1, self do block(i) end
 end
 debug.setmetatable(0, Number)
 
@@ -462,33 +452,22 @@ end
 
 Package = { }
 Package.__tostring = function(self)
-   local path = Package.get_path(self)
-   return '<package>'..table.concat(path, '::')
+   local path = table.concat(Package.get_path(self), '::')
+   if path == '' then
+      return 'package <main>'
+   else
+      return 'package '..path
+   end
 end
 Package.new = function(self, name, base)
-   if not name then name = '<main>' end
    local pkg = {
-      __name    = name,
-      __parent  = base,
-      __environ = { },
+      __name   = name,
+      __parent = base or _M,
    }
-
-   local outer
-   if base then
-      outer = base.__environ
-   else
-      outer = _M
-   end
-
-   setmetatable(pkg.__environ, {
-      __index = outer,
-      __newindex = function(env, key, val)
-         rawset(env, key, val)
-         rawset(pkg, key, val)
-      end,
-   })
-
    return setmetatable(pkg, self)
+end
+Package.__index = function(self, key)
+   return self.__parent[key]
 end
 
 Package.MAIN = Package:new()
@@ -518,18 +497,18 @@ package = function(outer, path, body)
       local name = canon_path[i]
       if rawget(curr, name) == nil then
          local pckg = Package:new(name, curr)
-         curr.__environ[name] = pckg
+         curr[name] = pckg
       end
       curr = curr[name]
    end
    _G.package.loaded[table.concat(canon_path, '.')] = curr
    _G.package.loaded[table.concat(canon_path, '::')] = curr
-   setfenv(body, curr.__environ)
+   setfenv(body, curr)
    return body(curr)
 end
 
 unit = function(main, modname, ...)
-   setfenv(main, Package.MAIN.__environ)
+   setfenv(main, Package.MAIN)
    main(Package.MAIN)
    return Package.MAIN
 end
@@ -549,12 +528,7 @@ Op = {
    throw  = function(raise, trace) error(raise, 2) end,
 
    contains = function(key, obj)
-      return (
-         rawget(obj, key) or
-         rawget(obj, '__get_'..key) or
-         rawget(getmetatable(obj), '__get_'..key) or
-         Type.can(obj, key)
-      ) ~= nil
+      return (rawget(obj, key) or rawget(getmetatable(obj), key)) ~= nil
    end,
 
    like = function(this, that)

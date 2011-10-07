@@ -15,7 +15,7 @@ class Mammal {
     has blood = "warm"
 }
 
-class Dog extends Mammal with Guide("guiding") with Pet(42) {
+class Dog from Mammal with Guide("guiding"), Pet(42) {
     self::DEBUG = true
 
     method greet() {
@@ -25,7 +25,7 @@ class Dog extends Mammal with Guide("guiding") with Pet(42) {
     }
 }
 
-var d = Dog.new()
+var d = Dog()
 d.walk()
 d.greet()
 d.wooz()

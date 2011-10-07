@@ -18,27 +18,11 @@ local idsafe = -(m.V"alnum" + m.P"_")
 p:skip { (comment + m.V"WS")^0 }
 
 p:rule(1) {
-   m.V"BOF" * s * m.V"unit" * s * (m.V"EOF" + p:error"parse error")
+   m.V"BOF" * m.V"unit" * s * (m.V"EOF" + p:error"parse error")
 }
 p:match"unit" {
-   m.V"unit_body_stmt" * (s * m.V"unit_body_stmt")^0;
+   (s * m.V"package_body_stmt")^0;
    ast.Unit;
-}
-p:match"unit_body_stmt" {
-   m.V"package_decl"
-   + m.V"import_stmt"
-   + m.V"var_decl"
-   + m.V"func_decl"
-   --[[ XXX: lookahead + error handling for these
-   + m.V"slot_decl"
-   + m.V"rule_decl"
-   + m.V"meth_decl"
-   --]]
-   + m.V"class_decl"
-   + m.V"trait_decl"
-   + m.V"object_decl"
-   + #m.V"return_stmt" * p:error"return outside of function body"
-   + m.V"statement";
 }
 p:rule"statement" {
      m.V"block_stmt"
@@ -63,11 +47,11 @@ p:match"statements" {
 }
 p:rule"keyword" {
    (
-      m.P"var" + "function" + "class" + "is" + "with" + "like" --+ "assert"
-      + "nil" + "true" + "false" + "typeof" + "return" + "in" + "for" + "throw"
-      + "delete" + "extends" + "as" + "method" + "has" + "from"
+      m.P"var" + "function" + "class" + "is" + "with" + "like"
+      + "nil" + "true" + "false" + "typeof" + "return" + "in"
+      + "for" + "throw" + "as" + "method" + "has" + "from"
       + "break" + "continue" + "package" + "import" + "try" + "catch"
-      + "finally" + "if" + "else" + "yield"
+      + "finally" + "if" + "else" + "yield" + "grammar"
    ) * idsafe
 }
 
@@ -172,21 +156,12 @@ p:match"term_list" {
 }
 p:rule"expr_stmt" {
    m.V"expr" / function(node)
-      --[[
-      if node[1].oper == nil then
-         local format = "SyntaxError: %s on line %s - %s"
-         error(string.format(format, "bare term", node.pos.line, tostring(node)))
-      end
-      --]]
       return ast.Expr(node)
    end * semicolon
 }
 p:match"block" {
-   m.P"{" * s * m.V"block_body"^-1 * s * p:expect"}";
+   m.P"{" * (s * m.V"block_body_stmt")^0 * s * p:expect"}";
    ast.Block;
-}
-p:rule"block_body" {
-   m.V"block_body_stmt" * (s * m.V"block_body_stmt")^0
 }
 p:rule"block_body_stmt" {
    m.V"func_decl"
@@ -194,7 +169,7 @@ p:rule"block_body_stmt" {
    + m.V"statement"
 }
 p:match"block_stmt" {
-   m.P"{" * s * m.V"block_body" * s * p:expect"}";
+   m.P"{" * (s * m.V"block_body_stmt")^0 * s * p:expect"}";
    ast.Block;
 }
 p:match"for_stmt" {
@@ -336,30 +311,27 @@ p:match"return_stmt" {
 }
 p:match"class_decl" {
    m.P"class" * idsafe * s * m.Cg(m.V"ident", "name") * s
-   * m.Cg(m.V"class_extends", "extends")^-1 * s
+   * m.Cg(m.V"class_from", "from")^-1 * s
    * m.Cg(m.V"class_with", "with")^-1 * s
    * m.V"class_body";
    ast.Class;
 }
 p:match"object_decl" {
    m.P"object" * idsafe * s * m.Cg(m.V"ident", "name") * s
-   * m.Cg(m.V"class_extends", "extends")^-1 * s
+   * m.Cg(m.V"class_from", "from")^-1 * s
    * m.Cg(m.V"class_with", "with")^-1 * s
    * m.V"class_body";
    ast.Object;
 }
 
-p:match"class_extends" {
-   m.P"extends" * idsafe * s * m.V"qname"
+p:match"class_from" {
+   m.P"from" * idsafe * s * m.V"expr" * (s * "," * s * m.V"expr")^0
 }
 p:match"class_with" {
-   m.P"with" * idsafe * s * m.V"expr"
-   * (s * m.P"with" * idsafe * s * m.V"expr")^0
+   m.P"with" * idsafe * s * m.V"expr" * (s * m.P"," * s * m.V"expr")^0
 }
 p:match"class_body" {
-   p:expect"{" * s
-   * (m.V"class_body_stmt" * (s * m.V"class_body_stmt")^0)^-1 * s
-   * p:expect"}";
+   p:expect"{" * (s * m.V"class_body_stmt")^0 * s * p:expect"}";
    ast.Block;
 }
 p:rule"class_body_stmt" {
@@ -370,12 +342,12 @@ p:rule"class_body_stmt" {
 p:rule"class_body_decl" {
      m.V"var_decl"
    + m.V"slot_decl"
-   + m.V"rule_decl"
    + m.V"meth_decl"
    + m.V"func_decl"
    + m.V"class_decl"
    + m.V"trait_decl"
-   + m.V"object_decl";
+   + m.V"object_decl"
+   + m.V"grammar_decl";
 }
 p:match"slot_decl" {
    m.Cg(m.P"meta" * idsafe * s * m.Cc(ast.True), "meta")^-1
@@ -391,7 +363,6 @@ p:match"trait_decl" {
    * m.V"class_body";
    ast.Trait;
 }
-
 
 ------------------------------------------------------------------------------
 -- binding
@@ -418,9 +389,7 @@ p:match"bind_binop_expr" {
 ------------------------------------------------------------------------------
 p:match"package_decl" {
    m.P"package" * s * m.Cg(m.V"qname", "path") * s
-   * p:expect"{"
-   * (s * m.V"package_body_stmt")^0 * s
-   * p:expect"}";
+   * p:expect"{" * (s * m.V"package_body_stmt")^0 * s * p:expect"}";
    ast.Package;
 }
 p:match"package_body_stmt" {
@@ -428,14 +397,10 @@ p:match"package_body_stmt" {
    + m.V"import_stmt"
    + m.V"var_decl"
    + m.V"func_decl"
-   --[[ XXX: lookahead + error handling for these
-   + m.V"slot_decl"
-   + m.V"rule_decl"
-   + m.V"meth_decl"
-   --]]
    + m.V"class_decl"
    + m.V"trait_decl"
    + m.V"object_decl"
+   + m.V"grammar_decl"
    + #m.V"return_stmt" * p:error"return outside of function body"
    + m.V"statement";
 }
@@ -467,11 +432,21 @@ p:match"import_stmt" {
 ------------------------------------------------------------------------------
 -- PEG rules
 ------------------------------------------------------------------------------
+p:match"grammar_decl" {
+   m.P"grammar" * idsafe * s * m.Cg(m.V"ident", "name") * s
+   * m.P"{" * (s * m.V"grammar_body_stmt")^0 * s * p:expect"}";
+   ast.Grammar;
+}
+p:rule"grammar_body_stmt" {
+   m.V"rule_decl"
+   + #m.V"return_stmt" * p:error"return outside of function body"
+   + m.V"statement"
+}
+
 p:match"rule_decl" {
    m.P"rule" * idsafe * s * m.Cg(m.V"ident", 'name') * s
-   * m.Cg(m.Ct((s * m.P"is" * idsafe * s * m.V"ident")^1), "trait")^-1 * s
    * m.P"{" * s * m.Cg(m.V"rule_body", "body") * s * p:expect"}";
-   ast.Rule;
+   ast.RuleDecl;
 }
 p:match"pattern_literal" {
    m.P"/" * s * m.V"rule_expr" * s * p:expect"/";
@@ -614,7 +589,7 @@ expr_base:op_infix("like", "!=", "==", "=~", "!~"):prec(7) :make(ast.OpInfix)
 expr_base:op_infix(">>>", ">>", "<<"):prec(9) :make(ast.OpInfix)
 expr_base:op_infix("~", "+", "-"):prec(10) :make(ast.OpInfix)
 expr_base:op_infix("*", "/", "%"):prec(20) :make(ast.OpInfix)
-expr_base:op_prefix("typeof", "delete", "+", "-"):prec(30) :make(ast.OpPrefix)
+expr_base:op_prefix("typeof", "+", "-"):prec(30) :make(ast.OpPrefix)
 expr_base:op_infix("**"):prec(35) :make(ast.OpInfix)
 expr_base:op_prefix("~","#"):prec(35) :make(ast.OpPrefix)
 expr_base:op_ternary"?:":prec(2) :make(ast.OpTernary)

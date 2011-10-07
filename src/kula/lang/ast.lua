@@ -401,7 +401,7 @@ end
 
 Throw = class{ }
 Throw.render = function(self, ctx)
-   local trace = Table{ file = String{ctx.name}, pos = Number(self.pos) }
+   local trace = Table{ file = String{ctx.name}, pos = self.pos }
    return format('Op.throw(%s,%s)', ctx:get(self[1]), ctx:get(trace))
 end
 
@@ -813,31 +813,16 @@ Package.render_body = function(self, ctx)
    for i=1, #self do
       local stmt = self[i]
       ctx:put(ctx:sync(stmt))
-      local decl = stmt[1]
-      if decl.tag:match('_decl$') then
-         if decl.tag == 'var_decl' then
-            ctx:put(decl)
-         elseif decl.tag == 'package_decl' then
-            ctx:put(decl)
-         else
-            if decl.tag == 'func_decl' then
-               ctx:put(decl)
-            else
-               ctx:fput('%s=%s;', decl.name[1], ctx:get(decl))
-            end
-         end
-      else
-         ctx:put(decl)
-      end
+      ctx:put(stmt[1])
    end
 end
 
 Class = class{ }
 Class.render = function(self, ctx)
    local name = self.name and self.name[1]
-   local extends = 'nil'
-   if self.extends then
-      extends = ctx:get(self.extends[1])
+   local from = ''
+   if self.from then
+      from = ctx:get(List{unpack(self.from)})
    end
 
    ctx:enter"class"
@@ -850,32 +835,25 @@ Class.render = function(self, ctx)
       with = ctx:get(List{ unpack(self.with) })
    end
 
-   return format('Core.class(%q,%s,function(self,super) %s end,{%s})', name, extends, body, with)
+   return format('Core.class(self,%q,{%s},function(self,super) %s end,{%s})', name, from, body, with)
 end
 Class.render_body = function(self, ctx, body, name)
-   local base = 'self'
-
    for i=1, #body do
       local decl = body[i]
       ctx:put(ctx:sync(decl))
 
       local meta = decl.meta or False
       if decl.tag == 'slot_decl' then
-         local iden, expr = decl.name, decl[1] or Nil
-
+         local expr = decl[1] or Nil
          ctx:fput(
-            'Core.has(%s,%q,function() return %s end,%s);',
-            base, iden[1], ctx:get(expr), ctx:get(meta)
+            'Core.has(self,%q,function() return %s end,%s);',
+            ctx:get(decl.name), ctx:get(expr), ctx:get(meta)
          )
       elseif decl.tag == 'meth_decl' then
-         local expr = ctx:get(decl)
-         ctx:fput('Core.method(%s,%q,%s,%s);', base, decl.name[1], expr, ctx:get(meta))
-      elseif decl.tag == 'rule_decl' then
-         local expr = ctx:get(decl)
-         ctx:fput('Core.rule(%s,%q,%s,%s);', base, decl.name[1], expr, meta)
-      elseif decl.tag == 'class_decl' or decl.tag == 'trait_decl' then
-         local expr = ctx:get(decl)
-         ctx:fput('%s.%s=%s;', base, decl.name[1], expr)
+         ctx:fput(
+            'Core.method(self,%q,%s,%s);',
+            ctx:get(decl.name), ctx:get(decl), ctx:get(meta)
+         )
       else
          ctx:put(decl)
       end
@@ -901,15 +879,15 @@ Trait.render = function(self, ctx)
       with = ctx:get(List{ unpack(self.with) })
    end
 
-   return format('Core.trait(%q,function(self,%s) %s end,{%s})', name, params, body, with)
+   return format('Core.trait(self,%q,function(self,%s) %s end,{%s})', name, params, body, with)
 end
 
 Object = class{ }
 Object.render = function(self, ctx)
    local name = self.name and self.name[1]
-   local extends = 'nil'
-   if self.extends then
-      extends = ctx:get(self.extends[1])
+   local from = ''
+   if self.from then
+      from = ctx:get(List{unpack(self.from)})
    end
 
    ctx:enter"object"
@@ -923,7 +901,7 @@ Object.render = function(self, ctx)
       with = ctx:get(List{ unpack(self.with) })
    end
 
-   return format('Core.object(%q,%s,function(self,super) %s end,{%s})', name, extends, body, with)
+   return format('Core.object(self,%q,{%s},function(self,super) %s end,{%s})', name, from, body, with)
 end
 
 Method = class{ }
@@ -967,17 +945,12 @@ Lambda.render = function(self, ctx)
    return ctx:leave()
 end
 
-Rule = class{ }
-Rule.render = function(self, ctx)
-   local name, body
-   if self.tag == 'rule_decl' then
-      name = self.name[1]
-      body = self.body
-   else
-      name = ctx:genid"anon"
-      body = self.body
-   end
-   return ctx:get(body)
+Grammar = class{ }
+Grammar.render = function(self, ctx)
+   ctx:enter"grammar"
+   for i=1, #self do ctx:put(self[i]) end
+   local body = ctx:leave()
+   return format("Core.grammar(self,%q,function(self) %s end)", ctx:get(self.name), body)
 end
 
 Pattern = class{ }
@@ -987,7 +960,7 @@ end
 
 RuleDecl = class{ }
 RuleDecl.render = function(self, ctx)
-   return 'local '..self.name[1]..'=Core.LPeg.P({'..ctx:get(self.body)..'})'
+   return format('Core.rule(self,%q,%s)', ctx:get(self.name), ctx:get(self.body))
 end
 
 RuleBody = class{ }

@@ -2,24 +2,14 @@
 object Point {
     has x = 0
     has y = 0
-    method new(x, y) {
-        self::__index = self
-        return { x = x, y = y, } as self
-    }
     method move(x, y) {
         self.x = x
         self.y = y
     }
 }
 
-object Point3D extends Point {
+object Point3D from Point {
     has z = 0
-    method new(x, y, z) {
-        self::__index = self
-        var o = Point.new(x, y) as self
-        o.z = z
-        return o
-    }
     method move(x, y, z) {
         super::move(self, x, y)
         self.z = z
@@ -28,7 +18,7 @@ object Point3D extends Point {
 
 print(Point)
 print(Point3D)
-var p = Point3D.new()
+var p = Point3D
 
 p.move(11,22,33)
 for i=1, 10000000 {

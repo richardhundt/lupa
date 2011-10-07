@@ -1,5 +1,4 @@
-class Macro {
-
+grammar Macro {
     rule text {
         {~ <item>* ~}
     }
@@ -17,15 +16,11 @@ class Macro {
         | ('add'   <args>) -> '%1 + %2'
         | ('mul'   <args>) -> '%1 * %2'
     }
-    method parse(str) {
-        return str =~ self.text
-    }
 }
 
 var a = / '42' /
 print("42" =~ / { 'answer' | <{a}> } /)
 
-var m = Macro.new()
 var s = "add(mul(a,b),apply(f,x))"
-//print(m.text)
-print("MATCH:", s, "=>", m.parse(s))
+print("MATCH:", s, "=>", Macro.match(s))
+
