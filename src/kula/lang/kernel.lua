@@ -54,7 +54,7 @@ Type.__index = function(self, key)
    return val
 end
 Type.__tostring = function(self)
-   return 'type '..(getmetatable(self).__name or 'Type')
+   return 'type '..(self.__name or 'Type')
 end
 
 Class = setmetatable({ }, Type)
@@ -358,7 +358,7 @@ Range.__each = function(self)
    end
 end
 Range.each = function(self, block)
-   for i in Range:__each() do
+   for i in Range.__each(self) do
       block(i)
    end
 end
