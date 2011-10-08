@@ -6,30 +6,31 @@ class Context {
 }
 
 class Parser {
-    rule template {
-        {@ <const> (<code> <const>)* @} -> function(a) { a.concat() }
-    }
-    rule code {
-        <intrp> | <logic>
-    }
-    rule intrp {
-        "<%=" %s* {~ { (!(%s* "%>") .)+ } -> function(s) {
-            return "__ctx.put(%s);".format(s)
-        } ~} %s* "%>"
-    }
-    rule logic {
-        "<%" %s* { (!"%>" .)+ } "%>" %s*
-    }
-    rule const {
-        {~ { (!<code> .)* } -> function(s) {
-            if s != "" {
-                return "__ctx.put(%q);".format(s)
-            }
-        } ~}
-    }
-
     method parse(source) {
-        return self.template.match(source)
+        return self::Markup.match(source)
+    }
+    grammar Markup {
+        rule __init {
+            {@ <const> (<code> <const>)* @} -> function(a) { a.concat() }
+        }
+        rule code {
+            <intrp> | <logic>
+        }
+        rule intrp {
+            "<%=" %s* {~ { (!(%s* "%>") .)+ } -> function(s) {
+                return "__ctx.put(%s);".format(s)
+            } ~} %s* "%>"
+        }
+        rule logic {
+            "<%" %s* { (!"%>" .)+ } "%>" %s*
+        }
+        rule const {
+            {~ { (!<code> .)* } -> function(s) {
+                if s != "" {
+                    return "__ctx.put(%q);".format(s)
+                }
+            } ~}
+        }
     }
 }
 
@@ -37,7 +38,7 @@ object Compiler {
 
     var CACHE = { }
 
-    has _parser = Parser.new()
+    has _parser = Parser()
 
     method compile(source) {
         if CACHE[source] {
@@ -68,7 +69,7 @@ class Template {
         return self.process(data, vars, path)
     }
     method process(src, vars, name) {
-        var ctx = Context.new()
+        var ctx = Context()
         var env = {
             __ctx = ctx,
             pairs = pairs,
@@ -111,7 +112,7 @@ var s = """
 </body>
 </html>
 """
-var t = Template.new()
+var t = Template()
 print(t.process(s))
 for i=1, 100000 {
     t.process(s)

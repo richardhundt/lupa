@@ -1,16 +1,12 @@
 class File {
-    has path is readonly
-    has mode is readonly
-
+    has _path
+    has _mode
     has _handle
 
-    method open(path : String, mode : String) {
-        var file = self.bless({
-            path = path,
-            mode = mode,
-            _handle = io::open(path, mode)
-        })
-        return file
+    method __init(path, mode) {
+        self._path = path
+        self._mode = mode
+        self._handle = io::open(path, mode)
     }
 
     method read(how) {
@@ -26,7 +22,7 @@ class File {
     }
 
     method __tostring() {
-        'file %q (%s)'.format(self.path, self.mode)
+        'file %q (%s)'.format(self._path, self._mode)
     }
 }
 

@@ -401,7 +401,7 @@ end
 
 Throw = class{ }
 Throw.render = function(self, ctx)
-   local trace = Table{ file = String{ctx.name}, pos = self.pos }
+   local trace = Table{ file = String{ctx.name}, pos = self.pos, line = ctx.line }
    return format('Op.throw(%s,%s)', ctx:get(self[1]), ctx:get(trace))
 end
 
@@ -845,7 +845,7 @@ Class.render_body = function(self, ctx, body, name)
       if decl.tag == 'slot_decl' then
          local expr = decl[1] or Nil
          ctx:fput(
-            'Core.has(self,%q,function() return %s end);',
+            'Core.has(self,%q,function(self) return %s end);',
             ctx:get(decl.name), ctx:get(expr)
          )
       elseif decl.tag == 'meth_decl' then

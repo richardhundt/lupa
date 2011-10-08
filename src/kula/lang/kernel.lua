@@ -209,7 +209,7 @@ has = function(into, name, default)
    into[getter] = function(obj)
       local val = rawget(obj,name)
       if val == nil then
-         val = default()
+         val = default(obj)
          obj[setter](obj, val)
       end
       return val
@@ -285,7 +285,7 @@ Array.unpack = unpack
 Array.insert = table.insert
 Array.remove = table.remove
 Array.concat = table.concat
-Array.sort   = table.sort
+Array.sort = table.sort
 Array.each = function(self, block)
    for i=1, #self do block(self[i]) end
 end
@@ -375,35 +375,31 @@ Number.times = function(self, block)
 end
 debug.setmetatable(0, Number)
 
-String = setmetatable({ }, Type)
+String = setmetatable(string, Type)
 String.__name = 'String'
 String.__index = String
 String.__match = function(a,p)
    return LPeg.P(p):match(a)
 end
-for k,v in pairs(string) do
-   String[k] = v
-end
-local strfind, strgmatch, strsub = string.find, string.gmatch, string.sub
 String.split = function(str, sep, max)
-   if not strfind(str, sep) then
-      return { str }
+   if not str:find(sep) then
+      return Array(str)
    end
    if max == nil or max < 1 then
       max = 0
    end
    local pat = "(.-)"..sep.."()"
    local idx = 0
-   local list = { }
+   local list = Array()
    local last
-   for part, pos in strgmatch(str, pat) do
+   for part, pos in str:gmatch(pat) do
       idx = idx + 1
       list[idx] = part
       last = pos
       if idx == max then break end
    end
    if idx ~= max then
-      list[idx + 1] = strsub(str, last)
+      list[idx + 1] = str:sub(last)
    end
    return list
 end

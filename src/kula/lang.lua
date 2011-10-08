@@ -12,7 +12,7 @@ function runfile(file,...)
 
    --print("AST:", ast)
    local lua = ctx:compile(ast)
-   print("LUA:", lua)
+   --print("LUA:", lua)
 
    --local main = coroutine.wrap(assert(loadstring(lua,'='..file)))
    local main = assert(loadstring(lua,'='..file))
@@ -28,7 +28,7 @@ function make(src, name)
    local ctx = context.Context.new(src, name)
    local ast = grammar.parse(src)
    local lua = ctx:compile(ast)
-   print("LUA:", lua, "NAME:", name)
+   --print("LUA:", lua, "NAME:", name)
    local sid
    if name then
       sid = '='..name
