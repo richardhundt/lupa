@@ -233,7 +233,7 @@ Bind.render = function(self, ctx)
          end
       end
    else
-      if self[1].tag == 'ident' then
+      if bassops[self.oper] then
          local a, b = ctx:get(self[1]), ctx:get(self[2])
          local expr = format(binops[bassops[self.oper]], a, b)
          ctx:fput("%s=%s", a, expr)

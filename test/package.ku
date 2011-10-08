@@ -46,7 +46,7 @@ import Point from My::Shapes
 
 Foo::Point3D()
 My::Shapes::Point()
-My::Shapes::Inner::deep()
+My::Shapes::Inner::deep("Hello World!")
 
 var p = Point3D()
 p.move(1,2,3)
