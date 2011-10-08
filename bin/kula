@@ -3,6 +3,6 @@
 package.path = ';;./src/?.lua;'..package.path
 package.cpath = ';;./lib/?.so;'..package.cpath
 
-local lang = require'kula.lang'
-lang.runfile(...)
+local kula = require'kula.lang'
+kula.run(...)
 

@@ -4,31 +4,78 @@ require"kula.lang.context"
 require"kula.lang.grammar"
 require"kula.lang.kernel"
 
-function runfile(file,...)
-   local sfh = io.open(file)
+local usage = [[
+   kula <source>
+   kula -o <outfile> <source>
+]]
+
+function getopt(...)
+   local opt = { }
+   local idx = 0
+   local len = select('#', ...)
+   while idx < len do
+      idx = idx + 1
+      local arg = select(idx, ...)
+      if arg:sub(1,1) == '-' then
+         local o = arg:sub(2)
+         if o == 'o' then
+            idx = idx + 1
+            opt['o'] = select(idx, ...)
+         elseif o == 'a' then
+            opt['a'] = true
+         elseif o == 'l' then
+            opt['l'] = true
+         elseif o == 'b' then
+            idx = idx + 1
+            opt['b'] = select(idx, ...)
+         else
+            error('unknown option: '..arg, 2)
+         end
+      else
+         opt['file'] = arg
+      end
+   end
+   return opt
+end
+
+function run(...)
+   local opt = getopt(...)
+   local sfh = io.open(opt.file)
    local src = sfh:read"*a"
-   local ctx = context.Context.new(src, file)
+   local ctx = context.Context.new(src, opt.file)
    local ast = grammar.parse(src)
 
-   --print("AST:", ast)
+   if opt.a then
+      print(tostring(ast))
+      os.exit(0)
+   end
+
    local lua = ctx:compile(ast)
-   --print("LUA:", lua)
+
+   if opt.l then
+      print(lua)
+      os.exit(0)
+   end
 
    --local main = coroutine.wrap(assert(loadstring(lua,'='..file)))
-   local main = assert(loadstring(lua,'='..file))
-   --[[
-   local outc = io.open(file:gsub('%.ku$','.lua'), "w+")
-   outc:write(lua)
-   outc:close()
-   --]]
-   main(file,...)
+   local main = assert(loadstring(lua,'='..opt.file))
+   if opt.o then
+      local outc = io.open(opt.o, "w+")
+      outc:write(lua)
+      outc:close()
+   elseif opt.b then
+      local outc = io.open(opt.b, "wb+")
+      outc:write(string.dump(main))
+      outc:close()
+   else
+      main(opt.file, ...)
+   end
 end
 
 function make(src, name)
    local ctx = context.Context.new(src, name)
    local ast = grammar.parse(src)
    local lua = ctx:compile(ast)
-   --print("LUA:", lua, "NAME:", name)
    local sid
    if name then
       sid = '='..name

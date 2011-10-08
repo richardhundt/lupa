@@ -329,6 +329,16 @@ Array.unshift = function(self, v)
    end
    self[1] = v
 end
+Array.splice = function(self, offset, count, ...)
+   local out = Array()
+   for i=offset, offset + count - 1 do
+      out:push(self:remove(offset))
+   end
+   for i=select('#', ...), 1, -1 do
+      self:insert(offset, (select(i, ...)))
+   end
+   return out
+end
 Array.reverse = function(self)
    local out = Array()
    for i=1, #self do
