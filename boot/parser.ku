@@ -1,0 +1,57 @@
+grammar Kula { 
+    var s = / %space* /
+    var prec = {
+        ["+"] = 1,
+        ["-"] = 1,
+        ["/"] = 2,
+        ["*"] = 2,
+        [">>"] = 3,
+        ["<<"] = 3,
+        ["&&"] = 0,
+        ["||"] = 0,
+    }
+    var binops = {
+        ["+"] = "(%s)+(%s)",
+        ["-"] = "(%s)-(%s)",
+        ["/"] = "(%s)/(%s)",
+        ["*"] = "(%s)*(%s)",
+        [">>"] = "Op.rshift(%s,%s)",
+        ["<<"] = "Op.lshift(%s,%s)",
+        ["||"] = "(%s)or(%s)",
+        ["&&"] = "(%s)and(%s)",
+    }
+    function fold_expr(e) {
+        var s = [ e[1] ]
+        for i=2, #e {
+            s[#s + 1] = e[i]
+            while !binops[s[#s]] && s[#s - 1] {
+                var p = s[#s - 1]
+                var n = e[i + 1]
+                if n == nil || prec[p] >= prec[n] {
+                    var b, o, a = s.pop(), s.pop(), s.pop()
+                    s.push(binops[o].format(a, b))
+                }
+                else {
+                    break
+                }
+            }
+        }
+        return s[1]
+    }
+    rule __init {
+        {@ <expr> @} -> function(buf) { buf.concat() }
+    }
+    rule number {
+        %digit+
+    }
+    rule primary {
+        { <number> } | "(" <expr> ")"
+    }
+    rule expr {
+        {@ <primary> {: s { ("/"|"*"|"+"|"-"|">>"|"<<"|"||"|"&&") } s <primary> :}* @} -> fold_expr
+    }
+}
+var e = "1 + 2 / (3 + 4) << 5 - 6"
+var e = "1 * (2 - 3) && 1 || 2 >> 4 / 5"
+print(e)
+print("=>", Kula.match(e))
