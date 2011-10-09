@@ -569,9 +569,11 @@ p:match"rule_any" {
    ast.RuleAny
 }
 p:match"rule_ref" {
-   m.P"<" * (
+   m.Cg(m.C"<", "oper") * (
       m.V"ident" + "{" * s * m.V"expr" * s * "}"
-   ) * ">";
+   ) * ">"
+   + m.V"qname"
+   ;
    ast.RuleRef
 }
 

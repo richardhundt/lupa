@@ -1124,8 +1124,12 @@ end
 
 RuleRef = class{ }
 RuleRef.render = function(self, ctx)
-   if self[1].tag == 'ident' then
-      return format('Core.LPeg.V(%q)', self[1][1])
+   if self.oper == '<' then
+      if self[1].tag == 'ident' then
+         return format('Core.LPeg.V(%q)', self[1][1])
+      else
+         return ctx:get(self[1])
+      end
    else
       return ctx:get(self[1])
    end

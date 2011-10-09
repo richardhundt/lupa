@@ -19,7 +19,7 @@ grammar Macro {
 }
 
 var a = / '42' /
-print("42" =~ / { 'answer' | <{a}> } /)
+print("42" =~ / { 'answer' | a } /)
 
 var s = "add(mul(a,b),apply(f,x))"
 print("MATCH:", s, "=>", Macro.match(s))

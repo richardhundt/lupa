@@ -105,9 +105,11 @@ var s = """
 <body>
   <ul>
 <% var a = ['a','b','c','d','e'] %>
-<% for i, v in a { %>
+<%
+   for i, v in a { %>
     <li> <%= i %> => <%= v %> </li>
-<% } %>
+<%
+   } %>
   </ul>
 </body>
 </html>
