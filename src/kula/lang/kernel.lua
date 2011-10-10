@@ -47,11 +47,14 @@ Type.does = function(self, that)
    return false
 end
 Type.__index = function(self, key)
+   return Type[key]
+   --[[
    local val = Type[key]
    if val == nil then
       error("AccessError: no such member "..key.." in "..tostring(self), 2)
    end
    return val
+   --]]
 end
 Type.__tostring = function(self)
    return 'type '..(rawget(self, '__name') or 'Type')

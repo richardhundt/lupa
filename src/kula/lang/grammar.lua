@@ -461,14 +461,16 @@ p:rule"rule_expr" {
   end)
 }
 p:match"rule_range" {
-   m.Cs(m.P(1) * (m.P"-" / "") * (m.P(1) - "]"));
+   m.Cs(m.P(1) * (m.P"-" / "") * (m.P"\\\\" + "\\]" + (m.P(1) - "]")));
    ast.RuleRange;
 }
 p:rule"rule_item" {
-   m.V"rule_ref" + m.V"rule_range" + m.C(m.P(1))
+   m.C(m.P"\\\\" + "\\]" + "\\-") + m.V"rule_range" + m.C(m.P(1))
 }
 p:match"rule_class" {
-   m.P"[" * m.Cg(m.C"^"^-1 * m.V"rule_item" * (m.V"rule_item" - "]")^0) * "]";
+   m.P"["
+   * m.Cg(m.C"^"^-1 * m.V"rule_item" * (m.V"rule_item" - "]")^0)
+   * "]";
    ast.RuleClass;
 }
 p:rule"rule_expr_follow" {

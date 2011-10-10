@@ -731,9 +731,13 @@ end
 
 Break = class{ }
 Break.render = function(self, ctx)
-   local brk = ctx:genid()
-   ctx:find_scope"loop".stash.set_break = brk
-   return format("do %s=true break end", brk)
+   local scope = ctx:find_scope"loop"
+   local label = scope.stash.set_break
+   if not label then
+      label = ctx:genid()
+      scope.stash.set_break = label
+   end
+   return format("do %s=true break end", label)
 end
 Continue = class{ }
 Continue.render = function(self, ctx)
