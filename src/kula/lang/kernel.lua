@@ -93,7 +93,7 @@ end
 
 Trait = setmetatable({ }, Type)
 Trait.__call = function(self, ...)
-   local copy = trait(nil, self.__name, self.__body, self.__with)
+   local copy = trait(nil, self.__name, self.__with, self.__body)
    local make = self.compose
    local args = { ... }
    copy.compose = function(self, into)

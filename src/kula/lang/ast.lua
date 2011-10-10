@@ -882,7 +882,7 @@ Trait.render = function(self, ctx)
       with = ctx:get(List{ unpack(self.with) })
    end
 
-   return format('Core.trait(self,%q,{%s},function(self,%s) %s end)', name, params, with, body)
+   return format('Core.trait(self,%q,{%s},function(self,%s) %s end)', name, with, params, body)
 end
 
 Object = class{ }
