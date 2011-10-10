@@ -12,14 +12,15 @@ class SyntaxError {
 
 grammar Kula { 
 
+    function syntax_error(m) {
+        return function(s,p) {
+            error("SyntaxError: ${m||''} near "~s.sub(p, 20))
+        }
+    }
+
     function parse_error(msg, pos) {
         return function(pos) {
             throw SyntaxError(msg, pos)
-        }
-    }
-    function node(type) {
-        return function(...args) {
-            return type(...args)
         }
     }
 
@@ -54,6 +55,7 @@ grammar Kula {
         ["&&"]  = 13,
         ["||"]  = 14,
     }
+
     var unrops = {
         ["!"] = "not(%s)",
         ["#"] = "#(%s)",
@@ -61,6 +63,7 @@ grammar Kula {
         ["~"] = "Op.bnot(%s)",
         ["..."] = "Op.spread(%s)",
     }
+
     var binops = {
         ["^^"] = "(%s)^(%s)",
         ["*"] = "(%s)*(%s)",
@@ -74,7 +77,7 @@ grammar Kula {
         [">>>"] = "Op.arshift(%s,%s)",
         ["<="] = "(%s)<=(%s)",
         [">="] = "(%s)>=(%s)",
-        ["<"] = "(%s)>(%s)",
+        ["<"] = "(%s)<(%s)",
         [">"] = "(%s)>(%s)",
         ["in"] = "Op.contains(%s,%s)",
         ["as"] = "Op.as(%s,%s)",
@@ -86,6 +89,7 @@ grammar Kula {
         ["&&"] = "(%s)and(%s)",
         ["||"] = "(%s)or(%s)",
     }
+
     function fold_postfix(e) {
         e.concat()
     }
@@ -145,18 +149,13 @@ grammar Kula {
     var semicol = / (s ";")? /
     var digits  = / (%digit "_"?)+ /
     var keyword = / (
-        "var" | "function" | "class" | "is" | "with" | "like"
-        | "nil" | "true" | "false" | "typeof" | "return" | "in"
-        | "for" | "throw" | "as" | "method" | "has" | "from"
-        | "break" | "continue" | "package" | "import" | "try" | "catch"
+          "var" | "function" | "class" | "with" | "like" | "in"
+        | "nil" | "true" | "false" | "typeof" | "return" | "as"
+        | "for" | "throw" | "method" | "has" | "from" | "break"
+        | "continue" | "package" | "import" | "try" | "catch"
         | "finally" | "if" | "else" | "yield" | "grammar"
     ) idsafe /
 
-    function syntax_error(m) {
-        return function(s,p) {
-            error("SyntaxError: ${m||''} near "~s.sub(p, 20))
-        }
-    }
     rule __init {
         s <unit> s (!. | syntax_error("expected <EOF>"))
     }
