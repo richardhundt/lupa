@@ -222,19 +222,19 @@ grammar = function(into, name, body)
    local gram = { }
    local patt
    function gram:match(...)
-      if not patt then
-         local grmr = { }
-         for k,v in pairs(self) do
-            if LPeg.type(v) == 'pattern' then
-               grmr[k] = v
-            end
-         end
-         grmr[1] = rawget(self,1) or '__init'
-         patt = LPeg.P(grmr)
-      end
       return patt:match(...)
    end
    body(gram)
+   do
+      local grmr = { }
+      for k,v in pairs(gram) do
+         if LPeg.type(v) == 'pattern' then
+            grmr[k] = v
+         end
+      end
+      grmr[1] = rawget(gram, 1) or '__init'
+      patt = LPeg.P(grmr)
+   end
    into[name] = gram
 end
 rule = function(into, name, patt)
@@ -243,14 +243,19 @@ rule = function(into, name, patt)
    end
    into[name] = patt
    into['__get_'..name] = function(self)
-      local grmr = { }
-      for k,v in pairs(self) do
-         if LPeg.type(v) == 'pattern' then
-            grmr[k] = v
+      local rule = rawget(self, name)
+      if rule == nil then
+         local grmr = { }
+         for k,v in pairs(self) do
+            if LPeg.type(v) == 'pattern' then
+               grmr[k] = v
+            end
          end
+         grmr[1] = name
+         rule = LPeg.P(grmr)
+         rawset(self, name, rule)
       end
-      grmr[1] = name
-      return LPeg.P(grmr)
+      return rule
    end
 end
 
