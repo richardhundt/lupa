@@ -40,10 +40,6 @@ p:rule"statement" {
    + m.V"expr_stmt"
    + s * m.P";";
 }
-p:match"statements" {
-   m.V"statement" * (s * m.V"statement")^0;
-   ast.Stmts;
-}
 p:rule"keyword" {
    (
       m.P"var" + "function" + "class" + "is" + "with" + "like"

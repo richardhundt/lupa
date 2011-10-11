@@ -14,7 +14,10 @@ grammar Kula {
 
     function syntax_error(m) {
         return function(s,p) {
-            error("SyntaxError: ${m||''} near "~s.sub(p, 20))
+            print(s,p)
+            var o = p - 10
+            if o < 0 { o = o }
+            error("SyntaxError: ${m||''} near ..."~s.sub(o, p+10))
         }
     }
 
@@ -121,29 +124,48 @@ grammar Kula {
         if #f == 1 {
             return f[1].format(...e)
         }
-        var b = [ ]
+        var b, r = [ ], [ ...e ]
         var t = f.map -> { genid() }
-        var r = [ ...e ]
         b.push("local %s=%s".format(t.concat(","),r.concat(",")))
         for i=1, #f {
             b[#b + 1] = f[i].format(t[i])
         }
-        b.concat(";")
+        return b.concat(";")
+    }
+    function make_binop_bind(a, o, b) {
+        Kula.bind_expr.match(a~"="~a~o~b)
     }
 
-    function make_func(n,p,b) {
+    function make_params(p) {
         var h = ''
-        if p[#p].match("^...(%w+)") {
+        if #p > 0 && p[#p].match("^%.%.%.") {
             var r = p[#p]
             p[#p] = "..."
-            h = "local %s=Core.Tuple(...);".format(r.sub(4))
+            h = "local %s=Tuple(...);".format(r.sub(4))
         }
-        p = p.concat(",")
-        "local function %s(%s) %s%s end".format(n,p,h,b)
+        return p.concat(","), h
+    }
+
+    function make_func(p,b) {
+        var p, h = make_params(p)
+        return "function(%s) %s%s end".format(p,h,b)
+    }
+
+    function make_func_decl(n,p,b) {
+        var p, h = make_params(p)
+        return "local function %s(%s) %s%s end".format(n,p,h,b)
+    }
+
+    function make_meth_decl(n,p,b) {
+        p.unshift('self')
+        var p, h = make_params(p)
+        return "__method(self,%q,function(%s) %s%s end)".format(n,p,h,b)
     }
 
     var nl      = / "\n" /
-    var comment = / ("//" (!nl .)* nl) | ("/*" (!"*/" (nl | .))* "*/") /
+    var comment = / {~ {
+        ("//" (!nl .)* nl) | ("/*" (!"*/" (nl | .))* "*/")
+    } -> '' ~} /
     var idsafe  = / !(%alnum | "_") /
     var s       = / (comment | %s)* /
     var semicol = / (s ";")? /
@@ -157,19 +179,27 @@ grammar Kula {
     ) idsafe /
 
     rule __init {
-        s <unit> s (!. | syntax_error("expected <EOF>"))
+        s <unit> s (!. | <{syntax_error("expected <EOF>")}>)
     }
     rule unit {
         {~ <main_body_stmt> (s <main_body_stmt>)* ~}
+        -> "return __unit(function(self,...) %1 end,...)"
     }
     rule main_body_stmt {
         | <var_decl>
         | <func_decl>
+        | <class_decl>
+        | <import_stmt>
         | <statement>
     }
     rule statement {
-        | <block>
-        | <bind_stmt> semicol
+        | <if_stmt>
+        | <for_stmt>
+        | <for_in_stmt>
+        | <break_stmt>
+        | <continue_stmt>
+        | <block_stmt>
+        | <bind_stmt>
         | <expr_stmt>
     }
     rule expr_stmt {
@@ -178,31 +208,136 @@ grammar Kula {
     rule return_stmt {
         {~ "return" idsafe s <expr> -> "do return %1 end" ~}
     }
+    rule break_stmt {
+        {~ { "break" idsafe } -> "do __break = true; break end" ~}
+    }
+    rule continue_stmt {
+        {~ { "continue" idsafe } -> "do break end" ~}
+    }
+    rule if_stmt {
+        "if" idsafe s <expr> {`" then "`} s <block> (
+            (!(s "else" idsafe) {`" end "`})
+            |
+            (s {"else" idsafe s "if" idsafe} -> " elseif" s
+                <expr> {`" then "`} s <block>
+            )* (s "else" idsafe s <block> {`" end "`})?
+        )
+    }
+
+    function make_import_stmt(n,f,a) {
+        if f == nil {
+            // import from <path>
+            return "__import(self,%q);".format(n)
+        }
+        else if n.isa(Array) {
+            // import <list> from <path> (in <qname>)
+            if a {
+                return "__import(self,%q,{%s},%q);".format(f,n.concat(","),a)
+            } else {
+                return "__import(self,%q,{%s});".format(f,n.concat(","))
+            }
+        }
+        else {
+            // import <name> from <path> (as <alias>)
+            return "__import(self,%q,%s,%s);".format(f,n,a)
+        }
+    }
+
+    rule import_stmt {
+        {~ (
+            "import" idsafe s (<import_in> | <import_as> | <import_from>)
+        ) -> make_import_stmt ~}
+    }
+    rule import_as {
+        <ident> s "from" idsafe s <qname> "as" idsafe s <ident>
+    }
+    rule import_in {
+        {@ <ident> (s "," s <ident>) @} s
+        "from" idsafe s <qname> (s "in" idsafe s <ident>)?
+    }
+    rule import_from {
+        "from" idsafe s <qname>
+    }
+    rule for_stmt {
+        {~ "for" idsafe s <ident> s "=" s <expr> s "," s <expr>
+            (s "," s <expr>)? s <loop_body>
+        ~}
+    }
+    rule for_in_stmt {
+        {~ "for" idsafe s <ident_list> s "in" s
+            (<expr> -> "__each(%1)") s <loop_body>
+        ~}
+    }
+    rule loop_body {
+        ({"{"} -> " do local __break repeat ") <block_body> s
+        ({"}"} -> " until true if __break then break end end ")
+    }
     rule block {
-        {~ ({"{"} -> "do ") (s <block_body>)* s ({"}"} -> " end") ~}
+        {~ ({"{"} -> "") <block_body> s ({"}"} -> "") ~}
+    }
+    rule block_stmt {
+        {~ ({"{"} -> "do ") <block_body> s ({"}"} -> " end") ~}
     }
     rule block_body {
+        (s <block_body_stmt>)*
+    }
+    rule block_body_stmt {
         | <var_decl>
         | <func_decl>
         | <statement>
     }
+    rule slot_decl {
+        {~ ("has" idsafe s <ident> (s "=" s (<expr> | {`""`}))? semicol)
+            -> '__has(self,"%1",function(self) return %2 end)'
+        ~}
+    }
+    rule meth_decl {
+        {~ ("method" idsafe s <qname> s "(" s <param_list> s ")" s "{"
+            {~ (s <func_body_stmt>)* s ~}
+        "}") -> make_meth_decl ~}
+    }
     rule func_decl {
         {~ ("function" idsafe s <qname> s "(" s <param_list> s ")" s "{"
             {~ (s <func_body_stmt>)* s ~}
-        "}") -> make_func ~}
+        "}") -> make_func_decl ~}
     }
     rule func_body_stmt {
-        | <func_decl>
         | <var_decl>
+        | <func_decl>
         | <return_stmt>
         | (<expr> &(s "}") -> "do return %1 end")
+        | <statement>
+    }
+    rule func {
+        {~ ("function" idsafe s "(" s <param_list> s ")" s "{"
+            {~ (s <func_body_stmt>)* s ~}
+        "}") -> make_func ~}
+    }
+    rule class_decl {
+        "class" idsafe s <ident> s
+        (<class_from> | {`""`}) s
+        (<class_with> | {`""`}) s "{"
+            {~ (s <class_body_stmt>)* s ~}
+        "}" -> '__class(self,"%1",{%2},{%3},function(self,super) %4 end)'
+    }
+    rule class_from {
+        "from" idsafe s {~ <expr> (s "," s <expr>)* ~}
+    }
+    rule class_with {
+        "with" idsafe s {~ <expr> (s "," s <expr>)* ~}
+    }
+    rule class_body_stmt {
+        | <var_decl>
+        | <slot_decl>
+        | <func_decl>
+        | <meth_decl>
         | <statement>
     }
     rule rest {
         {~ {"..."} <ident> ~}
     }
     rule param_list {
-        {@ <ident> (s "," s <ident>)* s "," s <rest> | <ident> | <rest> @}
+        {@ <ident> (s "," s <ident>)* (s "," s <rest>)? | <rest> | {`nil`} @}
     }
     rule ident {
         { !keyword ((%alpha | "_") (%alnum | "_")*) }
@@ -237,11 +372,6 @@ grammar Kula {
     rule string_expr {
         {~ ("${" -> '') s ({ <expr> } -> '"..tostring(%1).."') s ("}" -> '') ~}
     }
-    rule range {
-        {~ (
-            "[" s <expr> s ":" s <expr> ( s ":" s <expr> | {`"1"`} ) s "]"
-        ) -> "Core.Range(%1,%2,%3)" ~}
-    }
     rule vnil {
         { "nil" } idsafe
     }
@@ -251,6 +381,35 @@ grammar Kula {
     rule vfalse {
         { "false" } idsafe
     }
+    rule range {
+        {~ (
+            "[" s <expr> s ":" s <expr> ( s ":" s <expr> | {`"1"`} ) s "]"
+        ) -> "Range(%1,%2,%3)" ~}
+    }
+    rule array {
+        {~
+            ({"["} -> "Array(") s
+            (<array_elements> | {`""`}) s
+            ({"]"} -> ")" | <{syntax_error("expected ']'")}>)
+        ~}
+    }
+    rule array_elements {
+        <expr> ( s "," s <expr> )* (s ",")?
+    }
+    rule hash {
+        {~
+            ({"{"} -> "Hash({") s
+            (<hash_pairs> | {`""`}) s
+            ({"}"} -> "})" | <{syntax_error("expected '}'")}>)
+        ~}
+    }
+    rule hash_pairs {
+        <hash_pair> (s "," s <hash_pair>)* (s ",")?
+    }
+    rule hash_pair {
+        (<ident> | "[" s <expr> s ("]" | <{syntax_error("expected ']'")}>)) s
+        "=" s <expr>
+    }
     rule primary {
         | <ident>
         | <range>
@@ -259,6 +418,9 @@ grammar Kula {
         | <vnil>
         | <vtrue>
         | <vfalse>
+        | <array>
+        | <hash>
+        | <func>
         | "(" s <expr> s ")"
     }
     rule call_expr {
@@ -307,7 +469,22 @@ grammar Kula {
         ~}
     }
     rule bind_stmt {
+        <bind_expr> | <bind_binop_expr>
+    }
+    rule bind_expr {
         {~ <bind_list> s "=" s {: <expr> (s "," s <expr>)* :} -> fold_bind ~}
+    }
+
+    rule bind_binop {
+        { "+" | "-" | "*" | "/" | "%" | "||" | "|"| "&&"
+        | "&" | "^^" | "^" | "~" | ">>>" | ">>" | "<<"
+        } "="
+    }
+
+    rule bind_binop_expr {
+        {~ {:
+        &(<bind_term> s <bind_binop>) {(!<bind_binop> .)+} s <bind_binop> s <expr>
+        :} -> make_binop_bind ~}
     }
     rule bind_list {
         {@ <bind_term> (s "," s <bind_term>)* @}
@@ -316,7 +493,7 @@ grammar Kula {
         {~ (<call_expr>|<primary>) <bind_member> | (<ident> -> "%1=%%s") ~}
     }
     rule bind_member {
-        ( <bind_slot> | <bind_name> | <bind_item> ) &(s ("=" | ","))
+        | (<bind_slot>|<bind_name>|<bind_item>) &(s (<bind_binop>|"="|","))
         | (<method_expr>|<member_expr>) <bind_member>
     }
     rule bind_slot {
@@ -334,17 +511,82 @@ var e = '"${1+2}a\"a${3+4}"'
 var e = "1 * -(2 - 3) && !!1 || 2 >> 4 / 5"
 var e = "a.foo['b'](4+2) + b.bar(1, 2 + 3) >> 42 + c()"
 var e = "a.foo()['quux'], a.bar, c = 42, bar()"
-var e = "{ print(42) }"
+var e1 = "{ print(42) }"
 var e = "var a = 42"
 var e = "var a, b = 42, foo.bar"
 var e = """
 function f(a, ...e) {
     var a = a + 1
+    var r = [1:10]
     c = a + 2
     foo::bar = 42
     foo::baz()
+    var a,b,c = ...d
+    ...d
+    var a = [1 * 2 + 3, 2, 3]
+    var h = { a = 42, b = 69+1 }
+}
+"""
+var e = """
+import from foo::bar
+class Point from Object {
+    var a = 1 + 2 * 3
+    var b = 69
+    has x = 0
+    has y = 1 + 2
+    function g() { 1 + 2 }
+    function f(a, ...r) {
+        var a = a + 1
+    }
+    method move(x, y) {
+        self.x = x
+        self.y = y
+    }
+    var f = function() { 2 + 3 }
+}
+var p = Point()
+{
+    p.x = 42
+    p.y = 69
+}
+print(p.x, p.y)
+if 1 >= 0 {
+    print("OK")
+}
+else if a == 42 {
+    /* print("KO") */
+    print("?")
+}
+else {
+    a['b'] += (4 + 2)
+    print("NO")
+}
+for i=1,10 {
+    if i==2 { continue }
+    if i==8 { break }
+    print(i)
+}
+var t = { answer = 42 }
+for k,v in t {
+    print(k,v)
 }
 """
 print(e)
-print("=>", Kula.match(e))
-
+var l = Kula.match(e)
+print(l)
+var f = assert(loadstring(l))
+var e
+e = {
+    __has    = Core::['has'],
+    __method = Core::['method'],
+    __class  = Core::['class'],
+    __each   = Core::Op::each,
+    __unit   = function(main) {
+        setfenv(main, e)
+        return main(e)
+    },
+} as nil
+var g = { __index = Core } as nil
+setmetatable(e, g)
+setfenv(f, e)
+f()

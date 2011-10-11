@@ -219,15 +219,39 @@ has = function(into, name, default)
    end
 end
 grammar = function(into, name, body)
-   local grammar = { }
-   body(grammar)
-   into[name] = LPeg.P(grammar)
+   local gram = { }
+   local patt
+   function gram:match(...)
+      if not patt then
+         local grmr = { }
+         for k,v in pairs(self) do
+            if LPeg.type(v) == 'pattern' then
+               grmr[k] = v
+            end
+         end
+         grmr[1] = rawget(self,1) or '__init'
+         patt = LPeg.P(grmr)
+      end
+      return patt:match(...)
+   end
+   body(gram)
+   into[name] = gram
 end
 rule = function(into, name, patt)
-   if name == '__init' or into[1] == nil then
+   if name == '__init' or rawget(into,1) == nil then
       into[1] = name
    end
    into[name] = patt
+   into['__get_'..name] = function(self)
+      local grmr = { }
+      for k,v in pairs(self) do
+         if LPeg.type(v) == 'pattern' then
+            grmr[k] = v
+         end
+      end
+      grmr[1] = name
+      return LPeg.P(grmr)
+   end
 end
 
 Hash = setmetatable({ }, Type)
@@ -327,8 +351,8 @@ Array.shift = function(self)
    return v
 end
 Array.unshift = function(self, v)
-   for i=1, #self + 1 do
-      self[i+1] = self[i]
+   for i=#self+1,1,-1 do
+      self[i] = self[i-1]
    end
    self[1] = v
 end
