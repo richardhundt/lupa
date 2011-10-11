@@ -242,8 +242,9 @@ rule = function(into, name, patt)
       into[1] = name
    end
    into[name] = patt
+   local rule_name = '__rule_'..name
    into['__get_'..name] = function(self)
-      local rule = rawget(self, name)
+      local rule = rawget(self, rule_name)
       if rule == nil then
          local grmr = { }
          for k,v in pairs(self) do
@@ -253,7 +254,7 @@ rule = function(into, name, patt)
          end
          grmr[1] = name
          rule = LPeg.P(grmr)
-         rawset(self, name, rule)
+         rawset(self, rule_name, rule)
       end
       return rule
    end

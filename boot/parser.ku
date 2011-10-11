@@ -527,7 +527,7 @@ grammar Kula {
         ) -> '__rule(self,"%1",%2)' ~}
     }
     rule rule_body {
-        <rule_alt> | {`'lpeg.P(nil)'`}
+        <rule_alt> | {`'__patt.P(nil)'`}
     }
     rule rule_alt {
         {~ ({"|"} -> '' s)? <rule_seq> (s ({"|"} -> "+") s <rule_seq>)* ~}
@@ -547,10 +547,10 @@ grammar Kula {
         {~
         ({: <rule_prefix> :} {: (s <rule_prod>) :}+) ~> function(a, o, b) {
             if o == "=>" {
-                return 'lpeg.Cmt(%s,%s)'.format(a,b)
+                return '__patt.Cmt(%s,%s)'.format(a,b)
             }
             else if o == "~>" {
-                return 'lpeg.Cf(%s,%s)'.format(a,b)
+                return '__patt.Cf(%s,%s)'.format(a,b)
             }
             return a ~ "/" ~ b
         }
@@ -583,33 +583,33 @@ grammar Kula {
         {~ "(" s <rule_alt> s ")" ~}
     }
     rule rule_term {
-        {~ <string> -> 'lpeg.P(%1)' ~}
+        {~ <string> -> '__patt.P(%1)' ~}
     }
     rule rule_class {
         {~
-            ({"["} -> '') ({"^"} -> 'lpeg.P(1)-')?
+            ({"["} -> '') ({"^"} -> '__patt.P(1)-')?
             ({@ (!"]" <rule_item>)+ @} -> function(a) { "("~a.concat("+")~")" })
             ({"]"} -> '')
         ~}
     }
     rule rule_item {
         {~ <rule_predef> | <rule_range>
-        | {.} -> function(c) { 'lpeg.P(%q)'.format(c) }
+        | {.} -> function(c) { '__patt.P(%q)'.format(c) }
         ~}
     }
     rule rule_predef {
-        {~ "%" <ident> -> 'lpeg.Def("%1")' ~}
+        {~ "%" <ident> -> '__patt.Def("%1")' ~}
     }
     rule rule_range {
-        {~ . ({"-"}->'') !"]" . ~} -> function(r) { 'lpeg.R(%q)'.format(r) }
+        {~ . ({"-"}->'') !"]" . ~} -> function(r) { '__patt.R(%q)'.format(r) }
     }
     rule rule_any {
-        {~ {"."} -> 'lpeg.P(1)' ~}
+        {~ {"."} -> '__patt.P(1)' ~}
     }
     rule rule_ref {
         {~
         ({"<"} -> '') s
-            ( <ident> -> 'lpeg.V("%1")'
+            ( <ident> -> '__patt.V("%1")'
             | {"{"} -> "(" s <expr> s ({"}"} -> ")")
             ) s
         ({">"} -> '')
@@ -682,6 +682,7 @@ for k,v in t {
     print(k,v)
 }
 """
+///*
 var e = """
 grammar G {
     rule __init {
@@ -695,6 +696,7 @@ grammar G {
     rule void { }
 }
 """
+//*/
 print(e)
 var l = Kula.match(e)
 print(l)
