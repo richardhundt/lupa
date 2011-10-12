@@ -73,14 +73,14 @@ p:match"number" {
    ast.Number;
 }
 p:match"string" {
-   m.Cg(m.C'"""', "oper") * (m.V"string_expr" + m.C(
-      (m.P'\\\\' + m.P'\\"' + m.P'\\%' + (1 - (m.P'"""' + m.V"string_expr")))^1
+   m.Cg(m.C'"""', "oper") * (m.V"string_expr" + m.Cs(
+      (m.P'\\\\' + m.P'\\"' + m.C'\\$'/'$' + (1 - (m.P'"""' + m.V"string_expr")))^1
    ))^0 * p:expect'"""'
-   + m.Cg(m.C'"', "oper") * (m.V"string_expr" + m.C(
-      (m.P'\\\\' + m.P'\\"' + m.P'\\%' + (1 - (m.P'"' + m.V"string_expr")))^1
+   + m.Cg(m.C'"', "oper") * (m.V"string_expr" + m.Cs(
+      (m.P'\\\\' + m.P'\\"' + m.C'\\$'/'$' + (1 - (m.P'"' + m.V"string_expr")))^1
    ))^0 * p:expect'"'
-   + m.Cg(m.C"'", "oper") * m.C((m.P"\\\\" + m.P"\\'" + (1 -m.P"'"))^0) * p:expect"'"
-   + m.Cg(m.C"'''", "oper") * m.C((m.P"\\\\" + m.P"\\'" + (1 -m.P"'''"))^0) * p:expect"'''";
+   + m.Cg(m.C"'''", "oper") * m.C((m.P"\\\\" + m.P"\\'" + (1 -m.P"'''"))^0) * p:expect"'''"
+   + m.Cg(m.C"'", "oper") * m.C((m.P"\\\\" + m.P"\\'" + (1 -m.P"'"))^0) * p:expect"'";
    ast.String;
 }
 p:rule"string_expr" {

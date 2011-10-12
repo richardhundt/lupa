@@ -1,15 +1,3 @@
-class SyntaxError {
-    has msg
-    has pos
-    method __init(msg, pos) {
-        self.msg = msg
-        self.pos = pos
-    }
-    method __tostring() {
-        return "${self.__name}: ${self.msg} at ${self.pos}"
-    }
-}
-
 grammar Kula { 
 
     function error_line(src, pos) {
@@ -53,12 +41,12 @@ grammar Kula {
     function quote(c) { "%q".format(c) }
 
     var nl      = / "\n" /
-    var comment = / {~ {
-        ("//" (!nl .)* nl) | ("/*" (!"*/" (nl | .))* "*/")
-    } -> '' ~} /
+    var comment = / {~
+        ((!nl %s)* "//" (!nl .)* nl) -> "\n" | ("/*" (!"*/" (nl | .))* "*/") -> ''
+    ~} /
     var idsafe  = / !(%alnum | "_") /
     var s       = / (comment | %s)* /
-    var semicol = / {~ (s {";"} -> '')? ~} /
+    var semicol = / (";" -> '')? /
     var digits  = / (%digit "_"?)+ /
     var keyword = / (
           "var" | "function" | "class" | "with" | "like" | "in"
@@ -98,8 +86,8 @@ grammar Kula {
         ["!"] = "not(%s)",
         ["#"] = "#(%s)",
         ["-"] = "-(%s)",
-        ["~"] = "Op.bnot(%s)",
-        ["..."] = "Op.spread(%s)",
+        ["~"] = "__op_bnot(%s)",
+        ["..."] = "__op_spread(%s)",
     }
 
     var binops = {
@@ -110,27 +98,24 @@ grammar Kula {
         ["+"] = "(%s)+(%s)",
         ["-"] = "(%s)-(%s)",
         ["~"] = "(%s)..(%s)",
-        [">>"] = "Op.rshift(%s,%s)",
-        ["<<"] = "Op.lshift(%s,%s)",
-        [">>>"] = "Op.arshift(%s,%s)",
+        [">>"] = "__op_rshift(%s,%s)",
+        ["<<"] = "__op_lshift(%s,%s)",
+        [">>>"] = "__op_arshift(%s,%s)",
         ["<="] = "(%s)<=(%s)",
         [">="] = "(%s)>=(%s)",
         ["<"] = "(%s)<(%s)",
         [">"] = "(%s)>(%s)",
-        ["in"] = "Op.contains(%s,%s)",
-        ["as"] = "Op.as(%s,%s)",
+        ["in"] = "__op_in(%s,%s)",
+        ["as"] = "__op_as(%s,%s)",
         ["=="] = "(%s)==(%s)",
         ["!="] = "(%s)~=(%s)",
-        ["&"] = "Op.band(%s,%s)",
-        ["^"] = "Op.bxor(%s,%s)",
-        ["|"] = "Op.bor(%s,%s)",
+        ["&"] = "__op_band(%s,%s)",
+        ["^"] = "__op_bxor(%s,%s)",
+        ["|"] = "__op_bor(%s,%s)",
         ["&&"] = "(%s)and(%s)",
         ["||"] = "(%s)or(%s)",
     }
 
-    function fold_suffix(e) {
-        e.concat()
-    }
     function fold_prefix(o,e) {
         return unrops[o].format(e)
     }
@@ -144,7 +129,7 @@ grammar Kula {
                 if n == nil || prec[p] <= prec[n] {
                     var b, o, a = s.pop(), s.pop(), s.pop()
                     if !binops[o] {
-                        throw "bad expression: ${e}, stack: ${s}" 
+                        error("bad expression: ${e}, stack: ${s}")
                     }
                     s.push(binops[o].format(a, b))
                 }
@@ -155,12 +140,17 @@ grammar Kula {
         }
         return s[1]
     }
+    /*
+    function fold_infix(a,o,b) {
+        return binops[o].format(a,b)
+    }
+    */
     function fold_bind(f,...e) {
         if #f == 1 {
             return f[1].format(...e)
         }
         var b, r = [ ], [ ...e ]
-        var t = f.map -> { genid() }
+        var t = f.map(genid)
         b.push("local %s=%s".format(t.concat(","),r.concat(",")))
         for i=1, #f {
             b[#b + 1] = f[i].format(t[i])
@@ -181,20 +171,31 @@ grammar Kula {
         return p.concat(","), h
     }
 
-    function make_func(p,b) {
-        var p, h = make_params(p)
+    function make_func(p,h,b) {
         return "function(%s) %s%s end".format(p,h,b)
     }
 
-    function make_func_decl(n,p,b) {
-        var p, h = make_params(p)
+    function make_func_decl(n,p,h,b) {
         return "local function %s(%s) %s%s end".format(n,p,h,b)
     }
 
-    function make_meth_decl(n,p,b) {
-        p.unshift('self')
-        var p, h = make_params(p)
-        return "__method(self,%q,function(%s) %s%s end)".format(n,p,h,b)
+    function make_meth_decl(n,p,h,b) {
+        return "__method(self,%q,function(self,%s) %s%s end)".format(n,p,h,b)
+    }
+
+    function make_trait_decl(n,p,h,w,b) {
+        return
+            '__trait(self,%q,{%s},function(self,%s) %s%s end)'
+            .format(n,w,p,h,b)
+    }
+
+    function make_try_stmt(try_body, catch_args, catch_body) {
+        return (
+            'do local __return;'~
+            '__try(function() %s end,function(%s) %s end);' ~
+            'if __return then return __spread(__return) end'~
+            ' end'
+        ).format(try_body, catch_args || '', catch_body || '')
     }
 
     function make_import_stmt(n,f,a) {
@@ -217,24 +218,29 @@ grammar Kula {
     }
 
     rule __init {
-        s <unit> s (!. | <{syntax_error("expected <EOF>")}>)
+        {~ <unit> ~} (!. | <{syntax_error("expected <EOF>")}>)
     }
     rule unit {
-        {~ <main_body_stmt> (s <main_body_stmt>)* ~}
-        -> "return __unit(function(self,...) %1 end,...)"
+        {:set_return: {`false`} :} (
+            {~ s <main_body_stmt> (s <main_body_stmt>)* s ~}
+            -> "return __unit(function(self,...) %1 end,...)"
+        )
     }
     rule main_body_stmt {
         | <var_decl>
         | <func_decl>
         | <class_decl>
+        | <trait_decl>
         | <grammar_decl>
         | <import_stmt>
         | <statement>
     }
     rule statement {
         | <if_stmt>
+        | <try_stmt>
         | <for_stmt>
         | <for_in_stmt>
+        | <while_stmt>
         | <break_stmt>
         | <continue_stmt>
         | <block_stmt>
@@ -242,10 +248,15 @@ grammar Kula {
         | <expr_stmt>
     }
     rule expr_stmt {
-        {~ <expr> semicol -> '%1;' ~}
+        {~ <expr> -> '%1;' semicol ~}
     }
     rule return_stmt {
-        {~ "return" idsafe s <expr> -> "do return %1 end" ~}
+        {~ ("return" idsafe =set_return s <expr_list>) -> function(l,e) {
+            if l {
+                return "do __return = {%s}; return end".format(e)
+            }
+            return "do return %s end".format(e)
+        } ~}
     }
     rule break_stmt {
         {~ { "break" idsafe } -> "do __break = true; break end" ~}
@@ -254,13 +265,19 @@ grammar Kula {
         {~ { "continue" idsafe } -> "do break end" ~}
     }
     rule if_stmt {
+        {~ 
         "if" idsafe s <expr> {`" then "`} s <block> (
-            (!(s "else" idsafe) {`" end "`})
-            |
-            (s {"else" idsafe s "if" idsafe} -> " elseif" s
+            (s ({"else" idsafe s "if" idsafe} -> " elseif") s
                 <expr> {`" then "`} s <block>
-            )* (s "else" idsafe s <block> {`" end "`})?
+            )*
+            (s "else" idsafe s <block> {`" end "`} | {`" end "`})
         )
+        ~}
+    }
+    rule try_stmt {
+        "try" idsafe s "{" {~ <lambda_body> s ~} "}"
+        (s "catch" idsafe s "(" s <ident> s ")" s "{" {~ <lambda_body> s ~} "}")?
+        -> make_try_stmt
     }
     rule import_stmt {
         {~ (
@@ -286,18 +303,21 @@ grammar Kula {
     }
     rule for_in_stmt {
         {~ "for" idsafe s <ident_list> s "in" s
-            (<expr> -> "__each(%1)") s <loop_body>
+            (<expr> -> "__op_each(%1)") s <loop_body>
         ~}
     }
+    rule while_stmt {
+        {~ "while" idsafe s <expr> s <loop_body> ~}
+    }
     rule loop_body {
-        ({"{"} -> " do local __break repeat ") <block_body> s
-        ({"}"} -> " until true if __break then break end end ")
+        ("{" -> " do local __break repeat ") <block_body> s
+        ("}" -> " until true if __break then break end end ")
     }
     rule block {
-        {~ ({"{"} -> "") <block_body> s ({"}"} -> "") ~}
+        {~ ("{" -> "") <block_body> s ("}" -> "") ~}
     }
     rule block_stmt {
-        {~ ({"{"} -> "do ") <block_body> s ({"}"} -> " end") ~}
+        {~ ("{" -> "do ") <block_body> s ("}" -> " end") ~}
     }
     rule block_body {
         (s <block_body_stmt>)*
@@ -305,7 +325,13 @@ grammar Kula {
     rule block_body_stmt {
         | <var_decl>
         | <func_decl>
+        | <return_stmt>
         | <statement>
+    }
+    rule lambda_body {
+        {:old_set_return: =set_return :} {:set_return: {`true`} :}
+        <block_body> s
+        {:set_return: =old_set_return :}
     }
     rule slot_decl {
         {~ ("has" idsafe s <ident> (s "=" s (<expr> | {`""`}))? semicol)
@@ -337,9 +363,16 @@ grammar Kula {
     rule class_decl {
         "class" idsafe s <ident> s
         (<class_from> | {`""`}) s
-        (<class_with> | {`""`}) s "{"
-            {~ (s <class_body_stmt>)* s ~}
-        "}" -> '__class(self,"%1",{%2},{%3},function(self,super) %4 end)'
+        (<class_with> | {`""`}) s
+        "{" {~ (s <class_body_stmt>)* s ~} "}"
+        -> '__class(self,"%1",{%2},{%3},function(self,super) %4 end)'
+    }
+    rule trait_decl {
+        "trait" idsafe s <ident> s
+        ("(" s <param_list> s ")" | {`'...'`} {`''`}) s
+        (<class_with> | {`""`}) s
+        "{" {~ (s <class_body_stmt>)* s ~} "}"
+        -> make_trait_decl
     }
     rule class_from {
         "from" idsafe s {~ <expr> (s "," s <expr>)* ~}
@@ -359,6 +392,7 @@ grammar Kula {
     }
     rule param_list {
         {@ <ident> (s "," s <ident>)* (s "," s <rest>)? | <rest> | {`nil`} @}
+        -> make_params
     }
     rule ident {
         { !keyword ((%alpha | "_") (%alnum | "_")*) }
@@ -382,16 +416,29 @@ grammar Kula {
         {~ (<qstring> | <astring>) -> '(%1)' ~}
     }
     rule qstring {
-        {~ '"' (
-            <string_expr>
-            | { ('\\' | '\"' | '\%' | !('"' | <string_expr>).)+ }
-        )* '"' ~}
+        {~
+            (('"""' -> '"') (
+                <string_expr>
+                | {~ ('\\' | '\"' | '\$'->'$' | !('"""' | <string_expr>).)+ ~}
+            )* ('"""' -> '"'))
+            |
+            ('"' (
+                <string_expr>
+                | {~ ('\\' | '\"' | '\$'->'$' | !('"' | <string_expr>).)+ ~}
+            )* '"')
+        ~}
     }
     rule astring {
-        { "'"  ("\\\\" | "\\'" | (!"'" .))* "'" }
+        {~
+            ("'''" -> "")
+            ('\\' | '\'' | (!"'''" .))*
+            ("'''" -> "")
+            |
+            ("'" -> "") ('\\' | '\'' | (!"'" .))* ("'" -> "")
+        ~} -> quote
     }
     rule string_expr {
-        {~ ("${" -> '') s ({ <expr> } -> '"..tostring(%1).."') s ("}" -> '') ~}
+        {~ ("${" -> '') s (<expr> -> '"..tostring(%1).."') s ("}" -> '') ~}
     }
     rule vnil {
         {~ { "nil" } idsafe -> '(nil)' ~}
@@ -442,6 +489,7 @@ grammar Kula {
         | <array>
         | <hash>
         | <func>
+        | <pattern>
         | "(" s <expr> s ")"
     }
     rule call_expr {
@@ -451,10 +499,10 @@ grammar Kula {
         "(" s ( <expr_list> | {`""`} ) s ")"
     }
     rule member_expr {
-        {~ ({"."} -> ":") (<ident> -> "__get_%1()") | ({"::"} -> ".") <ident> ~}
+        {~ s ({"."} -> ":") (s <ident> -> "__get_%1()") | ({"::"} -> ".") s <ident> ~}
     }
     rule method_expr {
-        {~ ({"."} -> ":" | {"::"} -> ".") (<call_expr> -> "%1(%2)") ~}
+        {~ s ({"."} -> ":" | {"::"} -> ".") (s <call_expr> -> "%1(%2)") ~}
     }
     rule term {
         {~ <primary> (
@@ -469,39 +517,69 @@ grammar Kula {
         {~ <expr> (s "," s <expr>)* ~}
     }
     rule expr {
-        <infix_expr>
+        {~ <infix_expr> | <prefix_expr> ~}
     }
-    rule prefix_expr {
-        {: { "..." | "!" | "#" | "-" | "~" } s <prefix_expr> :} -> fold_prefix
-        | <term>
+
+    var binop_patt = /(
+        "+" | "-" | "~" | "^^" | "*" | "/" | "%" | "^" | ">>>" | ">>" | "<<"
+        | "||" | "&&" | "|" | "&" | "==" | "!=" | ">="| "<=" | "<" | ">"
+        | "in" idsafe | "like" idsafe
+    )/
+
+    rule infix_expr {
+        {@ {~ <prefix_expr> s ~} (
+            { binop_patt }
+            {~ s <prefix_expr> (&(s binop_patt) s)? ~}
+        )+ @} -> fold_infix
+    }
+
+    /*
+    rule expr {
+        {~ <infix_expr> | <prefix_expr> ~}
     }
     rule infix_expr {
-        {@ <prefix_expr> {: s {
-            "+" | "-" | "~" | "^^" | "*" | "/" | "%" | "^" | ">>>" | ">>" | "<<"
-            | "||" | "&&" | "|" | "&" | "==" | "!=" | ">="| "<=" | "<" | ">"
-            | "in" idsafe | "like" idsafe
-        } s <prefix_expr> :}* @} -> fold_infix
+        {~ <bool_or_expr> ~}
     }
+    function make_infix_expr(oper, term) {
+        / (({~ term s ~} {: {oper} {~ s term ~} :}*) ~> fold_infix) /
+    }
+    self::bool_or_expr  = make_infix_expr(/"||"/, /<bool_and_expr>/)
+    self::bool_and_expr = make_infix_expr(/"&&"/, /<bit_or_expr>/)
+    self::bit_or_expr   = make_infix_expr(/"|"/,  /<bit_xor_expr>/)
+    self::bit_xor_expr  = make_infix_expr(/"^"/,  /<bit_and_expr>/)
+    self::bit_and_expr  = make_infix_expr(/"&"/,  /<equals_expr>/)
+    self::equals_expr   = make_infix_expr(/"=="|"!="/, /<cmp_expr>/)
+    self::cmp_expr      = make_infix_expr(/"<="|">="|"<"|">"/, /<shift_expr>/)
+    self::shift_expr    = make_infix_expr(/">>>"|">>"|"<<"/, /<add_expr>/)
+    self::add_expr      = make_infix_expr(/"+"|"-"|"~"/, /<mul_expr>/)
+    self::mul_expr      = make_infix_expr(/"*"|"/"|"%"/, /<pow_expr>/)
+    self::pow_expr      = make_infix_expr(/"^^"/, /<prefix_expr>/)
+    */
+
+    rule prefix_expr {
+        {: { "..." | "!" | "#" | "-" | "~" } s <prefix_expr> :} -> fold_prefix
+        | {~ s <term> ~}
+    }
+
     rule var_decl {
         {~
             {"var" idsafe} -> "local" s
             <ident_list> (s "=" s <expr> (s "," s <expr>)*)?
-            semicol
-        ~} -> '%1;'
+        ~} -> '%1;' semicol
     }
+
+    // binding expression rules
     rule bind_stmt {
-        {~ (<bind_expr> | <bind_binop_expr>) semicol -> '%1;' ~}
+        {~ (<bind_expr> | <bind_binop_expr>) -> '%1;' semicol ~}
     }
     rule bind_expr {
         {~ <bind_list> s "=" s {: <expr> (s "," s <expr>)* :} -> fold_bind ~}
-    }
-
+     }
     rule bind_binop {
         { "+" | "-" | "*" | "/" | "%" | "||" | "|"| "&&"
         | "&" | "^^" | "^" | "~" | ">>>" | ">>" | "<<"
         } "="
     }
-
     rule bind_binop_expr {
         {~ {:
         &(<bind_term> s <bind_binop>) {(!<bind_binop> .)+} s <bind_binop> s <expr>
@@ -518,19 +596,24 @@ grammar Kula {
         | (<method_expr>|<member_expr>) <bind_member>
     }
     rule bind_slot {
-        {~ ({"."} -> ":") (<ident> -> "__set_%1(%%s)") ~}
+        {~ ({"."} -> ":") (s <ident> -> "__set_%1(%%s)") ~}
     }
     rule bind_item {
-        {~ ({"["} -> ":") (<expr> -> "__setitem(%1,%%s)") ({"]"} -> "") ~}
+        {~ ({"["} -> ":") (s <expr> -> "__setitem(%1,%%s)") ({"]"} -> "") ~}
     }
     rule bind_name {
-        {~ ({"::"} -> ".") (<ident> -> "%1=%%s") ~}
+        {~ ({"::"} -> ".") (s <ident> -> "%1=%%s") ~}
+    }
+
+    // PEG grammar and pattern rules
+    rule pattern {
+        "/" s <rule_alt> s "/" -> '__patt.P(%1)'
     }
     rule grammar_decl {
         {~ (
             "grammar" idsafe s <ident> s
             "{" {~ (s <grammar_body_stmt>)* ~} s "}"
-        ) -> '__grammar(self,"%1",function(self) %2 end' ~}
+        ) -> '__grammar(self,"%1",function(self) %2 end)' ~}
     }
     rule grammar_body_stmt {
         | <rule_decl>
@@ -540,10 +623,8 @@ grammar Kula {
         | <statement>
     }
     rule rule_decl {
-        {~ (
-            "rule" idsafe s <ident> s
-            "{" s <rule_body> s "}"
-        ) -> '__rule(self,"%1",%2)' ~}
+        "rule" idsafe s <ident> s "{" {~ s <rule_body> s ~} "}"
+        -> '__rule(self,"%1",%2)'
     }
     rule rule_body {
         <rule_alt> | {`'__patt.P(nil)'`}
@@ -552,48 +633,44 @@ grammar Kula {
         {~ ({"|"} -> '' s)? <rule_seq> (s ({"|"} -> "+") s <rule_seq>)* ~}
     }
     rule rule_seq {
-        {~ {@ (s <rule_suffix>)+ @} -> function(a) { a.concat('*') } ~}
+        {@ {~ (s <rule_suffix>)+ ~} @} -> function(a) { a.concat('*') }
     }
     rule rule_rep {
         {~ {"+"}->"^1"|{"*"}->"^0"|{"?"}->"^-1"|{"^"s("+"|"-")s[0-9]+} ~}
     }
     rule rule_prefix {
-        {~ ({"&"} -> "#") | ({"!"} -> "-") s <rule_prefix> -> '%1%2'
+        {~ (({"&"} -> "#") | ({"!"} -> "-")) s <rule_prefix> -> '%1%2'
         | <rule_primary>
         ~}
     }
     rule rule_suffix {
         {~
-        ({: <rule_prefix> :} {: (s <rule_prod>) :}+) ~> function(a, o, b) {
+        (<rule_prefix> {: ({s} <rule_prod>) :}*) ~> function(a,s1,o,s2,b) {
             if o == "=>" {
-                return '__patt.Cmt(%s,%s)'.format(a,b)
+                return '__patt.Cmt(%s%s,%s%s)'.format(a,s1,s2,b)
             }
             else if o == "~>" {
-                return '__patt.Cf(%s,%s)'.format(a,b)
+                return '__patt.Cf(%s%s,%s%s)'.format(a,s1,s2,b)
             }
-            return a ~ "/" ~ b
+            return "(%s)%s/%s(%s)".format(a,s1,s2,b)
         }
-        | <rule_prefix>
         ~}
     }
     rule rule_prod {
-        { "->" | "~>" | "=>" } s <term>
+        { "->" | "~>" | "=>" } {s} <term>
     }
     rule rule_primary {
         ( <rule_group>
         | <rule_term>
         | <rule_class>
         | <rule_predef>
-        /*
         | <rule_group_capt>
         | <rule_back_capt>
-        | <rule_pos_capt>
         | <rule_sub_capt>
         | <rule_const_capt>
         | <rule_hash_capt>
         | <rule_array_capt>
         | <rule_simple_capt>
-        */
         | <rule_any>
         | <rule_ref>
         ) (s <rule_rep>)*
@@ -606,9 +683,9 @@ grammar Kula {
     }
     rule rule_class {
         {~
-            ({"["} -> '') ({"^"} -> '__patt.P(1)-')?
+            ("[" -> '') ("^" -> '__patt.P(1)-')?
             ({@ (!"]" <rule_item>)+ @} -> function(a) { "("~a.concat("+")~")" })
-            ({"]"} -> '')
+            ("]" -> '')
         ~}
     }
     rule rule_item {
@@ -620,134 +697,43 @@ grammar Kula {
         {~ "%" <ident> -> '__patt.Def("%1")' ~}
     }
     rule rule_range {
-        {~ . ({"-"}->'') !"]" . ~} -> function(r) { '__patt.R(%q)'.format(r) }
+        {~ . ("-"->'') !"]" . ~} -> function(r) { '__patt.R(%q)'.format(r) }
     }
     rule rule_any {
-        {~ {"."} -> '__patt.P(1)' ~}
+        {~ "." -> '__patt.P(1)' ~}
     }
     rule rule_ref {
         {~
-        ({"<"} -> '') s
+        ("<" -> '') s
             ( <ident> -> '__patt.V("%1")'
-            | {"{"} -> "(" s <expr> s ({"}"} -> ")")
+            | ("{" -> "(") s <expr> s ("}" -> ")")
             ) s
-        ({">"} -> '')
+        (">" -> '')
         | <qname>
         ~}
     }
-}
-var e = "1 + 2 / (3 + 4) << 5 - 6"
-var e = '"${1+2}a\"a${3+4}"'
-var e = "1 * -(2 - 3) && !!1 || 2 >> 4 / 5"
-var e = "a.foo['b'](4+2) + b.bar(1, 2 + 3) >> 42 + c()"
-var e = "a.foo()['quux'], a.bar, c = 42, bar()"
-var e1 = "{ print(42) }"
-var e = "var a = 42"
-var e = "var a, b = 42, foo.bar"
-var e = """
-function f(a, ...e) {
-    var a = a + 1
-    var r = [1:10]
-    c = a + 2
-    foo::bar = 42
-    foo::baz()
-    var a,b,c = ...d
-    ...d
-    var a = [1 * 2 + 3, 2, 3]
-    var h = { a = 42, b = 69+1 }
-}
-"""
-var e = """
-import insert from table
-class Point from Object {
-    var a = 1 + 2 * 3
-    var b = 69
-    has x = 0
-    has y = 1 + 2
-    function g() { 1 + 2 }
-    function f(a, ...r) {
-        var a = a + 1;
+    rule rule_group_capt {
+        {~ "{:" ((<ident> -> quote ":") | {`'nil'`}) s <rule_alt> s ":}"
+        -> '__patt.Cg(%2,%1)'
+        ~}
     }
-    method move(x, y) {
-        self.x = x
-        self.y = y
+    rule rule_back_capt {
+        "=" (<ident> -> quote) -> '__patt.Cb(%1)'
     }
-    var f = function() { 2 + 3 }
-}
-var p = Point()
-{
-    p.x = 42
-    p.y = 69
-}
-print(p.x, p.y)
-if 1 >= 0 {
-    print("OK")
-}
-else if a == 42 {
-    /* print("KO") */
-    print("?")
-}
-else {
-    a['b'] += (4 + 2)
-    print("NO")
-}
-for i=1,10 {
-    if i==2 { continue }
-    if i==8 { break }
-    print(i)
-}
-var t = { answer = 42 }
-for k,v in t {
-    print(k,v)
-}
-"""
-/*
-var e = """
-grammar G {
-    rule __init {
-        | (
-            |. "a"
-            | !. ~> "answer" => { }
-        )
-        | <cheese> -> []
-        | [^a-zA-Z_"]+
+    rule rule_sub_capt {
+        "{~" {~ s <rule_alt> s ~} "~}" -> '__patt.Cs(%1)'
     }
-    rule void { }
+    rule rule_const_capt {
+        "{`" {~ s <expr> s ~} "`}" -> '__patt.Cc(%1)'
+    }
+    rule rule_hash_capt {
+        "{%" {~ s <rule_alt> s ~} "%}" -> '__patt.Ch(%1)'
+    }
+    rule rule_array_capt {
+        "{@" {~ s <rule_alt> s ~} "@}" -> '__patt.Ca(%1)'
+    }
+    rule rule_simple_capt {
+        "{" {~ s <rule_alt> s ~} "}" -> '__patt.C(%1)'
+    }
 }
-"""
-//*/
-print(e)
-var l = Kula.match(e)
-print(l)
-///*
-var f = assert(loadstring(l))
-var env
-env = {
-    __has    = Core::['has'],
-    __method = Core::['method'],
-    __class  = Core::['class'],
-    __each   = Core::Op::each,
-    __unit   = function(main) {
-        setfenv(main, env)
-        return main(env)
-    },
-    __import = function(into, modname, names) {
-        var mod = require(modname)
-        if names.isa(Array) {
-            for i=1, #names {
-                rawset(into, names[i], mod::[names[i]])
-            }
-        }
-        else if names {
 
-        }
-        else {
-            return mod
-        }
-    },
-} as nil
-var g = { __index = Core } as nil
-setmetatable(env, g)
-setfenv(f, env)
-f()
-//*/
