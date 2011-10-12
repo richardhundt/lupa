@@ -12,12 +12,29 @@ class SyntaxError {
 
 grammar Kula { 
 
+    function error_line(src, pos) {
+        var line = 1
+        var index, limit = 1, pos
+        while index <= limit {
+            var s, e = src.find("\n", index, true)
+            if s == nil || e > limit { break }
+            index = e + 1
+            line  = line + 1
+        }
+        return line
+    }
+    function error_near(src, pos) {
+        if (#src < pos + 20) {
+            return src.sub(pos)
+        }
+        else {
+            return src.sub(pos, pos + 20)~"..."
+        }
+    }
     function syntax_error(m) {
-        return function(s,p) {
-            print(s,p)
-            var o = p - 10
-            if o < 0 { o = o }
-            error("SyntaxError: ${m||''} near ..."~s.sub(o, p+10))
+        return function(src, pos) {
+            var line, near = error_line(src, pos), error_near(src, pos)
+            error("SyntaxError: ${m||''} on line ${line} near '${near}'")
         }
     }
 
@@ -41,7 +58,7 @@ grammar Kula {
     } -> '' ~} /
     var idsafe  = / !(%alnum | "_") /
     var s       = / (comment | %s)* /
-    var semicol = / (s ";")? /
+    var semicol = / {~ (s {";"} -> '')? ~} /
     var digits  = / (%digit "_"?)+ /
     var keyword = / (
           "var" | "function" | "class" | "with" | "like" | "in"
@@ -183,19 +200,19 @@ grammar Kula {
     function make_import_stmt(n,f,a) {
         if f == nil {
             // import from <path>
-            return "__import(self,%q);".format(n)
+            return "__import(self,%s);".format(n)
         }
         else if n.isa(Array) {
             // import <list> from <path> (in <qname>)
             if a {
-                return "__import(self,%q,{%s},%q);".format(f,n.concat(","),a)
+                return "__import(self,%s,Array(%s),%s);".format(f,n.concat(","),a)
             } else {
-                return "__import(self,%q,{%s});".format(f,n.concat(","))
+                return "__import(self,%s,Array(%s));".format(f,n.concat(","))
             }
         }
         else {
             // import <name> from <path> (as <alias>)
-            return "__import(self,%q,%s,%s);".format(f,n,a)
+            return "__import(self,%s,%s,%s);".format(f,n,a)
         }
     }
 
@@ -225,7 +242,7 @@ grammar Kula {
         | <expr_stmt>
     }
     rule expr_stmt {
-        <expr> semicol
+        {~ <expr> semicol -> '%1;' ~}
     }
     rule return_stmt {
         {~ "return" idsafe s <expr> -> "do return %1 end" ~}
@@ -251,14 +268,16 @@ grammar Kula {
         ) -> make_import_stmt ~}
     }
     rule import_as {
-        <ident> s "from" idsafe s <qname> "as" idsafe s <ident>
+        (<ident> -> quote) s "from" idsafe s (<qname> -> quote)
+        "as" idsafe s (<ident> -> quote)
     }
     rule import_in {
-        {@ <ident> (s "," s <ident>) @} s
-        "from" idsafe s <qname> (s "in" idsafe s <ident>)?
+        {@ (<ident> -> quote) (s "," s (<ident> -> quote))* @} s
+        "from" idsafe s (<qname> -> quote)
+        (s "in" idsafe s (<ident> -> quote))?
     }
     rule import_from {
-        "from" idsafe s <qname>
+        "from" idsafe s (<qname> -> quote)
     }
     rule for_stmt {
         {~ "for" idsafe s <ident> s "=" s <expr> s "," s <expr>
@@ -468,10 +487,10 @@ grammar Kula {
             {"var" idsafe} -> "local" s
             <ident_list> (s "=" s <expr> (s "," s <expr>)*)?
             semicol
-        ~}
+        ~} -> '%1;'
     }
     rule bind_stmt {
-        <bind_expr> | <bind_binop_expr>
+        {~ (<bind_expr> | <bind_binop_expr>) semicol -> '%1;' ~}
     }
     rule bind_expr {
         {~ <bind_list> s "=" s {: <expr> (s "," s <expr>)* :} -> fold_bind ~}
@@ -639,7 +658,7 @@ function f(a, ...e) {
 }
 """
 var e = """
-import from foo::bar
+import insert from table
 class Point from Object {
     var a = 1 + 2 * 3
     var b = 69
@@ -647,7 +666,7 @@ class Point from Object {
     has y = 1 + 2
     function g() { 1 + 2 }
     function f(a, ...r) {
-        var a = a + 1
+        var a = a + 1;
     }
     method move(x, y) {
         self.x = x
@@ -682,7 +701,7 @@ for k,v in t {
     print(k,v)
 }
 """
-///*
+/*
 var e = """
 grammar G {
     rule __init {
@@ -700,7 +719,7 @@ grammar G {
 print(e)
 var l = Kula.match(e)
 print(l)
-/*
+///*
 var f = assert(loadstring(l))
 var env
 env = {
@@ -712,9 +731,23 @@ env = {
         setfenv(main, env)
         return main(env)
     },
+    __import = function(into, modname, names) {
+        var mod = require(modname)
+        if names.isa(Array) {
+            for i=1, #names {
+                rawset(into, names[i], mod::[names[i]])
+            }
+        }
+        else if names {
+
+        }
+        else {
+            return mod
+        }
+    },
 } as nil
 var g = { __index = Core } as nil
 setmetatable(env, g)
 setfenv(f, env)
 f()
-*/
+//*/

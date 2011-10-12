@@ -408,6 +408,7 @@ end
 
 Nil = setmetatable({ }, Type)
 Nil.__name = 'Nil'
+Nil.__index = Nil
 debug.setmetatable(nil, Nil)
 
 Number = setmetatable({ }, Type)
@@ -617,7 +618,8 @@ Op = {
    end,
 
    size = function(a)
-      local __size = rawget(getmetatable(a), '__size')
+      local meta = getmetatable(a)
+      local __size = meta and rawget(meta, '__size')
       if __size then return __size(a) end
       return #a
    end,
