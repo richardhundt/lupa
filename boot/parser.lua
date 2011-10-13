@@ -145,7 +145,7 @@ return __unit(function(self,...) __grammar(self,"Kula",function(self)
     }
     //]=]
 
-    local function fold_bind(f,...) local e=Tuple(...);
+    local function fold_bind(f,...) local e=Array(...);
         if (#(f) )==( 1) then  
              do return f:__getitem(1):format(__op_spread(e)) end
          end 
@@ -166,7 +166,7 @@ return __unit(function(self,...) __grammar(self,"Kula",function(self)
         if ((#(p) )>( 0 ))and( p:__getitem(#(p)):match(("^%.%.%."))) then  
             local r = p:__getitem(#(p));
             p:__setitem(#(p),("..."));
-            h=("local %s=Tuple(...);"):format(r:sub(4));
+            h=("local %s=Array(...);"):format(r:sub(4));
          end 
          do return p:concat((",")), h end
      end
@@ -287,8 +287,10 @@ return __unit(function(self,...) __grammar(self,"Kula",function(self)
         )
         )
     );
+    local expect_close_brace = __patt.P( __patt.P(("}")) + ( syntax_error(("expected '}'")) ) );
     __rule(self,"try_stmt",
-        __patt.P(("try"))* idsafe* s* __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s )* __patt.P(("}"))*
+        __patt.P(("try"))* idsafe* s* __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s )*
+        (__patt.P(("}")) + ( syntax_error(("expected '}'")) ))*
         ((s* __patt.P(("catch"))* idsafe* s* __patt.P(("("))* s* __patt.V("ident")* s* __patt.P((")"))* s* __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s )* __patt.P(("}")))^-1
         )/( make_try_stmt)
     );
@@ -324,13 +326,16 @@ return __unit(function(self,...) __grammar(self,"Kula",function(self)
     );
     __rule(self,"loop_body",
         ((__patt.P(("{")) )/( (" do local __break repeat ")))* __patt.V("block_body")* s*
-        ((__patt.P(("}")) )/( (" until true if __break then break end end ")))
+        (
+            ((__patt.P(("}")) + ( syntax_error(("expected '}'")) ))
+            )/( (" until true if __break then break end end "))
+        )
     );
     __rule(self,"block",
-        __patt.Cs( ((__patt.P(("{")) )/( ("")))* __patt.V("block_body")* s* ((__patt.P(("}")) )/( (""))) )
+        __patt.Cs( ((__patt.P(("{")) )/( ("")))* __patt.V("block_body")* s* (((__patt.P(("}")) + ( syntax_error(("expected '}'")) )) )/( (""))) )
     );
     __rule(self,"block_stmt",
-        __patt.Cs( ((__patt.P(("{")) )/( ("do ")))* __patt.V("block_body")* s* ((__patt.P(("}")) )/( (" end"))) )
+        __patt.Cs( ((__patt.P(("{")) )/( ("do ")))* __patt.V("block_body")* s* (((__patt.P(("}")) + ( syntax_error(("expected '}'")) )) )/( (" end"))) )
     );
     __rule(self,"block_body",
         __patt.Cg( __patt.Cb("scope"),"outer")* __patt.Cg( __patt.Cc(("lexical")),"scope")*
@@ -372,18 +377,22 @@ return __unit(function(self,...) __grammar(self,"Kula",function(self)
          __patt.V("var_decl")
         + __patt.V("func_decl")
         + __patt.V("return_stmt")
+        + __patt.V("block_stmt")
         + (__patt.V("expr")* (#(s* __patt.P(("}"))) )/( ("do return %1 end")))
         + __patt.V("statement")
     );
     __rule(self,"func",
-        __patt.Cs( ((__patt.P(("function"))* idsafe* s* __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")"))* s* __patt.P(("{"))*
-            __patt.Cs( (s* __patt.V("func_body_stmt"))^0* s )*
-        __patt.P(("}"))) )/( make_func) )
+        __patt.Cs( ((__patt.P(("function"))* idsafe* s*
+        __patt.P(("("))* s* __patt.V("param_list")* s* (__patt.P((")")) + ( syntax_error(("expected ')'")) ))* s* __patt.P(("{"))*
+            __patt.Cs( __patt.V("func_body")* s )*
+        (__patt.P(("}")) + ( syntax_error(("expected '}'")) )))
+        )/( make_func) )
     );
     __rule(self,"package_decl",
         __patt.P(("package"))* idsafe* s* ((__patt.V("qname") )/( quote))* s* __patt.P(("{"))*
             __patt.Cs( (s* __patt.V("main_body_stmt"))^0* s )*
-        (__patt.P(("}")) )/( ("__package(self,%1,function(self) %2 end);"))
+        ((__patt.P(("}")) + ( syntax_error(("expected '}'")) ))
+        )/( ("__package(self,%1,function(self) %2 end);"))
     );
     __rule(self,"class_decl",
         __patt.P(("class"))* idsafe* s* __patt.V("ident")* s*
@@ -528,7 +537,11 @@ return __unit(function(self,...) __grammar(self,"Kula",function(self)
         __patt.P(("("))* s* ( __patt.V("expr_list") + __patt.Cc(("")) )* s* __patt.P((")"))
     );
     __rule(self,"member_expr",
-        __patt.Cs( s* ((__patt.C(__patt.P(("."))) )/( (":")))* (s* (__patt.V("ident") )/( ("__get_%1()"))) + ((__patt.C(__patt.P(("::"))) )/( (".")))* s* __patt.V("ident") )
+        __patt.Cs(
+        s* ((__patt.C(__patt.P((".")))  )/( (":")))*(s* (__patt.V("ident") )/( ("__get_%1()")))
+        + ((__patt.C(__patt.P(("::"))) )/( (".")))* s* __patt.V("ident")
+        + ((__patt.C(__patt.P(("::"))) )/( ("")) )* s* __patt.P(("["))* s* __patt.V("expr")* s* __patt.P(("]"))
+        )
     );
     __rule(self,"method_expr",
         __patt.Cs( s* ((__patt.C(__patt.P(("."))) )/( (":")) + (__patt.C(__patt.P(("::"))) )/( (".")))* (s* (__patt.V("call_expr") )/( ("%1(%2)"))) )
@@ -643,7 +656,7 @@ return __unit(function(self,...) __grammar(self,"Kula",function(self)
         __patt.Cs( (__patt.V("call_expr")+__patt.V("primary"))* __patt.V("bind_member") + ((__patt.V("ident") )/( ("%1=%%s"))) )
     );
     __rule(self,"bind_member",
-         (__patt.V("bind_slot")+__patt.V("bind_name")+__patt.V("bind_item"))* #(s* (__patt.V("bind_binop")+__patt.P(("="))+__patt.P((","))))
+         (__patt.V("bind_slot")+__patt.V("bind_name")+__patt.V("bind_late")+__patt.V("bind_item"))* #(s* (__patt.V("bind_binop")+__patt.P(("="))+__patt.P((","))))
         + (__patt.V("method_expr")+__patt.V("member_expr"))* __patt.V("bind_member")
     );
     __rule(self,"bind_slot",
@@ -651,6 +664,9 @@ return __unit(function(self,...) __grammar(self,"Kula",function(self)
     );
     __rule(self,"bind_item",
         __patt.Cs( ((__patt.C(__patt.P(("["))) )/( (":")))* (s* (__patt.V("expr") )/( ("__setitem(%1,%%s)")))* ((__patt.C(__patt.P(("]"))) )/( (""))) )
+    );
+    __rule(self,"bind_late",
+        __patt.Cs( ((__patt.C(__patt.P(("::"))) )/( ("")))* ((__patt.Cs( s* __patt.P(("["))* s* __patt.V("expr")* s* __patt.P(("]")) ) )/( ("%1=%%s"))) )
     );
     __rule(self,"bind_name",
         __patt.Cs( ((__patt.C(__patt.P(("::"))) )/( (".")))* (s* (__patt.V("ident") )/( ("%1=%%s"))) )
