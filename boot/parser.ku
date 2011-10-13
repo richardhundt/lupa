@@ -166,7 +166,7 @@ grammar Kula {
         if #p > 0 && p[#p].match("^%.%.%.") {
             var r = p[#p]
             p[#p] = "..."
-            h = "local %s=Tuple(...);".format(r.sub(4))
+            h = "local %s=Array(...);".format(r.sub(4))
         }
         return p.concat(","), h
     }

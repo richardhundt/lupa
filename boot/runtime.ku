@@ -1,0 +1,648 @@
+_G::['package']::path  = ";;./src/?.lua;./lib/?.lua;${_G::['package']::path}"
+_G::['package']::cpath = ";;./lib/?.so;${_G::['package']::cpath}"
+
+newtable = loadstring("return {...}")
+
+__class = function(into, name, _from, _with, body) {
+    if #_from == 0 {
+        _from[#_from + 1] = Object
+    }
+
+    var _super = newtable()
+    var _class = newtable()
+    _class::__name = name
+    _class::__from = _from
+
+    var queue  = newtable(unpack(_from))
+    while #queue > 0 {
+        var base = table::remove(queue, 1)
+        if getmetatable(base) != Class {
+            error("TypeError: ${base} is not a Class", 2)
+        }
+        _from::[base] = true
+        for k,v in pairs(base) {
+            if _class::[k] == nil { _class[k] = v }
+            if _super::[k] == nil { _super[k] = v }
+        }
+        if base::__from {
+            for i=1, #base::__from {
+                queue::[#queue + 1] = base::__from[i]
+            }
+        }
+    }
+
+    _class::__index = _class
+    _class::__apply = function(self, ...args)
+        var obj = setmetatable(newtable(), self)
+        if rawget(self, '__init') ~= nil {
+            var ret = obj.__init(...args)
+            if ret != nil {
+                return ret
+            }
+        }
+        return obj
+    }
+
+    setmetatable(_class, Class)
+
+    if _with {
+        for i=1, #_with do
+            _with::[i].compose(_class)
+        }
+    }
+
+    into[name] = _class
+    body(_class, _super)
+    return _class
+}
+__trait = function(into, name, _with, body) {
+    var _trait = newtable()
+    _trait::__name = name
+    _trait::__body = body
+    _trait::__with = _with
+    setmetatable(_trait, Trait)
+    if into {
+        into::[name] = _trait
+    }
+    return _trait
+}
+__object = function(into, name, _from, ...args) {
+    for i=1, #_from {
+        if getmetatable(_from::[i]) != Class {
+            _from::[i] = getmetatable(_from::[i])
+        }
+    }
+    var anon = _class(into, '#'~name, _from, ...args)
+    var inst = anon()
+    if into {
+        into::[name] = inst
+    }
+    return inst
+}
+__method = function(into, name, code) {
+    into::[name] = code
+    var setter = '__set_'~name
+    var getter = '__get_'~name
+    into::[getter] = function(obj) {
+        return function(...args) {
+            return code(obj, ...args)
+        }
+    }
+    into::[setter] = function(obj, code) {
+        method(obj, name, code)
+    }
+}
+__has = function(into, name, default) {
+    var setter = '__set_'~name
+    var getter = '__get_'~name
+    into::[setter] = function(obj, val) {
+        obj::[name] = val
+    }
+    into::[getter] = function(obj) {
+        var val = rawget(obj,name)
+        if val == nil {
+            val = default(obj)
+            obj::[setter](obj, val)
+        }
+        return val
+    }
+}
+__grammar = function(into, name, body) {
+   var gram = { }
+   var patt
+   function gram::match(self, ...args)
+      return patt.match(...args)
+   }
+   body(gram)
+   {
+      var grmr = newtable()
+      for k,v in pairs(gram) {
+         if __patt::type(v) == 'pattern' {
+            grmr::[k] = v
+         }
+      }
+      grmr::[1] = rawget(gram, 1) || '__init'
+      patt = __patt::P(grmr)
+   }
+   into::[name] = gram
+}
+__rule = function(into, name, patt) {
+   if name == '__init' || rawget(into,1) == nil {
+      into::[1] = name
+   }
+   into::[name] = patt
+   var rule_name = '__rule_'~name
+   into::['__get_'~name] = function(self) {
+      var _rule = rawget(self, rule_name)
+      if _rule == nil then
+         var grmr = newtable()
+         for k,v in pairs(self) {
+            if __patt::type(v) == 'pattern' {
+               grmr::[k] = v
+            }
+         }
+         grmr::[1] = name
+         _rule = __patt::P(grmr)
+         rawset(self, rule_name, _rule)
+      }
+      return rule
+   }
+}
+
+__patt = require("lpeg")
+{
+   function capt_hash(tab) { return Hash(tab) }
+   __patt::Ch = function(patt) { return __patt::Ct(patt) / capt_hash }
+
+   function capt_array(tab) { return Array(unpack(tab)) }
+   __patt::Ca = function(patt) { return __patt.Ct(patt) / capt_array }
+
+   var predef = newtable()
+
+   predef.nl  = __patt::P("\n")
+   predef.pos = __patt::Cp()
+
+   var any = __patt::P(1)
+   __patt.locale(predef)
+
+   predef::a = predef::alpha
+   predef::c = predef::cntrl
+   predef::d = predef::digit
+   predef::g = predef::graph
+   predef::l = predef::lower
+   predef::p = predef::punct
+   predef::s = predef::space
+   predef::u = predef::upper
+   predef::w = predef::alnum
+   predef::x = predef::xdigit
+   predef::A = any - predef::a
+   predef::C = any - predef::c
+   predef::D = any - predef::d
+   predef::G = any - predef::g
+   predef::L = any - predef::l
+   predef::P = any - predef::p
+   predef::S = any - predef::s
+   predef::U = any - predef::u
+   predef::W = any - predef::w
+   predef::X = any - predef::x
+
+   __patt::predef = predef
+   __patt::Def = function(id) {
+      if predef::[id] == nil {
+         error("No predefined pattern '${id}'", 2)
+      }
+      return predef::[id]
+   }
+}
+
+_G::__main = _G
+_G::__main::__env = _G
+
+__unit = function(main, ...args) {
+   return __package(_G, "__main", main, args)
+}
+
+__package = function(into, name, body, args)
+   var path = newtable()
+   for frag in name.gmatch("([^%.]+)") {
+      path::[#path + 1] = frag
+   }
+
+   var pckg = _G::__main
+   for i=1, #path {
+      var name = path::[i]
+
+      if rawget(pckg, name) == nil {
+         var pkg = newtable()
+         var env = newtable()
+         var env_meta = newtable()
+         var pkg_meta = newtable()
+
+         function env_meta::__index(env, key) {
+            var val = pkg::[key]
+            if val != nil { return val }
+            return into::__env::[key]
+         }
+         function env_meta::__newindex(env, key, val) {
+            rawset(env, key, val)
+            rawset(pkg, key, val)
+         }
+
+         function pkg_meta::__newindex(pkg, key, val) {
+            env::[key] = val
+         }
+
+         setmetatable(env, env_meta)
+         setmetatable(pkg, pkg_meta)
+
+         pkg::__env = env
+         pckg::[name] = pkg
+      }
+      pckg = pckg::[name]
+   }
+   into::[name] = pckg
+   _G::['package']::loaded::[name] = pckg
+   if body {
+      setfenv(body, pckg::__env)
+      body(pckg)
+   }
+   return pckg
+}
+
+__import = function(into, _from, what, dest) {
+   var mod = __load(_from)
+   if what {
+      if what.isa(Array) {
+         if dest {
+            into = __package(into, dest)
+         }
+         for i=1, #what {
+            into::[what::[i]] = mod::[what::[i]]
+         }
+      }
+      else if what.isa(Hash) {
+         for n,a in pairs(what) {
+            into::[a] = what::[n]
+         }
+      }
+   }
+   else {
+      return mod
+   }
+}
+
+__load = function(_from) {
+   var path = _from
+   if type(_from) == 'table' {
+      path = table::concat(_from, '.')
+   }
+   var mod = require(path)
+   if mod == true {
+      mod = _G
+      for i=1, #_from {
+         mod = mod::[_from::[i]]
+      }
+   }
+   return mod
+}
+
+__op_as     = setmetatable
+__op_typeof = getmetatable
+__op_yield  = coroutine::yield
+
+__op_in = function(key, obj) {
+   return (rawget(obj, key) || rawget(getmetatable(obj), key)) != nil
+}
+__op_like = function(this, that) {
+   for k,v in pairs(that) {
+      if type(this::[k]) != type(v) {
+         return false
+      }
+      if !this::[k].isa(getmetatable(v)) {
+         return false
+      }
+   }
+   return true
+}
+__op_spread = function(a) {
+   var __spread = rawget(getmetatable(a), '__spread')
+   if __spread then return __spread(a) end
+   return unpack(a)
+}
+__op_each = function(a, ...args) {
+   if type(a) == 'function' { return a, ...args }
+   var __each = rawget(getmetatable(a), '__each')
+   if __each { return __each(a) }
+   return pairs(a)
+}
+__op_lshift = function(a,b) {
+   var __lshift = rawget(getmetatable(a), '__lshift')
+   if __lshift { return __lshift(a, b) }
+   return bit::lshift(a, b)
+}
+__op_rshift = function(a,b) {
+   var __rshift = rawget(getmetatable(a), '__rshift')
+   if __rshift { return __rshift(a, b) }
+   return bit::rshift(a, b)
+}
+__op_arshift = function(a,b) {
+   var __arshift = rawget(getmetatable(a), '__arshift')
+   if __arshift { return __arshift(a, b) }
+   return bit::arshift(a, b)
+}
+__op_bor = function(a,b) {
+   var __bor = rawget(getmetatable(a), '__bor')
+   if __bor { return __bor(a, b) }
+   return bit::bor(a, b)
+}
+__op_bxor = function(a,b) {
+   var __bxor = rawget(getmetatable(a), '__bxor')
+   if __bxor { return __bxor(a, b) }
+   return bit::bxor(a, b)
+}
+__op_bnot = function(a) {
+   var __bnot = rawget(getmetatable(a), '__bnot')
+   if __bnot { return __bnot(a) }
+   return bit::bnot(a)
+}
+
+Type = newtable()
+Type::__name = 'Type'
+Type::__call = function(self, ...args) {
+   return self.__apply(...args)
+}
+Type::isa = function(self, that) {
+   return getmetatable(self) == that
+}
+Type::can = function(self, key) {
+   return rawget(getmetatable(self), key)
+}
+Type::does = function(self, that) {
+   return false
+}
+Type::__index = function(self, key) {
+   return Type::[key]
+   /*
+   var val = Type::[key]
+   if val == nil {
+      error("AccessError: no such member '${key}' in ${self}", 2)
+   }
+   return val
+   */
+}
+Type::__tostring = function(self) {
+   return 'type '~(rawget(self, '__name') || 'Type')
+}
+
+Class = setmetatable(newtable(), Type)
+Class::__tostring = function(self) {
+   return self::__name
+}
+Class::__index = function(self, key) {
+   error("AccessError: no such member '${key}' in ${self::__name}", 2)
+}
+Class::__call = function(self, ...args) {
+   return self.__apply(...args)
+}
+
+Object = setmetatable(newtable(), Class)
+Object::__name = 'Object'
+Object::__from = newtable()
+Object::__with = newtable()
+Object::__tostring = function(self) {
+   return "object ${getmetatable(self)}"
+}
+Object::__index = Object
+Object::isa = function(self, that) {
+   var meta = getmetatable(self)
+   return meta == that || (meta::__from && (meta::__from::[that] != nil))
+}
+Object::can = function(self, key) {
+   var meta = getmetatable(self)
+   return rawget(meta, key)
+}
+Object::does = function(self, that) {
+   return self::__with::[that::__body] != nil
+}
+
+Trait = setmetatable(newtable(), Type)
+Trait::__call = function(self, ...args) {
+   var copy = __trait(nil, self::__name, self::__with, self::__body)
+   var make = self::compose
+   copy::compose = function(self, into) {
+      return make(self, into, unpack(args))
+   }
+   return copy
+}
+Trait::__tostring = function(self) {
+   return 'trait '~self.__name
+}
+Trait::__index = Trait
+Trait::compose = function(self, into, ...args) {
+   for i=1, #self::__with {
+      self::__with::[i].compose(into)
+   }
+   self::__body(into, ...args)
+   into::__with::[self::__body] = true
+   return into
+}
+
+Hash = setmetatable(newtable(), Type)
+Hash::__name = 'Hash'
+Hash::__index = Hash
+Hash::__apply = function(self, table) {
+   return setmetatable(table || newtable(), self)
+}
+Hash::__tostring = function(self) {
+   var buf = newtable()
+   for k, v in pairs(self) {
+      var _v
+      if type(v) == 'string' {
+         _v = string::format('%q', v)
+      }
+      else {
+         _v = tostring(v)
+      }
+      if type(k) == 'string' {
+         buf::[#buf + 1] = k~'='~_v
+      }
+      else {
+         buf::[#buf + 1] = "[${k}]=${_v}"
+      }
+   }
+   return '{'~table::concat(buf, ',')~'}'
+}
+Hash::__getitem = rawget
+Hash::__setitem = rawset
+Hash::__each = pairs
+
+Array = setmetatable(newtable(), Type)
+Array::__name = 'Array'
+Array::__index = Array
+Array::__apply = loadstring('''
+   local self = ...
+   return setmetatable({ select(2, ...) }, self)
+''')
+Array::__tostring = function(self) {
+   var buf = newtable()
+   for i=1, #self {
+      if type(self::[i]) == 'string' {
+         buf[#buf + 1] = string::format('%q', self::[i])
+      }
+      else {
+         buf::[#buf + 1] = tostring(self::[i])
+      }
+   }
+   return '['~table::concat(buf,',')~']'
+}
+Array::__each = ipairs
+Array::__spread = unpack
+Array::__getitem = rawget
+Array::__setitem = rawset
+Array::__get_size = function(self, name) {
+   return #self
+}
+Array::unpack = unpack
+Array::insert = table::insert
+Array::remove = table::remove
+Array::concat = table::concat
+Array::sort = table::sort
+Array::each = function(self, block) {
+   for i=1, #self { block(self::[i]) }
+}
+Array::map = function(self, block) {
+   var out = Array()
+   for i=1, #self {
+      var v = self::[i]
+      out::[#out + 1] = block(v)
+   }
+   return out
+}
+Array::grep = function(self, block) {
+   var out = Array()
+   for i=1, #self {
+      var v = self::[i]
+      if block(v) {
+         out::[#out + 1] = v
+      }
+   }
+   return out
+}
+Array::push = function(self, v) {
+   self::[#self + 1] = v
+}
+Array::pop = function(self) {
+   var v = self::[#self]
+   self::[#self] = nil
+   return v
+}
+Array::shift = function(self) {
+   var v = self::[1]
+   for i=2, #self {
+      self::[i-1] = self::[i]
+   }
+   self::[#self] = nil
+   return v
+}
+Array::unshift = function(self, v) {
+   for i=#self+1, 1, -1 {
+      self::[i] = self::[i-1]
+   }
+   self::[1] = v
+}
+Array::splice = function(self, offset, count, ...args) {
+   var out = Array()
+   for i=offset, offset + count - 1 {
+      out.push(self.remove(offset))
+   }
+   for i=#args, 1, -1 {
+      self.insert(offset, args[i])
+   }
+   return out
+}
+Array::reverse = function(self) {
+   var out = Array()
+   for i=1, #self {
+      out::[i] = self::[(#self - i) + 1]
+   }
+   return out
+}
+
+Range = setmetatable(newtable(), Type)
+Range::__name = 'Range'
+Range::__index = Range
+Range::__apply = function(self, min, max, inc) {
+   min = assert(tonumber(min), "range min is not a number")
+   max = assert(tonumber(max), "range max is not a number")
+   inc = assert(tonumber(inc or 1), "range inc is not a number")
+   return setmetatable(newtable(min, max, inc), self)
+}
+Range::__each = function(self) {
+   var inc = self::[3]
+   var cur = self::[1] - inc
+   var max = self::[2]
+   return function() {
+      cur = cur + inc
+      if cur <= max {
+         return cur
+      }
+   }
+}
+Range::each = function(self, block) {
+   for i in Range::__each(self) {
+      block(i)
+   }
+}
+
+Nil = setmetatable(newtable(), Type)
+Nil::__name = 'Nil'
+Nil::__index = Nil
+debug::setmetatable(nil, Nil)
+
+Number = setmetatable(newtable(), Type)
+Number::__name = 'Number'
+Number::__index = Number
+Number::times = function(self, block) {
+   for i=1, self { block(i) }
+}
+debug::setmetatable(0, Number)
+
+String = setmetatable(string, Type)
+String::__name = 'String'
+String::__index = String
+String::__match = function(a,p) {
+   return __patt::P(p).match(a)
+}
+String::split = function(str, sep, max) {
+   if !str.find(sep) {
+      return Array(str)
+   }
+   if max == nil ||  max < 1 {
+      max = 0
+   }
+   var pat = "(.-)"~sep~"()"
+   var idx = 0
+   var list = Array()
+   var last
+   for part, pos in str.gmatch(pat) {
+      idx = idx + 1
+      list::[idx] = part
+      last = pos
+      if idx == max { break }
+   }
+   if idx != max {
+      list::[idx + 1] = str.sub(last)
+   }
+   return list
+}
+debug::setmetatable("", String)
+
+Boolean = setmetatable(newtable(), Type)
+Boolean::__name = 'Boolean'
+Boolean::__index = Boolean
+debug::setmetatable(true, Boolean)
+
+Function = setmetatable(newtable(), Type)
+Function::__name = 'Function'
+Function::__index = Function
+Function::__get_gen = function(self) {
+   return coroutine::wrap(self)
+}
+debug::setmetatable(function() { }, Function)
+
+Coroutine = setmetatable(newtable(), Type)
+Coroutine::__name = 'Coroutine'
+Coroutine::__index = Coroutine
+for k,v in pairs(coroutine) {
+   Coroutine::[k] = v
+}
+debug::setmetatable(coroutine::create(function() { }), Coroutine)
+
+Pattern = setmetatable(getmetatable(__patt::P(1)), Type)
+Pattern::__call = function(patt, subj) {
+   return patt.match(subj)
+}
+Pattern::__match = function(patt, subj) {
+   return patt.match(subj)
+}
+
