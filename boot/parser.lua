@@ -115,7 +115,7 @@ return __unit(function(self,...) __grammar(self,"Kula",function(self)
          do return unrops:__getitem(o):format(e) end
      end
 
-
+    --/*
     local function fold_infix(e) 
         local s = Array( e:__getitem(1) );
         for i=2, #(e)  do local __break repeat 
@@ -137,13 +137,13 @@ return __unit(function(self,...) __grammar(self,"Kula",function(self)
          until true if __break then break end end 
          do return s:__getitem(1) end
      end
+    --*/
 
-
-    
-
-
-
-
+    --[=[ enable for recursive descent expr parsing
+    function fold_infix(a,o,b) {
+        return binops[o].format(a,b)
+    }
+    //]=]
 
     local function fold_bind(f,...) local e=Tuple(...);
         if (#(f) )==( 1) then  
@@ -210,11 +210,11 @@ return __unit(function(self,...) __grammar(self,"Kula",function(self)
 
     local function make_import_stmt(n,f,a) 
         if (f )==( (nil)) then  
-
+            -- import from <path>
              do return ("__import(self,%s);"):format(n) end
         
          elseif n:isa(Array) then  
-
+            -- import <list> from <path> (in <qname>)
             if a then  
                  do return ("__import(self,%s,Array(%s),%s);"):format(f,n:concat((",")),a) end
              else 
@@ -222,7 +222,7 @@ return __unit(function(self,...) __grammar(self,"Kula",function(self)
              end 
         
         else 
-
+            -- import <name> from <path> (as <alias>)
              do return ("__import(self,%s,Hash({[%s]=%s}));"):format(f,n,a) end
          end 
      end
@@ -549,7 +549,7 @@ return __unit(function(self,...) __grammar(self,"Kula",function(self)
         __patt.Cs( __patt.V("infix_expr") + __patt.V("prefix_expr") )
     );
 
-
+    --/*
     local binop_patt = __patt.P((
         __patt.P(("+")) + __patt.P(("-")) + __patt.P(("~")) + __patt.P(("^^")) + __patt.P(("*")) + __patt.P(("/")) + __patt.P(("%")) + __patt.P(("^")) + __patt.P((">>>")) + __patt.P((">>")) + __patt.P(("<<"))
         + __patt.P(("||")) + __patt.P(("&&")) + __patt.P(("|")) + __patt.P(("&")) + __patt.P(("==")) + __patt.P(("!=")) + __patt.P((">="))+ __patt.P(("<=")) + __patt.P(("<")) + __patt.P((">"))
@@ -562,51 +562,51 @@ return __unit(function(self,...) __grammar(self,"Kula",function(self)
             __patt.Cs( s* __patt.V("prefix_expr")* (#(s* binop_patt)* s)^-1 )
         )^1 ) )/( fold_infix)
     );
+    --*/
 
-
-    
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    --[=[
+    // recursive descent is faster for stock Lua, but LJ2 is faster
+    // with shift-reduce, so right now I'm biased towards LJ2 ;)
+    rule infix_expr {
+        {~ <bool_or_expr> ~}
+    }
+    function make_infix_expr(oper, term) {
+        / (({~ term (&(s oper) s)? ~} {: {oper} {~ s term ~} :}*) ~> fold_infix) /
+    }
+    rule bool_or_expr {
+        <{ make_infix_expr(/"||"/, /<bool_and_expr>/ }>
+    }
+    rule bool_and_expr {
+        <{ make_infix_expr(/"&&"/, /<bit_or_expr>/ }>
+    }
+    rule bit_or_expr {
+        <{ make_infix_expr(/"|"/,  /<bit_xor_expr>/ }>
+    }
+    rule bit_xor_expr {
+        <{ make_infix_expr(/"^"/,  /<bit_and_expr>/ }>
+    }
+    rule bit_and_expr {
+        <{ make_infix_expr(/"&"/,  /<equals_expr>/ }>
+    }
+    rule equals_expr {
+        <{ make_infix_expr(/"=="|"!="/, /<cmp_expr>/ }>
+    }
+    rule cmp_expr {
+        <{ make_infix_expr(/"<="|">="|"<"|">"/, /<shift_expr>/ }>
+    }
+    rule shift_expr {
+        <{ make_infix_expr(/">>>"|">>"|"<<"/, /<add_expr>/ }>
+    }
+    rule add_expr {
+        <{ make_infix_expr(/"+"|"-"|"~"/, /<mul_expr>/ }>
+    }
+    rule mul_expr {
+        <{ make_infix_expr(/"*"|"/"|"%"/, /<pow_expr>/ }>
+    }
+    rule pow_expr {
+        <{ make_infix_expr(/"^^"/, /<prefix_expr>/ }>
+    }
+    //]=]
 
     __rule(self,"prefix_expr",
         (__patt.Cg( __patt.C( __patt.P(("...")) + __patt.P(("!")) + __patt.P(("#")) + __patt.P(("-")) + __patt.P(("~")) )* s* __patt.V("prefix_expr"),nil) )/( fold_prefix)
@@ -620,7 +620,7 @@ return __unit(function(self,...) __grammar(self,"Kula",function(self)
         ) )/( ("%1;"))* semicol
     );
 
-
+    -- binding expression rules
     __rule(self,"bind_stmt",
         __patt.Cs( ((__patt.V("bind_expr") + __patt.V("bind_binop_expr")) )/( ("%1;"))* semicol )
     );
@@ -656,7 +656,7 @@ return __unit(function(self,...) __grammar(self,"Kula",function(self)
         __patt.Cs( ((__patt.C(__patt.P(("::"))) )/( (".")))* (s* (__patt.V("ident") )/( ("%1=%%s"))) )
     );
 
-
+    -- PEG grammar and pattern rules
     __rule(self,"pattern",
         __patt.P(("/"))* __patt.Cs( s* __patt.V("rule_alt")* s )* (__patt.P(("/")) )/( ("__patt.P(%1)"))
     );
