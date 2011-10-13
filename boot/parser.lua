@@ -36,8 +36,8 @@ return __unit(function(self,...) __grammar(self,"Kula",function(self)
 
     local nl      = __patt.P( __patt.P(("\n")) );
     local comment = __patt.P( __patt.Cs(
-         ((((-nl* __patt.Def("s"))^0* __patt.P(("//"))* (-nl* __patt.P(1))^0* nl) )/( ("\n")))
-        + ((__patt.P(("/*")))/((""))* (-__patt.P(("*/"))* ((nl )/( ("\n")) + (__patt.P(1) )/( (""))))^0* ((__patt.P(("*/")) )/( (""))))
+         ((-nl* __patt.Def("s"))^0* ((__patt.P(("//")) )/( ("--")))* (-nl* __patt.P(1))^0* nl)
+        + ((__patt.P(("/*")) )/( ("--[=[")))* ((__patt.P(("]=]")) )/( ("]\\=]")) + -__patt.P(("*/"))* __patt.P(1))^0* ((__patt.P(("*/")) )/( ("]=]")))
     ) );
     local idsafe  = __patt.P( -(__patt.Def("alnum") + __patt.P(("_"))) );
     local s       = __patt.P( (comment + __patt.Def("s"))^0 );
