@@ -12,6 +12,9 @@ package My::Shapes {
         has x = 0
         has y = 0
 
+        function lexical() {
+            print("this should be private")
+        }
         method move(x, y) {
             self.x = x
             self.y = y
@@ -20,14 +23,12 @@ package My::Shapes {
 }
 
 package My::Shapes {
-
     ANSWER = 42
 
     class Point3D from Point {
         has z = 0
-
         method move(x, y, z) {
-            super.move(x, y)
+            super::move(self, x, y)
             if DEBUG {
                 print("moving ${self} to ${x}, ${y}, ${z}")
             }
@@ -42,7 +43,7 @@ package My::Shapes {
 
 import Point3D from My::Shapes
 import Point3D from My::Shapes in Foo
-import Point from My::Shapes
+import Point   from My::Shapes
 
 Foo::Point3D()
 My::Shapes::Point()

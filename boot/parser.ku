@@ -1,4 +1,4 @@
-grammar Kula { 
+grammar Kula {
 
     function error_line(src, pos) {
         var line = 1
@@ -26,12 +26,6 @@ grammar Kula {
         }
     }
 
-    function parse_error(msg, pos) {
-        return function(pos) {
-            throw SyntaxError(msg, pos)
-        }
-    }
-
     var id_counter = 9
     function genid() {
         id_counter += 1
@@ -42,7 +36,8 @@ grammar Kula {
 
     var nl      = / "\n" /
     var comment = / {~
-        ((!nl %s)* "//" (!nl .)* nl) -> "\n" | ("/*" (!"*/" (nl | .))* "*/") -> ''
+        | (((!nl %s)* "//" (!nl .)* nl) -> "\n")
+        | ("/*"->'' (!"*/" (nl -> "\n" | . -> ''))* ("*/" -> ''))
     ~} /
     var idsafe  = / !(%alnum | "_") /
     var s       = / (comment | %s)* /
@@ -119,6 +114,8 @@ grammar Kula {
     function fold_prefix(o,e) {
         return unrops[o].format(e)
     }
+
+    ///*
     function fold_infix(e) {
         var s = [ e[1] ]
         for i=2, #e {
@@ -140,11 +137,14 @@ grammar Kula {
         }
         return s[1]
     }
-    /*
+    //*/
+
+    /* enable for recursive descent expr parsing
     function fold_infix(a,o,b) {
         return binops[o].format(a,b)
     }
-    */
+    //*/
+
     function fold_bind(f,...e) {
         if #f == 1 {
             return f[1].format(...e)
@@ -171,21 +171,31 @@ grammar Kula {
         return p.concat(","), h
     }
 
-    function make_func(p,h,b) {
+    function make_func(p,b) {
+        var p, h = make_params(p)
         return "function(%s) %s%s end".format(p,h,b)
     }
 
-    function make_func_decl(n,p,h,b) {
-        return "local function %s(%s) %s%s end".format(n,p,h,b)
+    function make_func_decl(n,p,b,s) {
+        var p, h = make_params(p)
+        if s == 'lexical' && !n.find('.',1,true) {
+            return "local function %s(%s) %s%s end".format(n,p,h,b)
+        }
+        else {
+            return "function %s(%s) %s%s end".format(n,p,h,b)
+        }
     }
 
-    function make_meth_decl(n,p,h,b) {
-        return "__method(self,%q,function(self,%s) %s%s end)".format(n,p,h,b)
+    function make_meth_decl(n,p,b) {
+        p.unshift('self')
+        var p, h = make_params(p)
+        return "__method(self,%q,function(%s) %s%s end);".format(n,p,h,b)
     }
 
-    function make_trait_decl(n,p,h,w,b) {
+    function make_trait_decl(n,p,w,b) {
+        var p, h = make_params(p)
         return
-            '__trait(self,%q,{%s},function(self,%s) %s%s end)'
+            '__trait(self,%q,{%s},function(self,%s) %s%s end);'
             .format(n,w,p,h,b)
     }
 
@@ -213,7 +223,7 @@ grammar Kula {
         }
         else {
             // import <name> from <path> (as <alias>)
-            return "__import(self,%s,%s,%s);".format(f,n,a)
+            return "__import(self,%s,Hash({[%s]=%s}));".format(f,n,a)
         }
     }
 
@@ -221,8 +231,10 @@ grammar Kula {
         {~ <unit> ~} (!. | <{syntax_error("expected <EOF>")}>)
     }
     rule unit {
-        {:set_return: {`false`} :} (
-            {~ s <main_body_stmt> (s <main_body_stmt>)* s ~}
+        {:set_return: {`false`} :}
+        {:scope: {`'global'`} :}
+        (
+            {~ (s <main_body_stmt>)* s ~}
             -> "return __unit(function(self,...) %1 end,...)"
         )
     }
@@ -232,6 +244,7 @@ grammar Kula {
         | <class_decl>
         | <trait_decl>
         | <grammar_decl>
+        | <package_decl>
         | <import_stmt>
         | <statement>
     }
@@ -251,12 +264,12 @@ grammar Kula {
         {~ <expr> -> '%1;' semicol ~}
     }
     rule return_stmt {
-        {~ ("return" idsafe =set_return s <expr_list>) -> function(l,e) {
+        {~ "return" -> '' idsafe s (=set_return <expr_list> -> function(l,e) {
             if l {
                 return "do __return = {%s}; return end".format(e)
             }
             return "do return %s end".format(e)
-        } ~}
+        }) ~}
     }
     rule break_stmt {
         {~ { "break" idsafe } -> "do __break = true; break end" ~}
@@ -265,7 +278,7 @@ grammar Kula {
         {~ { "continue" idsafe } -> "do break end" ~}
     }
     rule if_stmt {
-        {~ 
+        {~
         "if" idsafe s <expr> {`" then "`} s <block> (
             (s ({"else" idsafe s "if" idsafe} -> " elseif") s
                 <expr> {`" then "`} s <block>
@@ -320,7 +333,9 @@ grammar Kula {
         {~ ("{" -> "do ") <block_body> s ("}" -> " end") ~}
     }
     rule block_body {
+        {:outer: =scope :} {:scope: {`'lexical'`} :}
         (s <block_body_stmt>)*
+        {:scope: =outer :}
     }
     rule block_body_stmt {
         | <var_decl>
@@ -335,18 +350,23 @@ grammar Kula {
     }
     rule slot_decl {
         {~ ("has" idsafe s <ident> (s "=" s (<expr> | {`""`}))? semicol)
-            -> '__has(self,"%1",function(self) return %2 end)'
+            -> '__has(self,"%1",function(self) return %2 end);'
         ~}
     }
     rule meth_decl {
         {~ ("method" idsafe s <qname> s "(" s <param_list> s ")" s "{"
-            {~ (s <func_body_stmt>)* s ~}
+            {~ <func_body> s ~}
         "}") -> make_meth_decl ~}
     }
     rule func_decl {
         {~ ("function" idsafe s <qname> s "(" s <param_list> s ")" s "{"
-            {~ (s <func_body_stmt>)* s ~}
-        "}") -> make_func_decl ~}
+            {~ <func_body> s ~}
+        "}" =scope) -> make_func_decl ~}
+    }
+    rule func_body {
+        {:outer: =scope :} {:scope: {`'lexical'`} :}
+        (s <func_body_stmt>)*
+        {:scope: =outer :}
     }
     rule func_body_stmt {
         | <var_decl>
@@ -360,19 +380,29 @@ grammar Kula {
             {~ (s <func_body_stmt>)* s ~}
         "}") -> make_func ~}
     }
+    rule package_decl {
+        "package" idsafe s (<qname> -> quote) s "{"
+            {~ (s <main_body_stmt>)* s ~}
+        "}" -> '__package(self,%1,function(self) %2 end);'
+    }
     rule class_decl {
         "class" idsafe s <ident> s
         (<class_from> | {`""`}) s
         (<class_with> | {`""`}) s
-        "{" {~ (s <class_body_stmt>)* s ~} "}"
-        -> '__class(self,"%1",{%2},{%3},function(self,super) %4 end)'
+        "{" {~ <class_body> s ~} "}"
+        -> '__class(self,"%1",{%2},{%3},function(self,super) %4 end);'
     }
     rule trait_decl {
         "trait" idsafe s <ident> s
         ("(" s <param_list> s ")" | {`'...'`} {`''`}) s
         (<class_with> | {`""`}) s
-        "{" {~ (s <class_body_stmt>)* s ~} "}"
+        "{" {~ <class_body> s ~} "}"
         -> make_trait_decl
+    }
+    rule class_body {
+        {:outer: =scope :} {:scope: {`'lexical'`} :}
+        (s <class_body_stmt>)*
+        {:scope: =outer :}
     }
     rule class_from {
         "from" idsafe s {~ <expr> (s "," s <expr>)* ~}
@@ -392,7 +422,6 @@ grammar Kula {
     }
     rule param_list {
         {@ <ident> (s "," s <ident>)* (s "," s <rest>)? | <rest> | {`nil`} @}
-        -> make_params
     }
     rule ident {
         { !keyword ((%alpha | "_") (%alnum | "_")*) }
@@ -520,6 +549,7 @@ grammar Kula {
         {~ <infix_expr> | <prefix_expr> ~}
     }
 
+    ///*
     var binop_patt = /(
         "+" | "-" | "~" | "^^" | "*" | "/" | "%" | "^" | ">>>" | ">>" | "<<"
         | "||" | "&&" | "|" | "&" | "==" | "!=" | ">="| "<=" | "<" | ">"
@@ -532,29 +562,51 @@ grammar Kula {
             {~ s <prefix_expr> (&(s binop_patt) s)? ~}
         )+ @} -> fold_infix
     }
+    //*/
 
     /*
-    rule expr {
-        {~ <infix_expr> | <prefix_expr> ~}
-    }
+    // recursive descent is faster for stock Lua, but LJ2 is faster
+    // with shift-reduce, so right now I'm biased towards LJ2 ;)
     rule infix_expr {
         {~ <bool_or_expr> ~}
     }
     function make_infix_expr(oper, term) {
-        / (({~ term s ~} {: {oper} {~ s term ~} :}*) ~> fold_infix) /
+        / (({~ term (&(s oper) s)? ~} {: {oper} {~ s term ~} :}*) ~> fold_infix) /
     }
-    self::bool_or_expr  = make_infix_expr(/"||"/, /<bool_and_expr>/)
-    self::bool_and_expr = make_infix_expr(/"&&"/, /<bit_or_expr>/)
-    self::bit_or_expr   = make_infix_expr(/"|"/,  /<bit_xor_expr>/)
-    self::bit_xor_expr  = make_infix_expr(/"^"/,  /<bit_and_expr>/)
-    self::bit_and_expr  = make_infix_expr(/"&"/,  /<equals_expr>/)
-    self::equals_expr   = make_infix_expr(/"=="|"!="/, /<cmp_expr>/)
-    self::cmp_expr      = make_infix_expr(/"<="|">="|"<"|">"/, /<shift_expr>/)
-    self::shift_expr    = make_infix_expr(/">>>"|">>"|"<<"/, /<add_expr>/)
-    self::add_expr      = make_infix_expr(/"+"|"-"|"~"/, /<mul_expr>/)
-    self::mul_expr      = make_infix_expr(/"*"|"/"|"%"/, /<pow_expr>/)
-    self::pow_expr      = make_infix_expr(/"^^"/, /<prefix_expr>/)
-    */
+    rule bool_or_expr {
+        <{ make_infix_expr(/"||"/, /<bool_and_expr>/ }>
+    }
+    rule bool_and_expr {
+        <{ make_infix_expr(/"&&"/, /<bit_or_expr>/ }>
+    }
+    rule bit_or_expr {
+        <{ make_infix_expr(/"|"/,  /<bit_xor_expr>/ }>
+    }
+    rule bit_xor_expr {
+        <{ make_infix_expr(/"^"/,  /<bit_and_expr>/ }>
+    }
+    rule bit_and_expr {
+        <{ make_infix_expr(/"&"/,  /<equals_expr>/ }>
+    }
+    rule equals_expr {
+        <{ make_infix_expr(/"=="|"!="/, /<cmp_expr>/ }>
+    }
+    rule cmp_expr {
+        <{ make_infix_expr(/"<="|">="|"<"|">"/, /<shift_expr>/ }>
+    }
+    rule shift_expr {
+        <{ make_infix_expr(/">>>"|">>"|"<<"/, /<add_expr>/ }>
+    }
+    rule add_expr {
+        <{ make_infix_expr(/"+"|"-"|"~"/, /<mul_expr>/ }>
+    }
+    rule mul_expr {
+        <{ make_infix_expr(/"*"|"/"|"%"/, /<pow_expr>/ }>
+    }
+    rule pow_expr {
+        <{ make_infix_expr(/"^^"/, /<prefix_expr>/ }>
+    }
+    //*/
 
     rule prefix_expr {
         {: { "..." | "!" | "#" | "-" | "~" } s <prefix_expr> :} -> fold_prefix
@@ -607,13 +659,18 @@ grammar Kula {
 
     // PEG grammar and pattern rules
     rule pattern {
-        "/" s <rule_alt> s "/" -> '__patt.P(%1)'
+        "/" {~ s <rule_alt> s ~} "/" -> '__patt.P(%1)'
     }
     rule grammar_decl {
         {~ (
             "grammar" idsafe s <ident> s
-            "{" {~ (s <grammar_body_stmt>)* ~} s "}"
-        ) -> '__grammar(self,"%1",function(self) %2 end)' ~}
+            "{" {~ <grammar_body> s ~} "}"
+        ) -> '__grammar(self,"%1",function(self) %2 end);' ~}
+    }
+    rule grammar_body {
+        {:outer: =scope :} {:scope: {`'lexical'`} :}
+        (s <grammar_body_stmt>)*
+        {:scope: =outer :}
     }
     rule grammar_body_stmt {
         | <rule_decl>
@@ -624,7 +681,7 @@ grammar Kula {
     }
     rule rule_decl {
         "rule" idsafe s <ident> s "{" {~ s <rule_body> s ~} "}"
-        -> '__rule(self,"%1",%2)'
+        -> '__rule(self,"%1",%2);'
     }
     rule rule_body {
         <rule_alt> | {`'__patt.P(nil)'`}
@@ -633,31 +690,29 @@ grammar Kula {
         {~ ({"|"} -> '' s)? <rule_seq> (s ({"|"} -> "+") s <rule_seq>)* ~}
     }
     rule rule_seq {
-        {@ {~ (s <rule_suffix>)+ ~} @} -> function(a) { a.concat('*') }
+        {@ {~ s <rule_suffix> ~}+ @} -> function(a) { a.concat('*') }
     }
     rule rule_rep {
         {~ {"+"}->"^1"|{"*"}->"^0"|{"?"}->"^-1"|{"^"s("+"|"-")s[0-9]+} ~}
     }
     rule rule_prefix {
-        {~ (({"&"} -> "#") | ({"!"} -> "-")) s <rule_prefix> -> '%1%2'
+        {~ (({"&"} -> "#") | ({"!"} -> "-")) {~ s <rule_prefix> ~} -> '%1%2'
         | <rule_primary>
         ~}
     }
+
+    var prod_oper = / "->" | "~>" | "=>" /
+
     rule rule_suffix {
-        {~
-        (<rule_prefix> {: ({s} <rule_prod>) :}*) ~> function(a,s1,o,s2,b) {
+        ({~ <rule_prefix> (&(s prod_oper) s)? ~} {: {prod_oper} {~ s <term> ~} :}*) ~> function(a,o,b) {
             if o == "=>" {
-                return '__patt.Cmt(%s%s,%s%s)'.format(a,s1,s2,b)
+                return '__patt.Cmt(%s,%s)'.format(a,b)
             }
             else if o == "~>" {
-                return '__patt.Cf(%s%s,%s%s)'.format(a,s1,s2,b)
+                return '__patt.Cf(%s,%s)'.format(a,b)
             }
-            return "(%s)%s/%s(%s)".format(a,s1,s2,b)
+            return "(%s)/(%s)".format(a,b)
         }
-        ~}
-    }
-    rule rule_prod {
-        { "->" | "~>" | "=>" } {s} <term>
     }
     rule rule_primary {
         ( <rule_group>
@@ -713,7 +768,7 @@ grammar Kula {
         ~}
     }
     rule rule_group_capt {
-        {~ "{:" ((<ident> -> quote ":") | {`'nil'`}) s <rule_alt> s ":}"
+        {~ "{:" ((<ident> -> quote ":") | {`'nil'`}) {~ s <rule_alt> ~} s ":}"
         -> '__patt.Cg(%2,%1)'
         ~}
     }

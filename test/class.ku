@@ -26,11 +26,12 @@ class Point3D from Point {
     }
 
     method move(x, y, z) {
-        super.move(x, y)
+        super::move(self, x, y)
         self.z = z
     }
 }
 
 var p = Point3D()
 p.move(11,22,33)
+print(p.x,p.y,p.z)
 
