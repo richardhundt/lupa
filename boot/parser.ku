@@ -233,10 +233,8 @@ grammar Kula {
     rule unit {
         {:set_return: {`false`} :}
         {:scope: {`'global'`} :}
-        (
-            {~ (s <main_body_stmt>)* s ~}
-            -> "return __unit(function(self,...) %1 end,...)"
-        )
+        {`'local self=_G;'`}
+        {~ (s <main_body_stmt>)* s ~}
     }
     rule main_body_stmt {
         | <var_decl>
