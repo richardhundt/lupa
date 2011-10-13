@@ -287,8 +287,10 @@ grammar Kula {
         )
         ~}
     }
+    var expect_close_brace = / "}" | <{ syntax_error("expected '}'") }> /
     rule try_stmt {
-        "try" idsafe s "{" {~ <lambda_body> s ~} "}"
+        "try" idsafe s "{" {~ <lambda_body> s ~}
+        ("}" | <{ syntax_error("expected '}'") }>)
         (s "catch" idsafe s "(" s <ident> s ")" s "{" {~ <lambda_body> s ~} "}")?
         -> make_try_stmt
     }
@@ -324,13 +326,16 @@ grammar Kula {
     }
     rule loop_body {
         ("{" -> " do local __break repeat ") <block_body> s
-        ("}" -> " until true if __break then break end end ")
+        (
+            ("}" | <{ syntax_error("expected '}'") }>)
+            -> " until true if __break then break end end "
+        )
     }
     rule block {
-        {~ ("{" -> "") <block_body> s ("}" -> "") ~}
+        {~ ("{" -> "") <block_body> s (("}" | <{ syntax_error("expected '}'") }>) -> "") ~}
     }
     rule block_stmt {
-        {~ ("{" -> "do ") <block_body> s ("}" -> " end") ~}
+        {~ ("{" -> "do ") <block_body> s (("}" | <{ syntax_error("expected '}'") }>) -> " end") ~}
     }
     rule block_body {
         {:outer: =scope :} {:scope: {`'lexical'`} :}
@@ -372,18 +377,22 @@ grammar Kula {
         | <var_decl>
         | <func_decl>
         | <return_stmt>
+        | <block_stmt>
         | (<expr> &(s "}") -> "do return %1 end")
         | <statement>
     }
     rule func {
-        {~ ("function" idsafe s "(" s <param_list> s ")" s "{"
-            {~ (s <func_body_stmt>)* s ~}
-        "}") -> make_func ~}
+        {~ ("function" idsafe s
+        "(" s <param_list> s (")" | <{ syntax_error("expected ')'") }>) s "{"
+            {~ <func_body> s ~}
+        ("}" | <{ syntax_error("expected '}'") }>))
+        -> make_func ~}
     }
     rule package_decl {
         "package" idsafe s (<qname> -> quote) s "{"
             {~ (s <main_body_stmt>)* s ~}
-        "}" -> '__package(self,%1,function(self) %2 end);'
+        ("}" | <{ syntax_error("expected '}'") }>)
+        -> '__package(self,%1,function(self) %2 end);'
     }
     rule class_decl {
         "class" idsafe s <ident> s
@@ -528,7 +537,11 @@ grammar Kula {
         "(" s ( <expr_list> | {`""`} ) s ")"
     }
     rule member_expr {
-        {~ s ({"."} -> ":") (s <ident> -> "__get_%1()") | ({"::"} -> ".") s <ident> ~}
+        {~
+        s ({"."}  -> ":")(s <ident> -> "__get_%1()")
+        | ({"::"} -> ".") s <ident>
+        | ({"::"} -> "" ) s "[" s <expr> s "]"
+        ~}
     }
     rule method_expr {
         {~ s ({"."} -> ":" | {"::"} -> ".") (s <call_expr> -> "%1(%2)") ~}
@@ -644,7 +657,7 @@ grammar Kula {
         {~ (<call_expr>|<primary>) <bind_member> | (<ident> -> "%1=%%s") ~}
     }
     rule bind_member {
-        | (<bind_slot>|<bind_name>|<bind_item>) &(s (<bind_binop>|"="|","))
+        | (<bind_slot>|<bind_name>|<bind_late>|<bind_item>) &(s (<bind_binop>|"="|","))
         | (<method_expr>|<member_expr>) <bind_member>
     }
     rule bind_slot {
@@ -652,6 +665,9 @@ grammar Kula {
     }
     rule bind_item {
         {~ ({"["} -> ":") (s <expr> -> "__setitem(%1,%%s)") ({"]"} -> "") ~}
+    }
+    rule bind_late {
+        {~ ({"::"} -> "") ({~ s "[" s <expr> s "]" ~} -> '%1=%%s') ~}
     }
     rule bind_name {
         {~ ({"::"} -> ".") (s <ident> -> "%1=%%s") ~}

@@ -14,7 +14,7 @@ __class = function(into, name, _from, _with, body) {
     _class::__from = _from
 
     var queue  = newtable(unpack(_from))
-    while #queue > 0 {
+    while  #queue > 0 {
         var base = table::remove(queue, 1)
         if getmetatable(base) != Class {
             error("TypeError: ${base} is not a Class", 2)
@@ -32,9 +32,9 @@ __class = function(into, name, _from, _with, body) {
     }
 
     _class::__index = _class
-    _class::__apply = function(self, ...args)
+    _class::__apply = function(self, ...args) {
         var obj = setmetatable(newtable(), self)
-        if rawget(self, '__init') ~= nil {
+        if rawget(self, '__init') != nil {
             var ret = obj.__init(...args)
             if ret != nil {
                 return ret
@@ -46,7 +46,7 @@ __class = function(into, name, _from, _with, body) {
     setmetatable(_class, Class)
 
     if _with {
-        for i=1, #_with do
+        for i=1, #_with {
             _with::[i].compose(_class)
         }
     }
@@ -89,7 +89,7 @@ __method = function(into, name, code) {
         }
     }
     into::[setter] = function(obj, code) {
-        method(obj, name, code)
+        __method(obj, name, code)
     }
 }
 __has = function(into, name, default) {
@@ -108,9 +108,9 @@ __has = function(into, name, default) {
     }
 }
 __grammar = function(into, name, body) {
-   var gram = { }
+   var gram = newtable()
    var patt
-   function gram::match(self, ...args)
+   function gram::match(self, ...args) {
       return patt.match(...args)
    }
    body(gram)
@@ -124,6 +124,7 @@ __grammar = function(into, name, body) {
       grmr::[1] = rawget(gram, 1) || '__init'
       patt = __patt::P(grmr)
    }
+
    into::[name] = gram
 }
 __rule = function(into, name, patt) {
@@ -134,7 +135,7 @@ __rule = function(into, name, patt) {
    var rule_name = '__rule_'~name
    into::['__get_'~name] = function(self) {
       var _rule = rawget(self, rule_name)
-      if _rule == nil then
+      if _rule == nil {
          var grmr = newtable()
          for k,v in pairs(self) {
             if __patt::type(v) == 'pattern' {
@@ -155,15 +156,15 @@ __patt = require("lpeg")
    __patt::Ch = function(patt) { return __patt::Ct(patt) / capt_hash }
 
    function capt_array(tab) { return Array(unpack(tab)) }
-   __patt::Ca = function(patt) { return __patt.Ct(patt) / capt_array }
+   __patt::Ca = function(patt) { return __patt::Ct(patt) / capt_array }
 
    var predef = newtable()
 
-   predef.nl  = __patt::P("\n")
-   predef.pos = __patt::Cp()
+   predef::nl  = __patt::P("\n")
+   predef::pos = __patt::Cp()
 
    var any = __patt::P(1)
-   __patt.locale(predef)
+   __patt::locale(predef)
 
    predef::a = predef::alpha
    predef::c = predef::cntrl
@@ -202,7 +203,7 @@ __unit = function(main, ...args) {
    return __package(_G, "__main", main, args)
 }
 
-__package = function(into, name, body, args)
+__package = function(into, name, body, args) {
    var path = newtable()
    for frag in name.gmatch("([^%.]+)") {
       path::[#path + 1] = frag
@@ -288,7 +289,7 @@ __load = function(_from) {
 
 __op_as     = setmetatable
 __op_typeof = getmetatable
-__op_yield  = coroutine::yield
+__op_yield  = coroutine::['yield']
 
 __op_in = function(key, obj) {
    return (rawget(obj, key) || rawget(getmetatable(obj), key)) != nil
@@ -306,7 +307,7 @@ __op_like = function(this, that) {
 }
 __op_spread = function(a) {
    var __spread = rawget(getmetatable(a), '__spread')
-   if __spread then return __spread(a) end
+   if __spread { return __spread(a) }
    return unpack(a)
 }
 __op_each = function(a, ...args) {
@@ -348,9 +349,9 @@ __op_bnot = function(a) {
 
 Type = newtable()
 Type::__name = 'Type'
-Type::__call = function(self, ...args) {
-   return self.__apply(...args)
-}
+Type::__call = loadstring('''
+   return (...).__apply(...)
+''')
 Type::isa = function(self, that) {
    return getmetatable(self) == that
 }
@@ -554,7 +555,7 @@ Range::__index = Range
 Range::__apply = function(self, min, max, inc) {
    min = assert(tonumber(min), "range min is not a number")
    max = assert(tonumber(max), "range max is not a number")
-   inc = assert(tonumber(inc or 1), "range inc is not a number")
+   inc = assert(tonumber(inc || 1), "range inc is not a number")
    return setmetatable(newtable(min, max, inc), self)
 }
 Range::__each = function(self) {
