@@ -152,11 +152,29 @@ __rule = function(into, name, patt) {
 
 __patt = require("lpeg")
 {
-   function capt_hash(tab) { return Hash(tab) }
-   __patt::Ch = function(patt) { return __patt::Ct(patt) / capt_hash }
+   function make_capt_hash(init) {
+      return function(tab) {
+         for k,v in init {
+            if tab::[k] == nil { tab::[k] = v }
+         }
+         return tab as Hash
+      }
+   }
+   function make_capt_array(init) {
+      return function(tab) {
+         for i=1, #init {
+            if tab::[i] == nil { tab::[i] = init::[i] }
+         }
+         return tab as Array
+      }
+   }
 
-   function capt_array(tab) { return Array(unpack(tab)) }
-   __patt::Ca = function(patt) { return __patt::Ct(patt) / capt_array }
+   __patt::Ch = function(patt,init) {
+      return __patt::Ct(patt) / make_capt_hash(init)
+   }
+   __patt::Ca = function(patt,init) {
+      return __patt::Ct(patt) / make_capt_array(init)
+   }
 
    var predef = newtable()
 
@@ -1388,8 +1406,13 @@ grammar Kula {
     var prod_oper = / "->" | "~>" | "=>" /
 
     rule rule_suffix {
-        ({~ <rule_prefix> (&(s prod_oper) s)? ~}
-        {: {prod_oper} {~ s <term> ~} :}*) ~> function(a,o,b) {
+        | ({~ <rule_prefix> (&(s '->') s)? ~} {: '->' {~ s <array> ~} :}*) ~> function(a,b) {
+            return "__patt.Ca(%s,%s)".format(a,b)
+        }
+        | ({~ <rule_prefix> (&(s '->') s)? ~} {: '->' {~ s <hash> ~} :}*) ~> function(a,b) {
+            return "__patt.Ch(%s,%s)".format(a,b)
+        }
+        | ({~ <rule_prefix> (&(s prod_oper) s)? ~} {: {prod_oper} {~ s <term> ~} :}*) ~> function(a,o,b) {
             if o == "=>" {
                 return '__patt.Cmt(%s,%s)'.format(a,b)
             }
@@ -1538,3 +1561,12 @@ var run = function(...args) {
 
 if arg && arg::[1] { run(unpack(arg)) }
 
+var e = '''
+    grammar G {
+        rule a {
+            { ("a" | "b")+ } -> [ ]
+        }
+    }
+    print(G.match("aab"))
+'''
+print(Kula.match(e))
