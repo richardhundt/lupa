@@ -697,7 +697,7 @@ __grammar(self,"Kula",function(self)
         + __patt.P(("nil")) + __patt.P(("true")) + __patt.P(("false")) + __patt.P(("typeof")) + __patt.P(("return")) + __patt.P(("as"))
         + __patt.P(("for")) + __patt.P(("throw")) + __patt.P(("method")) + __patt.P(("has")) + __patt.P(("from")) + __patt.P(("break"))
         + __patt.P(("continue")) + __patt.P(("package")) + __patt.P(("import")) + __patt.P(("try")) + __patt.P(("catch"))
-        + __patt.P(("finally")) + __patt.P(("if")) + __patt.P(("else")) + __patt.P(("yield")) + __patt.P(("grammar"))
+        + __patt.P(("finally")) + __patt.P(("if")) + __patt.P(("else")) + __patt.P(("yield")) + __patt.P(("grammar")) + __patt.P(("rule"))
     )* idsafe );
 
     local prec = Hash({
@@ -890,6 +890,7 @@ __grammar(self,"Kula",function(self)
         + __patt.V("func_decl")
         + __patt.V("class_decl")
         + __patt.V("trait_decl")
+        + __patt.V("object_decl")
         + __patt.V("grammar_decl")
         + __patt.V("package_decl")
         + __patt.V("import_stmt")
@@ -936,10 +937,12 @@ __grammar(self,"Kula",function(self)
     );
     local expect_close_brace = __patt.P( __patt.P(("}")) + ( syntax_error(("expected '}'")) ) );
     __rule(self,"try_stmt",
+        __patt.Cs(
         __patt.P(("try"))* idsafe* s* __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s )*
         (__patt.P(("}")) + ( syntax_error(("expected '}'")) ))*
         ((s* __patt.P(("catch"))* idsafe* s* __patt.P(("("))* s* __patt.V("ident")* s* __patt.P((")"))* s* __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s )* __patt.P(("}")))^-1
         )/( make_try_stmt)
+        )
     );
     __rule(self,"import_stmt",
         __patt.Cs( ((
@@ -1001,7 +1004,7 @@ __grammar(self,"Kula",function(self)
         __patt.Cg( __patt.Cb("old_set_return"),"set_return")
     );
     __rule(self,"slot_decl",
-        __patt.Cs( ((__patt.P(("has"))* idsafe* s* __patt.V("ident")* (s* __patt.P(("="))* s* (__patt.V("expr") + __patt.Cc((""))))^-1* semicol)
+        __patt.Cs( ((__patt.P(("has"))* idsafe* s* __patt.V("ident")* (s* __patt.P(("="))* s* __patt.V("expr") + __patt.Cc(("")))* semicol)
             )/( ("__has(self,\"%1\",function(self) return %2 end);"))
         )
     );
@@ -1055,6 +1058,13 @@ __grammar(self,"Kula",function(self)
         __patt.P(("{"))* __patt.Cs( __patt.V("class_body")* s )* (__patt.P(("}"))
         )/( make_trait_decl)
     );
+    __rule(self,"object_decl",
+        __patt.P(("object"))* idsafe* s* __patt.V("ident")* s*
+        (__patt.V("class_from") + __patt.Cc(("")))* s*
+        (__patt.V("class_with") + __patt.Cc(("")))* s*
+        __patt.P(("{"))* __patt.Cs( __patt.V("class_body")* s )* (__patt.P(("}"))
+        )/( ("__object(self,\"%1\",{%2},{%3},function(self,super) %4 end);"))
+    );
     __rule(self,"class_body",
         __patt.Cg( __patt.Cb("scope"),"outer")* __patt.Cg( __patt.Cc(("lexical")),"scope")*
         (s* __patt.V("class_body_stmt"))^0*
@@ -1071,6 +1081,10 @@ __grammar(self,"Kula",function(self)
         + __patt.V("slot_decl")
         + __patt.V("func_decl")
         + __patt.V("meth_decl")
+        + __patt.V("class_decl")
+        + __patt.V("trait_decl")
+        + __patt.V("object_decl")
+        + __patt.V("grammar_decl")
         + __patt.V("statement")
     );
     __rule(self,"rest",
@@ -1104,13 +1118,15 @@ __grammar(self,"Kula",function(self)
         __patt.Cs(
             (((__patt.P(("\"\"\"")) )/( ("\"")))* (
                 __patt.V("string_expr")
-                + __patt.Cs( (__patt.P(("\\\\")) + __patt.P(("\\\"")) + (__patt.P(("\\$")))/(("$")) + -(__patt.P(("\"\"\"")) + __patt.V("string_expr"))*__patt.P(1))^1 )
-            )^0* ((__patt.P(("\"\"\"")) )/( ("\""))))
+                + __patt.Cs( (__patt.P(("\\\\")) + __patt.P(("\\\"")) + (__patt.P(("\\$")))/(("$")) + (__patt.P(("\n")) )/( ("\\\n")) + -(__patt.P(("\"\"\"")) + __patt.V("string_expr"))*__patt.P(1))^1 )
+            )^0*
+            ((__patt.P(("\"\"\"")) )/( ("\""))))
             +
             (__patt.P(("\""))* (
                 __patt.V("string_expr")
-                + __patt.Cs( (__patt.P(("\\\\")) + __patt.P(("\\\"")) + (__patt.P(("\\$")))/(("$")) + -(__patt.P(("\"")) + __patt.V("string_expr"))*__patt.P(1))^1 )
-            )^0* __patt.P(("\"")))
+                + __patt.Cs( (__patt.P(("\\\\")) + __patt.P(("\\\"")) + (__patt.P(("\\$")))/(("$")) + (__patt.P(("\n")) )/( ("\\\n")) + -(__patt.P(("\"")) + __patt.V("string_expr"))*__patt.P(1))^1 )
+            )^0*
+            __patt.P(("\"")))
         )
     );
     __rule(self,"astring",
@@ -1123,7 +1139,7 @@ __grammar(self,"Kula",function(self)
         ) )/( quote)
     );
     __rule(self,"string_expr",
-        __patt.Cs( ((__patt.P(("${")) )/( ("")))* s* ((__patt.V("expr") )/( ("\"..tostring(%1)..\"")))* s* ((__patt.P(("}")) )/( (""))) )
+        __patt.Cs( ((__patt.P(("${")) )/( ("\"")))* ((__patt.Cs( s* __patt.V("expr")* s ) )/( ("..tostring(%1)..")))* ((__patt.P(("}")) )/( ("\""))) )
     );
     __rule(self,"vnil",
         __patt.Cs( __patt.C( __patt.P(("nil")) )* (idsafe )/( ("(nil)")) )
@@ -1206,14 +1222,16 @@ __grammar(self,"Kula",function(self)
         __patt.Cs( __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0 )
     );
     __rule(self,"expr",
-        __patt.Cs( __patt.V("infix_expr") + __patt.V("prefix_expr") )
+        __patt.Cs( (__patt.V("infix_expr") + __patt.V("prefix_expr"))* (
+            s* ((__patt.P(("?")) )/( (" and ")))* s* __patt.V("expr")* s* ((__patt.P((":")) )/( (" or ")))* s* __patt.V("expr")
+        )^-1 )
     );
 
     --/*
     local binop_patt = __patt.P((
         __patt.P(("+")) + __patt.P(("-")) + __patt.P(("~")) + __patt.P(("^^")) + __patt.P(("*")) + __patt.P(("/")) + __patt.P(("%")) + __patt.P(("^")) + __patt.P((">>>")) + __patt.P((">>")) + __patt.P(("<<"))
         + __patt.P(("||")) + __patt.P(("&&")) + __patt.P(("|")) + __patt.P(("&")) + __patt.P(("==")) + __patt.P(("!=")) + __patt.P((">="))+ __patt.P(("<=")) + __patt.P(("<")) + __patt.P((">"))
-        + __patt.P(("in"))* idsafe + __patt.P(("like"))* idsafe
+        + (__patt.P(("as")) + __patt.P(("in")))* idsafe
     ));
 
     __rule(self,"infix_expr",
@@ -1255,7 +1273,7 @@ __grammar(self,"Kula",function(self)
         <{ make_infix_expr(/"<="|">="|"<"|">"/, /<shift_expr>/ }>
     }
     rule shift_expr {
-        <{ make_infix_expr(/">>>"|">>"|"<<"/, /<add_expr>/ }>
+        <{ make_infix_expr(/">>>"|">>"|"<<"|("as"|"in") idsafe/, /<add_expr>/ }>
     }
     rule add_expr {
         <{ make_infix_expr(/"+"|"-"|"~"/, /<mul_expr>/ }>
@@ -1285,7 +1303,9 @@ __grammar(self,"Kula",function(self)
         __patt.Cs( ((__patt.V("bind_expr") + __patt.V("bind_binop_expr")) )/( ("%1;"))* semicol )
     );
     __rule(self,"bind_expr",
-        __patt.Cs( __patt.V("bind_list")* s* __patt.P(("="))* s* (__patt.Cg( __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0,nil) )/( fold_bind) )
+        __patt.Cs( __patt.V("bind_list")* s* __patt.P(("="))* s* (__patt.Cg(
+             __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0
+            + (syntax_error(("bad right hand <expr>"))),nil) )/( fold_bind) )
      );
     __rule(self,"bind_binop",
         __patt.C( __patt.P(("+")) + __patt.P(("-")) + __patt.P(("*")) + __patt.P(("/")) + __patt.P(("%")) + __patt.P(("||")) + __patt.P(("|"))+ __patt.P(("&&"))
@@ -1355,7 +1375,7 @@ __grammar(self,"Kula",function(self)
         (__patt.Ca( __patt.Cs( s* __patt.V("rule_suffix") )^1 ) )/( function(a)  do return a:concat(("*")) end  end)
     );
     __rule(self,"rule_rep",
-        __patt.Cs( (__patt.C(__patt.P(("+"))))/(("^1"))+(__patt.C(__patt.P(("*"))))/(("^0"))+(__patt.C(__patt.P(("?"))))/(("^-1"))+__patt.C(__patt.P(("^"))*s*(__patt.P(("+"))+__patt.P(("-")))*s*(__patt.R("09"))^1) )
+        __patt.Cs( (__patt.C(__patt.P(("+"))))/(("^1"))+(__patt.C(__patt.P(("*"))))/(("^0"))+(__patt.C(__patt.P(("?"))))/(("^-1"))+__patt.C(__patt.P(("^"))*s*(__patt.P(("+"))+__patt.P(("-")))^-1*s*(__patt.R("09"))^1) )
     );
     __rule(self,"rule_prefix",
         __patt.Cs( (((__patt.C(__patt.P(("&"))) )/( ("#"))) + ((__patt.C(__patt.P(("!"))) )/( ("-"))))* (__patt.Cs( s* __patt.V("rule_prefix") ) )/( ("%1%2"))

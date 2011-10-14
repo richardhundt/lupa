@@ -697,7 +697,7 @@ grammar Kula {
         | "nil" | "true" | "false" | "typeof" | "return" | "as"
         | "for" | "throw" | "method" | "has" | "from" | "break"
         | "continue" | "package" | "import" | "try" | "catch"
-        | "finally" | "if" | "else" | "yield" | "grammar"
+        | "finally" | "if" | "else" | "yield" | "grammar" | "rule"
     ) idsafe /
 
     var prec = {
@@ -890,6 +890,7 @@ grammar Kula {
         | <func_decl>
         | <class_decl>
         | <trait_decl>
+        | <object_decl>
         | <grammar_decl>
         | <package_decl>
         | <import_stmt>
@@ -936,10 +937,12 @@ grammar Kula {
     }
     var expect_close_brace = / "}" | <{ syntax_error("expected '}'") }> /
     rule try_stmt {
+        {~
         "try" idsafe s "{" {~ <lambda_body> s ~}
         ("}" | <{ syntax_error("expected '}'") }>)
         (s "catch" idsafe s "(" s <ident> s ")" s "{" {~ <lambda_body> s ~} "}")?
         -> make_try_stmt
+        ~}
     }
     rule import_stmt {
         {~ (
@@ -1001,7 +1004,7 @@ grammar Kula {
         {:set_return: =old_set_return :}
     }
     rule slot_decl {
-        {~ ("has" idsafe s <ident> (s "=" s (<expr> | {`""`}))? semicol)
+        {~ ("has" idsafe s <ident> (s "=" s <expr> | {`""`}) semicol)
             -> '__has(self,"%1",function(self) return %2 end);'
         ~}
     }
@@ -1055,6 +1058,13 @@ grammar Kula {
         "{" {~ <class_body> s ~} "}"
         -> make_trait_decl
     }
+    rule object_decl {
+        "object" idsafe s <ident> s
+        (<class_from> | {`""`}) s
+        (<class_with> | {`""`}) s
+        "{" {~ <class_body> s ~} "}"
+        -> '__object(self,"%1",{%2},{%3},function(self,super) %4 end);'
+    }
     rule class_body {
         {:outer: =scope :} {:scope: {`'lexical'`} :}
         (s <class_body_stmt>)*
@@ -1071,6 +1081,10 @@ grammar Kula {
         | <slot_decl>
         | <func_decl>
         | <meth_decl>
+        | <class_decl>
+        | <trait_decl>
+        | <object_decl>
+        | <grammar_decl>
         | <statement>
     }
     rule rest {
@@ -1104,13 +1118,15 @@ grammar Kula {
         {~
             (('"""' -> '"') (
                 <string_expr>
-                | {~ ('\\' | '\"' | '\$'->'$' | !('"""' | <string_expr>).)+ ~}
-            )* ('"""' -> '"'))
+                | {~ ('\\' | '\"' | '\$'->'$' | "\n" -> "\\\n" | !('"""' | <string_expr>).)+ ~}
+            )*
+            ('"""' -> '"'))
             |
             ('"' (
                 <string_expr>
-                | {~ ('\\' | '\"' | '\$'->'$' | !('"' | <string_expr>).)+ ~}
-            )* '"')
+                | {~ ('\\' | '\"' | '\$'->'$' | "\n" -> "\\\n" | !('"' | <string_expr>).)+ ~}
+            )*
+            '"')
         ~}
     }
     rule astring {
@@ -1123,7 +1139,7 @@ grammar Kula {
         ~} -> quote
     }
     rule string_expr {
-        {~ ("${" -> '') s (<expr> -> '"..tostring(%1).."') s ("}" -> '') ~}
+        {~ ("${" -> '"') ({~ s <expr> s ~} -> '..tostring(%1)..') ("}" -> '"') ~}
     }
     rule vnil {
         {~ { "nil" } idsafe -> '(nil)' ~}
@@ -1206,14 +1222,16 @@ grammar Kula {
         {~ <expr> (s "," s <expr>)* ~}
     }
     rule expr {
-        {~ <infix_expr> | <prefix_expr> ~}
+        {~ (<infix_expr> | <prefix_expr>) (
+            s ("?" -> ' and ') s <expr> s (":" -> ' or ') s <expr>
+        )? ~}
     }
 
     ///*
     var binop_patt = /(
         "+" | "-" | "~" | "^^" | "*" | "/" | "%" | "^" | ">>>" | ">>" | "<<"
         | "||" | "&&" | "|" | "&" | "==" | "!=" | ">="| "<=" | "<" | ">"
-        | "in" idsafe | "like" idsafe
+        | ("as" | "in") idsafe
     )/
 
     rule infix_expr {
@@ -1255,7 +1273,7 @@ grammar Kula {
         <{ make_infix_expr(/"<="|">="|"<"|">"/, /<shift_expr>/ }>
     }
     rule shift_expr {
-        <{ make_infix_expr(/">>>"|">>"|"<<"/, /<add_expr>/ }>
+        <{ make_infix_expr(/">>>"|">>"|"<<"|("as"|"in") idsafe/, /<add_expr>/ }>
     }
     rule add_expr {
         <{ make_infix_expr(/"+"|"-"|"~"/, /<mul_expr>/ }>
@@ -1285,7 +1303,10 @@ grammar Kula {
         {~ (<bind_expr> | <bind_binop_expr>) -> '%1;' semicol ~}
     }
     rule bind_expr {
-        {~ <bind_list> s "=" s {: <expr> (s "," s <expr>)* :} -> fold_bind ~}
+        {~ <bind_list> s "=" s {:
+            | <expr> (s "," s <expr>)*
+            | <{syntax_error("bad right hand <expr>")}>
+        :} -> fold_bind ~}
      }
     rule bind_binop {
         { "+" | "-" | "*" | "/" | "%" | "||" | "|"| "&&"
@@ -1356,7 +1377,7 @@ grammar Kula {
         {@ {~ s <rule_suffix> ~}+ @} -> function(a) { a.concat('*') }
     }
     rule rule_rep {
-        {~ {"+"}->"^1"|{"*"}->"^0"|{"?"}->"^-1"|{"^"s("+"|"-")s[0-9]+} ~}
+        {~ {"+"}->"^1"|{"*"}->"^0"|{"?"}->"^-1"|{"^"s("+"|"-")?s[0-9]+} ~}
     }
     rule rule_prefix {
         {~ (({"&"} -> "#") | ({"!"} -> "-")) {~ s <rule_prefix> ~} -> '%1%2'
