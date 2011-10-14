@@ -877,7 +877,7 @@ __grammar(self,"Kula",function(self)
      end
 
     __rule(self,"__init",
-        __patt.Cs( __patt.V("unit") )* (-__patt.P(1) + (syntax_error(("expected <EOF>"))))
+        __patt.Cs( __patt.V("unit") )* (-__patt.P(1) + __patt.P(syntax_error(("expected <EOF>"))))
     );
     __rule(self,"unit",
         __patt.Cg( __patt.Cc((false)),"set_return")*
@@ -935,11 +935,11 @@ __grammar(self,"Kula",function(self)
         )
         )
     );
-    local expect_close_brace = __patt.P( __patt.P(("}")) + ( syntax_error(("expected '}'")) ) );
+    local expect_close_brace = __patt.P( __patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) ) );
     __rule(self,"try_stmt",
         __patt.Cs(
         __patt.P(("try"))* idsafe* s* __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s )*
-        (__patt.P(("}")) + ( syntax_error(("expected '}'")) ))*
+        (__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) ))*
         ((s* __patt.P(("catch"))* idsafe* s* __patt.P(("("))* s* __patt.V("ident")* s* __patt.P((")"))* s* __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s )* __patt.P(("}")))^-1
         )/( make_try_stmt)
         )
@@ -977,15 +977,15 @@ __grammar(self,"Kula",function(self)
     __rule(self,"loop_body",
         ((__patt.P(("{")) )/( (" do local __break repeat ")))* __patt.V("block_body")* s*
         (
-            ((__patt.P(("}")) + ( syntax_error(("expected '}'")) ))
+            ((__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) ))
             )/( (" until true if __break then break end end "))
         )
     );
     __rule(self,"block",
-        __patt.Cs( ((__patt.P(("{")) )/( ("")))* __patt.V("block_body")* s* (((__patt.P(("}")) + ( syntax_error(("expected '}'")) )) )/( (""))) )
+        __patt.Cs( ((__patt.P(("{")) )/( ("")))* __patt.V("block_body")* s* (((__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) )) )/( (""))) )
     );
     __rule(self,"block_stmt",
-        __patt.Cs( ((__patt.P(("{")) )/( ("do ")))* __patt.V("block_body")* s* (((__patt.P(("}")) + ( syntax_error(("expected '}'")) )) )/( (" end"))) )
+        __patt.Cs( ((__patt.P(("{")) )/( ("do ")))* __patt.V("block_body")* s* (((__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) )) )/( (" end"))) )
     );
     __rule(self,"block_body",
         __patt.Cg( __patt.Cb("scope"),"outer")* __patt.Cg( __patt.Cc(("lexical")),"scope")*
@@ -1033,15 +1033,15 @@ __grammar(self,"Kula",function(self)
     );
     __rule(self,"func",
         __patt.Cs( ((__patt.P(("function"))* idsafe* s*
-        __patt.P(("("))* s* __patt.V("param_list")* s* (__patt.P((")")) + ( syntax_error(("expected ')'")) ))* s* __patt.P(("{"))*
+        __patt.P(("("))* s* __patt.V("param_list")* s* (__patt.P((")")) + __patt.P( syntax_error(("expected ')'")) ))* s* __patt.P(("{"))*
             __patt.Cs( __patt.V("func_body")* s )*
-        (__patt.P(("}")) + ( syntax_error(("expected '}'")) )))
+        (__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) )))
         )/( make_func) )
     );
     __rule(self,"package_decl",
         __patt.P(("package"))* idsafe* s* ((__patt.V("qname") )/( quote))* s* __patt.P(("{"))*
             __patt.Cs( (s* __patt.V("main_body_stmt"))^0* s )*
-        ((__patt.P(("}")) + ( syntax_error(("expected '}'")) ))
+        ((__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) ))
         )/( ("__package(self,%1,function(self) %2 end);"))
     );
     __rule(self,"class_decl",
@@ -1112,34 +1112,34 @@ __grammar(self,"Kula",function(self)
         __patt.C( __patt.V("hexadec") + __patt.V("decimal") )
     );
     __rule(self,"string",
-        __patt.Cs( ((__patt.V("qstring") + __patt.V("astring")) )/( ("(%1)")) )
+        (__patt.Cs( (__patt.V("qstring") + __patt.V("astring")) ) )/( ("(%1)"))
+    );
+    __rule(self,"special",
+        __patt.Cs(
+         (__patt.P(("\n")) )/( ("\\\n"))
+        + (__patt.P(("\\$")) )/( ("$"))
+        + __patt.P(("\\\\"))
+        + __patt.P(("\\"))* __patt.P(1)
+        )
     );
     __rule(self,"qstring",
-        __patt.Cs(
-            (((__patt.P(("\"\"\"")) )/( ("\"")))* (
-                __patt.V("string_expr")
-                + __patt.Cs( (__patt.P(("\\\\")) + __patt.P(("\\\"")) + (__patt.P(("\\$")))/(("$")) + (__patt.P(("\n")) )/( ("\\\n")) + -(__patt.P(("\"\"\"")) + __patt.V("string_expr"))*__patt.P(1))^1 )
-            )^0*
-            ((__patt.P(("\"\"\"")) )/( ("\""))))
-            +
-            (__patt.P(("\""))* (
-                __patt.V("string_expr")
-                + __patt.Cs( (__patt.P(("\\\\")) + __patt.P(("\\\"")) + (__patt.P(("\\$")))/(("$")) + (__patt.P(("\n")) )/( ("\\\n")) + -(__patt.P(("\"")) + __patt.V("string_expr"))*__patt.P(1))^1 )
-            )^0*
-            __patt.P(("\"")))
-        )
+         (__patt.P(("\"\"\"")) )/( ("\""))* __patt.Cs( (
+             __patt.V("string_expr")
+            + __patt.Cs( (__patt.V("special") + -(__patt.V("string_expr") + __patt.P(("\"\"\"")))* __patt.P(1))^1 )
+        )^0 )* ((__patt.P(("\"\"\"")) )/( ("\"")) + __patt.P( syntax_error(("expected '\"\"\"'")) ))
+        + __patt.P(("\""))* __patt.Cs( (
+             __patt.V("string_expr")
+            + __patt.Cs( (__patt.V("special") + -(__patt.V("string_expr") + __patt.P(("\"")))* __patt.P(1))^1 )
+        )^0 )* (__patt.P(("\"")) + __patt.P( syntax_error(("expected '\"'")) ))
     );
     __rule(self,"astring",
         (__patt.Cs(
-            ((__patt.P(("'''")) )/( ("")))*
-            (__patt.P(("\\\\")) + __patt.P(("\\'")) + (-__patt.P(("'''"))* __patt.P(1)))^0*
-            ((__patt.P(("'''")) )/( ("")))
-            +
-            ((__patt.P(("'")) )/( ("")))* (__patt.P(("\\\\")) + __patt.P(("\\'")) + (-__patt.P(("'"))* __patt.P(1)))^0* ((__patt.P(("'")) )/( ("")))
+             ((__patt.P(("'''")) )/( ("")))* (__patt.P(("\\\\")) + __patt.P(("\\'")) + (-__patt.P(("'''"))* __patt.P(1)))^0* ((__patt.P(("'''")) )/( ("")))
+            + ((__patt.P(("'"))   )/( ("")))* (__patt.P(("\\\\")) + __patt.P(("\\'")) + (-__patt.P(("'"))*   __patt.P(1)))^0* ((__patt.P(("'"))   )/( ("")))
         ) )/( quote)
     );
     __rule(self,"string_expr",
-        __patt.Cs( ((__patt.P(("${")) )/( ("\"")))* ((__patt.Cs( s* __patt.V("expr")* s ) )/( ("..tostring(%1)..")))* ((__patt.P(("}")) )/( ("\""))) )
+        ((__patt.P(("${")) )/( ("\"..")))* __patt.Cs( s* ((__patt.V("expr") )/( ("tostring(%1)")))* s )* ((__patt.P(("}")) )/( ("..\"")))
     );
     __rule(self,"vnil",
         __patt.Cs( __patt.C( __patt.P(("nil")) )* (idsafe )/( ("(nil)")) )
@@ -1157,9 +1157,9 @@ __grammar(self,"Kula",function(self)
     );
     __rule(self,"array",
         __patt.Cs(
-            ((__patt.C(__patt.P(("["))) )/( ("Array(")))* s*
+            ((__patt.P(("[")) )/( ("Array(")))* s*
             (__patt.V("array_elements") + __patt.Cc(("")))* s*
-            ((__patt.C(__patt.P(("]"))) )/( (")")) + (syntax_error(("expected ']'"))))
+            ((__patt.P(("]")) )/( (")")) + __patt.P(syntax_error(("expected ']'"))))
         )
     );
     __rule(self,"array_elements",
@@ -1169,14 +1169,14 @@ __grammar(self,"Kula",function(self)
         __patt.Cs(
             ((__patt.C(__patt.P(("{"))) )/( ("Hash({")))* s*
             (__patt.V("hash_pairs") + __patt.Cc(("")))* s*
-            ((__patt.C(__patt.P(("}"))) )/( ("})")) + (syntax_error(("expected '}'"))))
+            ((__patt.C(__patt.P(("}"))) )/( ("})")) + __patt.P(syntax_error(("expected '}'"))))
         )
     );
     __rule(self,"hash_pairs",
         __patt.V("hash_pair")* (s* __patt.P((","))* s* __patt.V("hash_pair"))^0* (s* __patt.P((",")))^-1
     );
     __rule(self,"hash_pair",
-        (__patt.V("ident") + __patt.P(("["))* s* __patt.V("expr")* s* (__patt.P(("]")) + (syntax_error(("expected ']'")))))* s*
+        (__patt.V("ident") + __patt.P(("["))* s* __patt.V("expr")* s* (__patt.P(("]")) + __patt.P(syntax_error(("expected ']'")))))* s*
         __patt.P(("="))* s* __patt.V("expr")
     );
     __rule(self,"primary",
@@ -1191,19 +1191,19 @@ __grammar(self,"Kula",function(self)
         + __patt.V("hash")
         + __patt.V("func")
         + __patt.V("pattern")
-        + __patt.P(("("))* s* __patt.V("expr")* s* __patt.P((")"))
+        + __patt.P(("("))* s* __patt.V("expr")* s* (__patt.P((")")) + __patt.P( syntax_error(("expected ')'")) ))
     );
     __rule(self,"call_expr",
         __patt.V("ident")* s* __patt.V("paren_expr")
     );
     __rule(self,"paren_expr",
-        __patt.P(("("))* s* ( __patt.V("expr_list") + __patt.Cc(("")) )* s* __patt.P((")"))
+        __patt.P(("("))* s* ( __patt.V("expr_list") + __patt.Cc(("")) )* s* (__patt.P((")")) + __patt.P( syntax_error(("expected ')'")) ))
     );
     __rule(self,"member_expr",
         __patt.Cs(
         s* ((__patt.C(__patt.P((".")))  )/( (":")))*(s* (__patt.V("ident") )/( ("__get_%1()")))
         + ((__patt.C(__patt.P(("::"))) )/( (".")))* s* __patt.V("ident")
-        + ((__patt.C(__patt.P(("::"))) )/( ("")) )* s* __patt.P(("["))* s* __patt.V("expr")* s* __patt.P(("]"))
+        + ((__patt.C(__patt.P(("::"))) )/( ("")) )* s* __patt.P(("["))* s* __patt.V("expr")* s* (__patt.P(("]")) + __patt.P( syntax_error(("expected ']'")) ))
         )
     );
     __rule(self,"method_expr",
@@ -1305,7 +1305,7 @@ __grammar(self,"Kula",function(self)
     __rule(self,"bind_expr",
         __patt.Cs( __patt.V("bind_list")* s* __patt.P(("="))* s* (__patt.Cg(
              __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0
-            + (syntax_error(("bad right hand <expr>"))),nil) )/( fold_bind) )
+            + __patt.P(syntax_error(("bad right hand <expr>"))),nil) )/( fold_bind) )
      );
     __rule(self,"bind_binop",
         __patt.C( __patt.P(("+")) + __patt.P(("-")) + __patt.P(("*")) + __patt.P(("/")) + __patt.P(("%")) + __patt.P(("||")) + __patt.P(("|"))+ __patt.P(("&&"))
@@ -1358,7 +1358,7 @@ __grammar(self,"Kula",function(self)
          __patt.V("rule_decl")
         + __patt.V("var_decl")
         + __patt.V("func_decl")
-        + #__patt.V("return_stmt")* (syntax_error(("return outside of function body")))
+        + #__patt.V("return_stmt")* __patt.P(syntax_error(("return outside of function body")))
         + __patt.V("statement")
     );
     __rule(self,"rule_decl",
@@ -1443,7 +1443,7 @@ __grammar(self,"Kula",function(self)
         __patt.Cs(
         ((__patt.P(("<")) )/( ("")))* s*
             ( (__patt.V("ident") )/( ("__patt.V(\"%1\")"))
-            + ((__patt.P(("{")) )/( ("(")))* s* __patt.V("expr")* s* ((__patt.P(("}")) )/( (")")))
+            + __patt.Cs( ((__patt.P(("{")) )/( ("__patt.P(")))* s* __patt.V("expr")* s* ((__patt.P(("}")) )/( (")"))) )
             )* s*
         ((__patt.P((">")) )/( ("")))
         + __patt.V("qname")

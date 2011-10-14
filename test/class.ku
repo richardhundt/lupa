@@ -15,3 +15,7 @@ class Point3D from Point {
     }
 }
 
+var p = Point3D()
+p.move(11,22,33)
+print(p.x, p.y, p.z)
+

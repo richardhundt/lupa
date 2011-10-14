@@ -691,7 +691,7 @@ grammar Kula {
     var idsafe  = / !(%alnum | "_") /
     var s       = / (comment | %s)* /
     var semicol = / (";" -> '')? /
-    var digits  = / (%digit "_"?)+ /
+    var digits  = / (%digit {~ "_" -> '' ~}?)+ /
     var keyword = / (
           "var" | "function" | "class" | "with" | "like" | "in"
         | "nil" | "true" | "false" | "typeof" | "return" | "as"
@@ -1109,37 +1109,37 @@ grammar Kula {
         "-"? digits ("." digits)? (("e"|"E") "-"? digits)?
     }
     rule number {
-        { <hexadec> | <decimal> }
+        {~ <hexadec> | <decimal> ~}
     }
     rule string {
-        {~ (<qstring> | <astring>) -> '(%1)' ~}
+        {~ (<qstring> | <astring>) ~} -> '(%1)'
+    }
+    rule special {
+        {~
+        | "\n" -> "\\\n"
+        | "\\$" -> "$"
+        | "\\\\"
+        | "\\" .
+        ~}
     }
     rule qstring {
-        {~
-            (('"""' -> '"') (
-                <string_expr>
-                | {~ ('\\' | '\"' | '\$'->'$' | "\n" -> "\\\n" | !('"""' | <string_expr>).)+ ~}
-            )*
-            ('"""' -> '"'))
-            |
-            ('"' (
-                <string_expr>
-                | {~ ('\\' | '\"' | '\$'->'$' | "\n" -> "\\\n" | !('"' | <string_expr>).)+ ~}
-            )*
-            '"')
-        ~}
+        | '"""' -> '"' {~ (
+            | <string_expr>
+            | {~ (<special> | !(<string_expr> | "\"\"\"") .)+ ~}
+        )* ~} ('"""' -> '"' | <{ syntax_error("expected '\"\"\"'") }>)
+        | '"' {~ (
+            | <string_expr>
+            | {~ (<special> | !(<string_expr> | "\"") .)+ ~}
+        )* ~} ('"' | <{ syntax_error("expected '\"'") }>)
     }
     rule astring {
         {~
-            ("'''" -> "")
-            ('\\' | '\'' | (!"'''" .))*
-            ("'''" -> "")
-            |
-            ("'" -> "") ('\\' | '\'' | (!"'" .))* ("'" -> "")
+            | ("'''" -> "") ('\\' | '\'' | (!"'''" .))* ("'''" -> "")
+            | ("'"   -> "") ('\\' | '\'' | (!"'"   .))* ("'"   -> "")
         ~} -> quote
     }
     rule string_expr {
-        {~ ("${" -> '"') ({~ s <expr> s ~} -> '..tostring(%1)..') ("}" -> '"') ~}
+        ('${' -> '"..') {~ s (<expr> -> 'tostring(%1)') s ~} ("}" -> '.."')
     }
     rule vnil {
         {~ { "nil" } idsafe -> '(nil)' ~}
@@ -1157,9 +1157,9 @@ grammar Kula {
     }
     rule array {
         {~
-            ({"["} -> "Array(") s
+            ("[" -> "Array(") s
             (<array_elements> | {`""`}) s
-            ({"]"} -> ")" | <{syntax_error("expected ']'")}>)
+            ("]" -> ")" | <{syntax_error("expected ']'")}>)
         ~}
     }
     rule array_elements {
@@ -1191,19 +1191,19 @@ grammar Kula {
         | <hash>
         | <func>
         | <pattern>
-        | "(" s <expr> s ")"
+        | "(" s <expr> s (")" | <{ syntax_error("expected ')'") }>)
     }
     rule call_expr {
         <ident> s <paren_expr>
     }
     rule paren_expr {
-        "(" s ( <expr_list> | {`""`} ) s ")"
+        "(" s ( <expr_list> | {`""`} ) s (")" | <{ syntax_error("expected ')'") }>)
     }
     rule member_expr {
         {~
         s ({"."}  -> ":")(s <ident> -> "__get_%1()")
         | ({"::"} -> ".") s <ident>
-        | ({"::"} -> "" ) s "[" s <expr> s "]"
+        | ({"::"} -> "" ) s "[" s <expr> s ("]" | <{ syntax_error("expected ']'") }>)
         ~}
     }
     rule method_expr {
@@ -1388,7 +1388,8 @@ grammar Kula {
     var prod_oper = / "->" | "~>" | "=>" /
 
     rule rule_suffix {
-        ({~ <rule_prefix> (&(s prod_oper) s)? ~} {: {prod_oper} {~ s <term> ~} :}*) ~> function(a,o,b) {
+        ({~ <rule_prefix> (&(s prod_oper) s)? ~}
+        {: {prod_oper} {~ s <term> ~} :}*) ~> function(a,o,b) {
             if o == "=>" {
                 return '__patt.Cmt(%s,%s)'.format(a,b)
             }
@@ -1445,7 +1446,7 @@ grammar Kula {
         {~
         ("<" -> '') s
             ( <ident> -> '__patt.V("%1")'
-            | ("{" -> "(") s <expr> s ("}" -> ")")
+            | {~ ("{" -> '__patt.P(') s <expr> s ("}" -> ")") ~}
             ) s
         (">" -> '')
         | <qname>
