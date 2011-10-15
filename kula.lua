@@ -72,7 +72,7 @@ __object=function(into,name,_from,...) local args=Array(...);
             _from[i]=getmetatable(_from[i]);
          end 
      until true if __break then break end end 
-    local anon = _class(into, (("#"))..(name), _from, __op_spread(args));
+    local anon = __class(into, (("#"))..(name), _from, __op_spread(args));
     local inst = anon();
     if into then  
         into[name]=inst;
@@ -151,12 +151,35 @@ __rule=function(into,name,patt)
  end;
 
 __patt=require(("lpeg"));
+__patt.setmaxstack(1024);
 do 
-   local function capt_hash(tab)   do return Hash(tab) end  end
-   __patt.Ch=function(patt)   do return (__patt.Ct(patt) )/( capt_hash) end  end;
+   local function make_capt_hash(init) 
+       do return function(tab) 
+         if (init )~=( (nil)) then  
+            for k,v in __op_each(init)  do local __break repeat 
+               if (tab[k] )==( (nil)) then   tab[k]=v;  end 
+             until true if __break then break end end 
+          end 
+          do return __op_as(tab , Hash) end
+       end end
+    end
+   local function make_capt_array(init) 
+       do return function(tab) 
+         if (init )~=( (nil)) then  
+            for i=1, #(init)  do local __break repeat 
+               if (tab[i] )==( (nil)) then   tab[i]=init[i];  end 
+             until true if __break then break end end 
+          end 
+          do return __op_as(tab , Array) end
+       end end
+    end
 
-   local function capt_array(tab)   do return Array(unpack(tab)) end  end
-   __patt.Ca=function(patt)   do return (__patt.Ct(patt) )/( capt_array) end  end;
+   __patt.Ch=function(patt,init) 
+       do return (__patt.Ct(patt) )/( make_capt_hash(init)) end
+    end;
+   __patt.Ca=function(patt,init) 
+       do return (__patt.Ct(patt) )/( make_capt_array(init)) end
+    end;
 
    local predef = newtable();
 
@@ -626,6 +649,14 @@ debug.setmetatable((true), Boolean);
 Function=setmetatable(newtable(), Type);
 Function.__name=("Function");
 Function.__index=Function;
+Function.__apply=function(self,code,fenv) 
+    code=Kula:match(code);
+    local func = assert(loadstring(code, ("=eval")));
+    if fenv then  
+        setfenv(func, fenv);
+     end 
+     do return func end
+ end;
 Function.__get_gen=function(self) 
     do return coroutine.wrap(self) end
  end;
@@ -691,7 +722,7 @@ __grammar(self,"Kula",function(self)
     local idsafe  = __patt.P( -(__patt.Def("alnum") + __patt.P(("_"))) );
     local s       = __patt.P( (comment + __patt.Def("s"))^0 );
     local semicol = __patt.P( ((__patt.P((";")) )/( ("")))^-1 );
-    local digits  = __patt.P( (__patt.Def("digit")* __patt.P(("_"))^-1)^1 );
+    local digits  = __patt.P( (__patt.Def("digit")* __patt.Cs( (__patt.P(("_")) )/( ("")) )^-1)^1 );
     local keyword = __patt.P( (
           __patt.P(("var")) + __patt.P(("function")) + __patt.P(("class")) + __patt.P(("with")) + __patt.P(("like")) + __patt.P(("in"))
         + __patt.P(("nil")) + __patt.P(("true")) + __patt.P(("false")) + __patt.P(("typeof")) + __patt.P(("return")) + __patt.P(("as"))
@@ -906,10 +937,12 @@ __grammar(self,"Kula",function(self)
         + __patt.V("continue_stmt")
         + __patt.V("block_stmt")
         + __patt.V("bind_stmt")
-        + __patt.V("expr_stmt")
+        + __patt.V("call_stmt")
     );
-    __rule(self,"expr_stmt",
-        __patt.Cs( (__patt.V("expr") )/( ("%1;"))* semicol )
+    __rule(self,"call_stmt",
+        __patt.Cs( (__patt.Cs( __patt.V("primary")* s* (
+            __patt.V("invoke_expr") + __patt.P(syntax_error(("expected <invoke_expr>")) )
+        ) ) )/( ("%1;"))* semicol )
     );
     __rule(self,"return_stmt",
         __patt.Cs( (__patt.P(("return")) )/( (""))* idsafe* s* (__patt.Cb("set_return")* (__patt.V("expr_list") )/( function(l,e) 
@@ -935,7 +968,6 @@ __grammar(self,"Kula",function(self)
         )
         )
     );
-    local expect_close_brace = __patt.P( __patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) ) );
     __rule(self,"try_stmt",
         __patt.Cs(
         __patt.P(("try"))* idsafe* s* __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s )*
@@ -1002,6 +1034,12 @@ __grammar(self,"Kula",function(self)
         __patt.Cg( __patt.Cb("set_return"),"old_set_return")* __patt.Cg( __patt.Cc((true)),"set_return")*
         __patt.V("block_body")* s*
         __patt.Cg( __patt.Cb("old_set_return"),"set_return")
+    );
+
+    __rule(self,"var_decl",
+        (__patt.Cs( __patt.P(("var"))* (idsafe )/( ("local"))* s*
+            __patt.V("ident_list")* (s* __patt.P(("="))* s* __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0)^-1
+        ) )/( ("%1;"))* semicol
     );
     __rule(self,"slot_decl",
         __patt.Cs( ((__patt.P(("has"))* idsafe* s* __patt.V("ident")* (s* __patt.P(("="))* s* __patt.V("expr") + __patt.Cc(("")))* semicol)
@@ -1109,14 +1147,14 @@ __grammar(self,"Kula",function(self)
         __patt.P(("-"))^-1* digits* (__patt.P(("."))* digits)^-1* ((__patt.P(("e"))+__patt.P(("E")))* __patt.P(("-"))^-1* digits)^-1
     );
     __rule(self,"number",
-        __patt.C( __patt.V("hexadec") + __patt.V("decimal") )
+        __patt.Cs( __patt.V("hexadec") + __patt.V("decimal") )
     );
     __rule(self,"string",
         (__patt.Cs( (__patt.V("qstring") + __patt.V("astring")) ) )/( ("(%1)"))
     );
     __rule(self,"special",
         __patt.Cs(
-         (__patt.P(("\n")) )/( ("\\\n"))
+         (__patt.P(("\n"))  )/( ("\\\n"))
         + (__patt.P(("\\$")) )/( ("$"))
         + __patt.P(("\\\\"))
         + __patt.P(("\\"))* __patt.P(1)
@@ -1125,7 +1163,7 @@ __grammar(self,"Kula",function(self)
     __rule(self,"qstring",
          (__patt.P(("\"\"\"")) )/( ("\""))* __patt.Cs( (
              __patt.V("string_expr")
-            + __patt.Cs( (__patt.V("special") + -(__patt.V("string_expr") + __patt.P(("\"\"\"")))* __patt.P(1))^1 )
+            + __patt.Cs( (__patt.V("special") + -__patt.P(("\"\"\""))*((__patt.P(("\"")) )/( ("\\\""))) + -(__patt.V("string_expr") + __patt.P(("\"\"\"")))* __patt.P(1))^1 )
         )^0 )* ((__patt.P(("\"\"\"")) )/( ("\"")) + __patt.P( syntax_error(("expected '\"\"\"'")) ))
         + __patt.P(("\""))* __patt.Cs( (
              __patt.V("string_expr")
@@ -1167,9 +1205,9 @@ __grammar(self,"Kula",function(self)
     );
     __rule(self,"hash",
         __patt.Cs(
-            ((__patt.C(__patt.P(("{"))) )/( ("Hash({")))* s*
+            ((__patt.P(("{")) )/( ("Hash({")))* s*
             (__patt.V("hash_pairs") + __patt.Cc(("")))* s*
-            ((__patt.C(__patt.P(("}"))) )/( ("})")) + __patt.P(syntax_error(("expected '}'"))))
+            ((__patt.P(("}")) )/( ("})")) + __patt.P(syntax_error(("expected '}'"))))
         )
     );
     __rule(self,"hash_pairs",
@@ -1193,30 +1231,39 @@ __grammar(self,"Kula",function(self)
         + __patt.V("pattern")
         + __patt.P(("("))* s* __patt.V("expr")* s* (__patt.P((")")) + __patt.P( syntax_error(("expected ')'")) ))
     );
-    __rule(self,"call_expr",
-        __patt.V("ident")* s* __patt.V("paren_expr")
-    );
     __rule(self,"paren_expr",
         __patt.P(("("))* s* ( __patt.V("expr_list") + __patt.Cc(("")) )* s* (__patt.P((")")) + __patt.P( syntax_error(("expected ')'")) ))
     );
     __rule(self,"member_expr",
         __patt.Cs(
-        s* ((__patt.C(__patt.P((".")))  )/( (":")))*(s* (__patt.V("ident") )/( ("__get_%1()")))
-        + ((__patt.C(__patt.P(("::"))) )/( (".")))* s* __patt.V("ident")
-        + ((__patt.C(__patt.P(("::"))) )/( ("")) )* s* __patt.P(("["))* s* __patt.V("expr")* s* (__patt.P(("]")) + __patt.P( syntax_error(("expected ']'")) ))
+         ((__patt.P(("."))  )/( (":")))*(s* (__patt.V("ident") )/( ("__get_%1()")))
+        + ((__patt.P(("::")) )/( (".")))* s* __patt.V("ident")
+        + ((__patt.P(("::")) )/( ("")) )* s* __patt.P(("["))* s* __patt.V("expr")* s* (__patt.P(("]")) + __patt.P( syntax_error(("expected ']'")) ))
+        + ((__patt.P(("["))  )/( (":__getitem(")))* s* __patt.V("expr")* s* ((__patt.P(("]")) )/( (")")) + __patt.P( syntax_error(("expected ']'")) ))
         )
     );
     __rule(self,"method_expr",
-        __patt.Cs( s* ((__patt.C(__patt.P(("."))) )/( (":")) + (__patt.C(__patt.P(("::"))) )/( (".")))* (s* (__patt.V("call_expr") )/( ("%1(%2)"))) )
+        __patt.Cs( ((__patt.P((".")) )/( (":")) + (__patt.P(("::")) )/( (".")))* s* __patt.V("ident")* s* __patt.V("paren_expr") )
     );
-    __rule(self,"term",
-        __patt.Cs( __patt.V("primary")* (
-            __patt.V("suffix_expr") + __patt.V("method_expr") + __patt.V("member_expr")
-        )^0 )
+    __rule(self,"access_expr",
+        __patt.Cs(
+         __patt.V("invoke_expr")* s* __patt.V("access_expr")
+        + __patt.V("member_expr")
+        )
+    );
+    __rule(self,"invoke_expr",
+        __patt.Cs(
+         (__patt.V("method_expr") + __patt.V("member_expr") + __patt.V("paren_expr"))* s* __patt.V("invoke_expr")
+        + __patt.V("method_expr")
+        + __patt.V("paren_expr")
+        )
     );
     __rule(self,"suffix_expr",
-         __patt.Cs( ((__patt.P(("[")) )/( (":__getitem(")))* s* __patt.V("expr")* s* ((__patt.P(("]")) )/( (")"))) )
-        + __patt.Cs( __patt.P(("("))* s* __patt.V("expr_list")^-1* s* __patt.P((")")) )
+         __patt.V("invoke_expr")
+        + __patt.V("access_expr")
+    );
+    __rule(self,"term",
+        __patt.Cs( __patt.V("primary")* (s* __patt.V("suffix_expr"))^0 )
     );
     __rule(self,"expr_list",
         __patt.Cs( __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0 )
@@ -1291,13 +1338,6 @@ __grammar(self,"Kula",function(self)
         + __patt.Cs( s* __patt.V("term") )
     );
 
-    __rule(self,"var_decl",
-        (__patt.Cs(
-            (__patt.C(__patt.P(("var"))* idsafe) )/( ("local"))* s*
-            __patt.V("ident_list")* (s* __patt.P(("="))* s* __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0)^-1
-        ) )/( ("%1;"))* semicol
-    );
-
     -- binding expression rules
     __rule(self,"bind_stmt",
         __patt.Cs( ((__patt.V("bind_expr") + __patt.V("bind_binop_expr")) )/( ("%1;"))* semicol )
@@ -1320,23 +1360,24 @@ __grammar(self,"Kula",function(self)
         __patt.Ca( __patt.V("bind_term")* (s* __patt.P((","))* s* __patt.V("bind_term"))^0 )
     );
     __rule(self,"bind_term",
-        __patt.Cs( (__patt.V("call_expr")+__patt.V("primary"))* __patt.V("bind_member") + ((__patt.V("ident") )/( ("%1=%%s"))) )
+        __patt.Cs(
+         __patt.V("primary")* (s* __patt.V("bind_member"))^1
+        + (__patt.V("ident") )/( ("%1=%%s"))
+        )
     );
     __rule(self,"bind_member",
-         (__patt.V("bind_slot")+__patt.V("bind_name")+__patt.V("bind_late")+__patt.V("bind_item"))* #(s* (__patt.V("bind_binop")+__patt.P(("="))+__patt.P((","))))
-        + (__patt.V("method_expr")+__patt.V("member_expr"))* __patt.V("bind_member")
+        __patt.Cs(
+         __patt.V("suffix_expr")* s* __patt.V("bind_member")
+        + __patt.V("bind_suffix")
+        )
     );
-    __rule(self,"bind_slot",
-        __patt.Cs( ((__patt.C(__patt.P(("."))) )/( (":")))* (s* (__patt.V("ident") )/( ("__set_%1(%%s)"))) )
-    );
-    __rule(self,"bind_item",
-        __patt.Cs( ((__patt.C(__patt.P(("["))) )/( (":")))* (s* (__patt.V("expr") )/( ("__setitem(%1,%%s)")))* ((__patt.C(__patt.P(("]"))) )/( (""))) )
-    );
-    __rule(self,"bind_late",
-        __patt.Cs( ((__patt.C(__patt.P(("::"))) )/( ("")))* ((__patt.Cs( s* __patt.P(("["))* s* __patt.V("expr")* s* __patt.P(("]")) ) )/( ("%1=%%s"))) )
-    );
-    __rule(self,"bind_name",
-        __patt.Cs( ((__patt.C(__patt.P(("::"))) )/( (".")))* (s* (__patt.V("ident") )/( ("%1=%%s"))) )
+    __rule(self,"bind_suffix",
+        __patt.Cs(
+         ((__patt.P(("."))  )/( (":")))* (s* (__patt.V("ident") )/( ("__set_%1(%%s)")))
+        + ((__patt.P(("::")) )/( (".")))* (s* (__patt.V("ident") )/( ("%1=%%s")))
+        + ((__patt.P(("::")) )/( ("")) )* ((__patt.Cs( s* __patt.P(("["))* s* __patt.V("expr")* s* __patt.P(("]")) ) )/( ("%1=%%s")))
+        + ((__patt.P(("["))  )/( (":")))* (s* (__patt.V("expr") )/( ("__setitem(%1,%%s)")))* ((__patt.P(("]")) )/( ("")))
+        )
     );
 
     -- PEG grammar and pattern rules
@@ -1375,7 +1416,7 @@ __grammar(self,"Kula",function(self)
         (__patt.Ca( __patt.Cs( s* __patt.V("rule_suffix") )^1 ) )/( function(a)  do return a:concat(("*")) end  end)
     );
     __rule(self,"rule_rep",
-        __patt.Cs( (__patt.C(__patt.P(("+"))))/(("^1"))+(__patt.C(__patt.P(("*"))))/(("^0"))+(__patt.C(__patt.P(("?"))))/(("^-1"))+__patt.C(__patt.P(("^"))*s*(__patt.P(("+"))+__patt.P(("-")))^-1*s*(__patt.R("09"))^1) )
+        __patt.Cs( (__patt.C(__patt.P(("+"))))/(("^1"))+(__patt.C(__patt.P(("*"))))/(("^0"))+(__patt.C(__patt.P(("?"))))/(("^-1"))+__patt.C(__patt.P(("^"))*s*(__patt.P(("+"))+__patt.P(("-")))^-1*s*((__patt.R("09")))^1) )
     );
     __rule(self,"rule_prefix",
         __patt.Cs( (((__patt.C(__patt.P(("&"))) )/( ("#"))) + ((__patt.C(__patt.P(("!"))) )/( ("-"))))* (__patt.Cs( s* __patt.V("rule_prefix") ) )/( ("%1%2"))
@@ -1420,9 +1461,9 @@ __grammar(self,"Kula",function(self)
     );
     __rule(self,"rule_class",
         __patt.Cs(
-            ((__patt.P(("[")) )/( ("")))* ((__patt.P(("^")) )/( ("__patt.P(1)-")))^-1*
+            ((__patt.P(("[")) )/( ("(")))* ((__patt.P(("^")) )/( ("__patt.P(1)-")))^-1*
             ((__patt.Ca( (-__patt.P(("]"))* __patt.V("rule_item"))^1 ) )/( function(a)  do return ((("("))..(a:concat(("+"))))..((")")) end  end))*
-            ((__patt.P(("]")) )/( ("")))
+            ((__patt.P(("]")) )/( (")")))
         )
     );
     __rule(self,"rule_item",
@@ -1473,6 +1514,11 @@ __grammar(self,"Kula",function(self)
         __patt.P(("{"))* __patt.Cs( s* __patt.V("rule_alt")* s )* (__patt.P(("}")) )/( ("__patt.C(%1)"))
     );
  end);
+
+eval=function(src) 
+    local eval = assert(loadstring(Kula:match(src),(("=eval:"))..(src)));
+     do return eval() end
+ end;
 
 local getopt = function(args) 
    local opt = Hash({ });

@@ -3,7 +3,7 @@ object Point {
     var x = 0
     var y = 0
     def new(x, y) {
-        return object from self { var x, y = x, y }
+        return x
     }
     def move(x, y) {
         self.x = x
