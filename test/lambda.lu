@@ -1,0 +1,9 @@
+function doit(block) {
+    print(block())
+}
+
+doit ->(x){ 42 }
+doit(function(x) { 42 })
+
+var a =->(x){ x + x }
+

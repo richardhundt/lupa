@@ -1,0 +1,8 @@
+var h = {
+    foo = def(x : ?Int) {
+        print("HERE: ", x)
+    }
+}
+
+h['foo'](42)
+

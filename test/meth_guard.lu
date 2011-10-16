@@ -1,0 +1,8 @@
+class A {
+    function foo() : String {
+        return 'blah'
+    }
+}
+
+var a = new A()
+print(a.foo())

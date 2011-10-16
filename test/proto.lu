@@ -1,0 +1,57 @@
+class Point {
+    var DEBUG = true
+    var COUNT = 0
+
+    has x = 0
+    has y = 0
+
+    method __init(x, y) {
+        self.x = x
+        self.y = y
+    }
+
+    method move(x, y) {
+        self.x = x
+        self.y = y
+    }
+}
+
+class Explosive {
+    has mesg = "KABOOM!"
+
+    method ignite() {
+        print("%{self} => %{self.mesg}")
+    }
+}
+
+class Point3D extends Point {
+    has z = 0
+
+    method __init(x, y, z) {
+        super::__init(self, x, y)
+        self.z = z
+    }
+
+    method move(x, y, z) {
+        super::move(self, x, y)
+        self.z = z
+    }
+}
+
+var p = Point.new()
+print(p)
+p.move(1,2)
+print(p.x, p.y)
+
+var q = Point3D.new()
+print(q.x, q.y, q.z)
+print(q)
+for i=1, 10000000 {
+    q.move(i, i+1, i+2)
+}
+print(q.x, q.y, q.z)
+print(Point)
+print(q, Point3D)
+
+assert(q.isa(Point))
+assert(q.isa(Point3D))

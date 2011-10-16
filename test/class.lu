@@ -1,0 +1,21 @@
+class Point {
+    has x = 0
+    has y = 0
+    method move(x, y) {
+        self.x = x
+        self.y = y
+    }
+}
+
+class Point3D from Point {
+    has z
+    method move(x, y, z) {
+        super::move(self, x, y)
+        self.z = z
+    }
+}
+
+var p = Point3D()
+p.move(11,22,33)
+print(p.x, p.y, p.z)
+

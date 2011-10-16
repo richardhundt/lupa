@@ -1,0 +1,7 @@
+guard Int(n : Number) {
+    return math::floor(n)
+}
+
+var i : Int = "cheese"
+print(i)
+

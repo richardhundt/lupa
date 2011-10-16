@@ -1,0 +1,31 @@
+function move(block) {
+    print(block(42))
+}
+
+move -> {
+    "you gave me %{_}"
+}
+
+function foreach(v) {
+    return function(block) : None {
+        for _ in v {
+            block(_)
+        }
+    }
+}
+
+function count() {
+    var a = [ 1,2,3 ]
+    a.each -> {
+        print("got %{_}")
+    }
+    var b = a.map ->(v) { v + v }
+    print(...b)
+
+    foreach(a) -> {
+        print('here: ',_)
+    }
+}
+
+print(count())
+

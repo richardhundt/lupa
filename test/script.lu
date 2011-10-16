@@ -1,0 +1,14 @@
+#!/usr/bin/env lupa
+
+package Acme::Test {
+   class Dynamite {
+      has noise = 'KABOOM!'
+      method detonate(...arg) {
+         print(self.noise, ...arg)
+      }
+   }
+}
+
+var d = Acme::Test::Dynamite()
+d.detonate(...arg)
+

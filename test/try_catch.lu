@@ -1,0 +1,16 @@
+function doit() : ?Int, Str {
+    try {
+        throw "cheese!";
+    }
+    catch (ex) {
+        print("caught:", ex)
+        return 69, "catchy"
+    }
+    finally {
+        print("got here")
+        return nil, 42
+    }
+    print("last")
+}
+
+print("doit:", doit())

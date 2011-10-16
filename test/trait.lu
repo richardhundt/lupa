@@ -1,0 +1,34 @@
+trait Guide(M) {
+    method walk() { print(M) }
+}
+
+trait Pet(N) {
+    has size = N
+
+    method wooz() {
+        var x = 42
+        print(x)
+    }
+}
+
+class Mammal {
+    has blood = "warm"
+}
+
+class Dog from Mammal with Guide("guiding"), Pet(42) {
+    self::DEBUG = true
+
+    method greet() {
+        print("woof!")
+        print("Size => ", self.size)
+        print("BLOOD => ", self.blood)
+    }
+}
+
+var d = Dog()
+d.walk()
+d.greet()
+d.wooz()
+
+print(d.isa(Dog))
+

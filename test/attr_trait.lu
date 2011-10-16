@@ -1,0 +1,16 @@
+package DB {
+    trait Field {
+        has store
+        has fetch
+    }
+}
+
+class Point {
+    has x is DB::Field : Number = 0
+    has y is DB::Field : Number = 0
+    assert(!self::x.isa(Missing))
+}
+
+var p = Point.new()
+assert(Point::x.isa(Slot))
+
