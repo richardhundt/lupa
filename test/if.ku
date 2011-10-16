@@ -1,6 +1,0 @@
-if true {
-    print("good")
-}
-else {
-    print("bad")
-}

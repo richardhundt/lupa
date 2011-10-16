@@ -1,9 +1,0 @@
-var r = [0:10:0.5]
-for i : Int in r {
-    print(i)
-}
-
-r.each -> { print(_) }
-
-var a = [ 1, 2, 3 ].map->(i) { i+i }.each->{ print(_) }
-

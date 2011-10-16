@@ -1,3 +1,4 @@
+#!/usr/bin/env luajit
 _G::['package']::path  = ";;./src/?.lua;./lib/?.lua;${_G::['package']::path}"
 _G::['package']::cpath = ";;./lib/?.so;${_G::['package']::cpath}"
 
@@ -329,43 +330,51 @@ __op_like = function(this, that) {
    return true
 }
 __op_spread = function(a) {
-   var __spread = rawget(getmetatable(a), '__spread')
+   var mt = getmetatable(a)
+   var __spread = mt && rawget(mt, '__spread')
    if __spread { return __spread(a) }
    return unpack(a)
 }
 __op_each = function(a, ...args) {
    if type(a) == 'function' { return a, ...args }
-   var __each = rawget(getmetatable(a), '__each')
+   var mt = getmetatable(a)
+   var __each = mt && rawget(mt, '__each')
    if __each { return __each(a) }
    return pairs(a)
 }
 __op_lshift = function(a,b) {
-   var __lshift = rawget(getmetatable(a), '__lshift')
+   var mt = getmetatable(a)
+   var __lshift = mt && rawget(mt, '__lshift')
    if __lshift { return __lshift(a, b) }
    return bit::lshift(a, b)
 }
 __op_rshift = function(a,b) {
-   var __rshift = rawget(getmetatable(a), '__rshift')
+   var mt = getmetatable(a)
+   var __rshift = mt && rawget(mt, '__rshift')
    if __rshift { return __rshift(a, b) }
    return bit::rshift(a, b)
 }
 __op_arshift = function(a,b) {
-   var __arshift = rawget(getmetatable(a), '__arshift')
+   var mt = getmetatable(a)
+   var __arshift = mt && rawget(mt, '__arshift')
    if __arshift { return __arshift(a, b) }
    return bit::arshift(a, b)
 }
 __op_bor = function(a,b) {
-   var __bor = rawget(getmetatable(a), '__bor')
+   var mt = getmetatable(a)
+   var __bor = mt && rawget(mt, '__bor')
    if __bor { return __bor(a, b) }
    return bit::bor(a, b)
 }
 __op_bxor = function(a,b) {
-   var __bxor = rawget(getmetatable(a), '__bxor')
+   var mt = getmetatable(a)
+   var __bxor = mt && rawget(mt, '__bxor')
    if __bxor { return __bxor(a, b) }
    return bit::bxor(a, b)
 }
 __op_bnot = function(a) {
-   var __bnot = rawget(getmetatable(a), '__bnot')
+   var mt = getmetatable(a)
+   var __bnot = mt && rawget(mt, '__bnot')
    if __bnot { return __bnot(a) }
    return bit::bnot(a)
 }
@@ -650,7 +659,7 @@ Function = setmetatable(newtable(), Type)
 Function::__name = 'Function'
 Function::__index = Function
 Function::__apply = function(self, code, fenv) {
-    code = Kula.match(code)
+    code = Lupa.match(code)
     var func = assert(loadstring(code, '=eval'))
     if fenv {
         setfenv(func, fenv)
@@ -678,7 +687,7 @@ Pattern::__match = function(patt, subj) {
    return patt.match(subj)
 }
 
-grammar Kula {
+grammar Lupa {
 
     function error_line(src, pos) {
         var line = 1
@@ -838,15 +847,16 @@ grammar Kula {
         return b.concat(";")
     }
     function make_binop_bind(a, o, b) {
-        Kula.bind_expr.match(a~"="~a~o~b)
+        Lupa.bind_expr.match(a~"="~a~o~b)
     }
 
     function make_params(p) {
         var h = ''
-        if #p > 0 && p[#p].match("^%.%.%.") {
+        if #p > 0 && p[#p].find("...", 1, true) {
             var r = p[#p]
+            var n = r.gsub('%.%.%.','')
             p[#p] = "..."
-            h = "local %s=Array(...);".format(r.sub(4))
+            h = "local %s=Array(...);".format(n)
         }
         return p.concat(","), h
     }
@@ -919,6 +929,7 @@ grammar Kula {
     rule unit {
         {:set_return: {`false`} :}
         {:scope: {`'global'`} :}
+        { s '#!' (!nl .)* s }?
         {`'local self=_G;'`}
         {~ (s <main_body_stmt>)* s ~}
     }
@@ -941,6 +952,7 @@ grammar Kula {
         | <while_stmt>
         | <break_stmt>
         | <continue_stmt>
+        | <yield_stmt>
         | <block_stmt>
         | <bind_stmt>
         | <call_stmt>
@@ -957,6 +969,9 @@ grammar Kula {
             }
             return "do return %s end".format(e)
         }) ~}
+    }
+    rule yield_stmt {
+        'yield' idsafe {~ s <expr_list> ~} -> '__op_yield(%1);' semicol
     }
     rule break_stmt {
         {~ { "break" idsafe } -> "do __break = true; break end" ~}
@@ -1136,8 +1151,11 @@ grammar Kula {
         {~ {"..."} <ident> ~}
     }
     rule param_list {
-        // XXX: capture ws here
-        {@ <ident> (s "," s <ident>)* (s "," s <rest>)? | <rest> | {`nil`} @}
+        {@ 
+        | {~ <ident> s ~} ("," {~ s <ident> s ~})* ("," {~ s <rest> s ~})?
+        | <rest>
+        | {`nil`}
+        @}
     }
     rule ident {
         { !keyword ((%alpha | "_") (%alnum | "_")*) }
@@ -1365,10 +1383,10 @@ grammar Kula {
         {~ (<bind_expr> | <bind_binop_expr>) -> '%1;' semicol ~}
     }
     rule bind_expr {
-        {~ <bind_list> s "=" s {:
-            | <expr> (s "," s <expr>)*
+        {~ <bind_list> s "=" {~
+            | s <expr> (s "," s <expr>)*
             | <{syntax_error("bad right hand <expr>")}>
-        :} -> fold_bind ~}
+        ~} -> fold_bind ~}
      }
     rule bind_binop {
         { "+" | "-" | "*" | "/" | "%" | "||" | "|"| "&&"
@@ -1397,10 +1415,10 @@ grammar Kula {
     }
     rule bind_suffix {
         {~
-        | ("."  -> ":") (s <ident> -> "__set_%1(%%s)")
-        | ("::" -> ".") (s <ident> -> "%1=%%s")
-        | ("::" -> "" ) ({~ s "[" s <expr> s "]" ~} -> '%1=%%s')
-        | ("["  -> ":") (s <expr> -> "__setitem(%1,%%s)") ("]" -> "")
+        | ("."  -> ":" s) ({~ <ident> s ~} -> "__set_%1(%%s)")
+        | ("::" -> "." s) ({~ <ident> s ~} -> "%1=%%s")
+        | ("::" -> ""  s) ({~"[" s <expr> s "]" ~} -> '%1=%%s')
+        | ("["  -> ":" s) ({~ <expr>  s ~} -> "__setitem(%1,%%s)") ("]" -> "")
         ~}
     }
 
@@ -1450,7 +1468,8 @@ grammar Kula {
     var prod_oper = / "->" | "~>" | "=>" /
 
     rule rule_suffix {
-        ({~ <rule_prefix> (&(s prod_oper) s)? ~} {: {prod_oper} {~ s <term> ~} :}*) ~> function(a,o,b) {
+        ({~ <rule_prefix> (&(s prod_oper) s)? ~}
+        {: {prod_oper} {~ s <term> ~} :}*) ~> function(a,o,b) {
             if o == "=>" {
                 return '__patt.Cmt(%s,%s)'.format(a,b)
             }
@@ -1541,7 +1560,7 @@ grammar Kula {
 }
 
 eval = function(src) {
-    var eval = assert(loadstring(Kula.match(src),'=eval:'~src))
+    var eval = assert(loadstring(Lupa.match(src),'=eval:'~src))
     return eval()
 }
 
@@ -1581,28 +1600,87 @@ var run = function(...args) {
    var sfh = assert(io::open(opt['file']))
    var src = sfh.read('*a')
    sfh.close()
-   var lua = Kula.match(src)
 
+   var lua = Lupa.match(src)
    if opt['l'] {
       io::stdout.write(lua)
       os::exit(0)
    }
 
-   var main = assert(loadstring(lua,'='~opt['file']))
    if opt['o'] {
       var outc = io::open(opt['o'], "w+")
       outc.write(lua)
       outc.close()
    }
-   else if opt['b'] {
-      var outc = io::open(opt.b, "wb+")
-      outc.write(String::dump(main))
-      outc.close()
-   }
    else {
-      main(opt['file'], ...args)
+      lua = lua.gsub("^%s*#![^\n]*",'')
+      var main = assert(loadstring(lua,'='~opt['file']))
+      if opt['b'] {
+         var outc = io::open(opt.b, "wb+")
+         outc.write(String::dump(main))
+         outc.close()
+      }
+      else {
+         var main_env = setmetatable({ }, { __index = _G })
+         setfenv(main, main_env)
+         main(opt['file'], ...args)
+      }
    }
 }
 
-if arg && arg::[1] { run(unpack(arg)) }
+arg = arg ? [ unpack(arg) ] : [ ]
+{
+   // from strict.lua
+   var mt = getmetatable(_G)
+   if mt == nil {
+      mt = newtable()
+      setmetatable(_G, mt)
+   }
+
+   mt::__declared = newtable()
+
+   function what() {
+      var d = debug::getinfo(3, "S")
+      return d && d::what || "C"
+   }
+
+   mt::__newindex = function(t, n, v) {
+      if !mt::__declared::[n] {
+         var w = what()
+         if w != "main" && w != "C" {
+            error("assign to undeclared variable '${n}'", 2)
+         }
+         mt::__declared::[n] = true
+      }
+      rawset(t, n, v)
+   }
+   mt::__index = function(t, n) {
+      if !mt::__declared::[n] && what() != "C" {
+         error("variable '${n}' is not declared", 2)
+      }
+      return rawget(t, n)
+   }
+}
+
+Lupa::PATH = "./?.lu;./lib/?.lu;./src/?.lu"
+{
+   var P = _G::['package']
+   P::loaders::[#P::loaders + 1] = function(modname) {
+      var filename = modname.gsub("%.", "/")
+      for path in Lupa::PATH.gmatch("([^;]+)") {
+         if path != "" {
+            var filepath = path.gsub("?", filename)
+            var file = io::open(filepath, "r")
+            if file {
+               var src = file.read("*a")
+               var mod = make(src, filepath)
+               P::loaded::[modname] = mod
+               return mod
+            }
+         }
+      }
+   }
+}
+
+if arg::[1] { run(unpack(arg)) }
 
