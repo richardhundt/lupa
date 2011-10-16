@@ -16,7 +16,7 @@ class Mammal {
 }
 
 class Dog from Mammal with Guide("guiding"), Pet(42) {
-    self::DEBUG = true
+    self.DEBUG = true
 
     method greet() {
         print("woof!")
