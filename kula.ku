@@ -175,10 +175,10 @@ __patt::setmaxstack(1024)
    }
 
    __patt::Ch = function(patt,init) {
-      return __patt::Ct(patt) / make_capt_hash(init)
+      return Pattern::__div(__patt::Ct(patt), make_capt_hash(init))
    }
    __patt::Ca = function(patt,init) {
-      return __patt::Ct(patt) / make_capt_array(init)
+      return Pattern::__div(__patt::Ct(patt), make_capt_array(init))
    }
 
    var predef = newtable()
@@ -315,7 +315,7 @@ __op_typeof = getmetatable
 __op_yield  = coroutine::['yield']
 
 __op_in = function(key, obj) {
-   return (rawget(obj, key) || rawget(getmetatable(obj), key)) != nil
+   return rawget(obj, key) != nil
 }
 __op_like = function(this, that) {
    for k,v in pairs(that) {
@@ -1020,9 +1020,8 @@ grammar Kula {
         {~ ("{" -> "do ") <block_body> s (("}" | <{ syntax_error("expected '}'") }>) -> " end") ~}
     }
     rule block_body {
-        {:outer: =scope :} {:scope: {`'lexical'`} :}
+        {:scope: {`'lexical'`} :}
         (s <block_body_stmt>)*
-        {:scope: =outer :}
     }
     rule block_body_stmt {
         | <var_decl>
@@ -1031,9 +1030,8 @@ grammar Kula {
         | <statement>
     }
     rule lambda_body {
-        {:old_set_return: =set_return :} {:set_return: {`true`} :}
+        {:set_return: {`true`} :}
         <block_body> s
-        {:set_return: =old_set_return :}
     }
 
     rule var_decl {
@@ -1057,9 +1055,8 @@ grammar Kula {
         "}" =scope) -> make_func_decl ~}
     }
     rule func_body {
-        {:outer: =scope :} {:scope: {`'lexical'`} :}
+        {:scope: {`'lexical'`} :}
         (s <func_body_stmt>)*
-        {:scope: =outer :}
     }
     rule func_body_stmt {
         | <var_decl>
@@ -1104,9 +1101,8 @@ grammar Kula {
         -> '__object(self,"%1",{%2},{%3},function(self,super) %4 end);'
     }
     rule class_body {
-        {:outer: =scope :} {:scope: {`'lexical'`} :}
+        {:scope: {`'lexical'`} :}
         (s <class_body_stmt>)*
-        {:scope: =outer :}
     }
     rule class_from {
         "from" idsafe s {~ <expr> (s "," s <expr>)* ~}
@@ -1393,9 +1389,8 @@ grammar Kula {
         ) -> '__grammar(self,"%1",function(self) %2 end);' ~}
     }
     rule grammar_body {
-        {:outer: =scope :} {:scope: {`'lexical'`} :}
+        {:scope: {`'lexical'`} :}
         (s <grammar_body_stmt>)*
-        {:scope: =outer :}
     }
     rule grammar_body_stmt {
         | <rule_decl>
