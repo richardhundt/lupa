@@ -1080,7 +1080,7 @@ __grammar(self,"Kula",function(self)
         )/( make_func) )
     );
     __rule(self,"short_func",
-        ((__patt.P(("->")) )/( ("")))*
+        ((__patt.P((":")) )/( ("")))*
         ((s* __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")")) + __patt.Cc(Array(("_"))))* s* __patt.P(("{"))* __patt.Cs( __patt.V("func_body")* s )* (__patt.P(("}"))
         )/( make_short_func))* __patt.Cc((")"))
     );
@@ -1136,6 +1136,7 @@ __grammar(self,"Kula",function(self)
         __patt.Cs( __patt.C(__patt.P(("...")))* __patt.V("ident") )
     );
     __rule(self,"param_list",
+        -- XXX: capture ws here
         __patt.Ca( __patt.V("ident")* (s* __patt.P((","))* s* __patt.V("ident"))^0* (s* __patt.P((","))* s* __patt.V("rest"))^-1 + __patt.V("rest") + __patt.Cc((nil)) )
     );
     __rule(self,"ident",
@@ -1275,7 +1276,7 @@ __grammar(self,"Kula",function(self)
         )
     );
     __rule(self,"short_expr",
-        ((__patt.P(("->")) )/( ("(")))*
+        ((__patt.P((":")) )/( ("(")))*
         ((s* __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")")) + __patt.Cc(Array(("_"))))* s* __patt.P(("{"))* __patt.Cs( __patt.V("func_body")* s )* (__patt.P(("}"))
         )/( make_short_func))* __patt.Cc((")"))
     );

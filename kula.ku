@@ -1080,7 +1080,7 @@ grammar Kula {
         -> make_func ~}
     }
     rule short_func {
-        ("->" -> '')
+        (":" -> '')
         ((s "(" s <param_list> s ")" | {`['_']`}) s "{" {~ <func_body> s ~} "}"
         -> make_short_func) {`')'`}
     }
@@ -1136,6 +1136,7 @@ grammar Kula {
         {~ {"..."} <ident> ~}
     }
     rule param_list {
+        // XXX: capture ws here
         {@ <ident> (s "," s <ident>)* (s "," s <rest>)? | <rest> | {`nil`} @}
     }
     rule ident {
@@ -1275,7 +1276,7 @@ grammar Kula {
         ~}
     }
     rule short_expr {
-        ("->" -> "(")
+        (":" -> "(")
         ((s "(" s <param_list> s ")" | {`['_']`}) s "{" {~ <func_body> s ~} "}"
         -> make_short_func) {`')'`}
     }
