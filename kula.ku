@@ -856,6 +856,12 @@ grammar Kula {
         return "function(%s) %s%s end".format(p,h,b)
     }
 
+    function make_short_func(p,b) {
+        if #p == 0 { p.push('_') }
+        var p, h = make_params(p)
+        return "function(%s) %s%s end".format(p,h,b)
+    }
+
     function make_func_decl(n,p,b,s) {
         var p, h = make_params(p)
         if s == 'lexical' && !n.find('.',1,true) {
@@ -1073,6 +1079,11 @@ grammar Kula {
         ("}" | <{ syntax_error("expected '}'") }>))
         -> make_func ~}
     }
+    rule short_func {
+        ("->" -> '')
+        ((s "(" s <param_list> s ")" | {`['_']`}) s "{" {~ <func_body> s ~} "}"
+        -> make_short_func) {`')'`}
+    }
     rule package_decl {
         "package" idsafe s (<qname> -> quote) s "{"
             {~ (s <main_body_stmt>)* s ~}
@@ -1224,6 +1235,7 @@ grammar Kula {
         | <array>
         | <hash>
         | <func>
+        | <short_func>
         | <pattern>
         | "(" s <expr> s (")" | <{ syntax_error("expected ')'") }>)
     }
@@ -1239,7 +1251,9 @@ grammar Kula {
         ~}
     }
     rule method_expr {
-        {~ ("." -> ":" | "::" -> ".") s <ident> s <paren_expr> ~}
+        {~
+        | ("."  -> ":" | "::" -> ".") s <ident> s (<short_expr> | <paren_expr>)
+        ~}
     }
     rule access_expr {
         {~
@@ -1249,10 +1263,21 @@ grammar Kula {
     }
     rule invoke_expr {
         {~
-        | (<method_expr> | <member_expr> | <paren_expr>) s <invoke_expr>
+        | (
+            | <method_expr>
+            | <member_expr>
+            | <short_expr>
+            | <paren_expr>
+        ) s <invoke_expr>
         | <method_expr>
+        | <short_expr>
         | <paren_expr>
         ~}
+    }
+    rule short_expr {
+        ("->" -> "(")
+        ((s "(" s <param_list> s ")" | {`['_']`}) s "{" {~ <func_body> s ~} "}"
+        -> make_short_func) {`')'`}
     }
     rule suffix_expr {
         | <invoke_expr>
@@ -1451,7 +1476,9 @@ grammar Kula {
         ) (s <rule_rep>)*
     }
     rule rule_group {
-        {~ "(" s <rule_alt> s ")" ~}
+        {~ "(" s (<rule_alt> | <{ syntax_error("expected <rule_alt>") }>) s
+            (")" | <{ syntax_error("expected ')'") }>)
+        ~}
     }
     rule rule_term {
         {~ <string> -> '__patt.P(%1)' ~}

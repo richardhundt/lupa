@@ -175,10 +175,10 @@ do
     end
 
    __patt.Ch=function(patt,init) 
-       do return (__patt.Ct(patt) )/( make_capt_hash(init)) end
+       do return Pattern.__div(__patt.Ct(patt), make_capt_hash(init)) end
     end;
    __patt.Ca=function(patt,init) 
-       do return (__patt.Ct(patt) )/( make_capt_array(init)) end
+       do return Pattern.__div(__patt.Ct(patt), make_capt_array(init)) end
     end;
 
    local predef = newtable();
@@ -315,7 +315,7 @@ __op_typeof=getmetatable;
 __op_yield=coroutine[("yield")];
 
 __op_in=function(key,obj) 
-    do return (((rawget(obj, key) )or( rawget(getmetatable(obj), key))) )~=( (nil)) end
+    do return (rawget(obj, key) )~=( (nil)) end
  end;
 __op_like=function(this,that) 
    for k,v in __op_each(pairs(that))  do local __break repeat 
@@ -856,6 +856,12 @@ __grammar(self,"Kula",function(self)
          do return ("function(%s) %s%s end"):format(p,h,b) end
      end
 
+    local function make_short_func(p,b) 
+        if (#(p) )==( 0) then   p:push(("_"));  end 
+        local p, h = make_params(p);
+         do return ("function(%s) %s%s end"):format(p,h,b) end
+     end
+
     local function make_func_decl(n,p,b,s) 
         local p, h = make_params(p);
         if ((s )==( ("lexical") ))and( not(n:find(("."),1,(true)))) then  
@@ -1020,9 +1026,8 @@ __grammar(self,"Kula",function(self)
         __patt.Cs( ((__patt.P(("{")) )/( ("do ")))* __patt.V("block_body")* s* (((__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) )) )/( (" end"))) )
     );
     __rule(self,"block_body",
-        __patt.Cg( __patt.Cb("scope"),"outer")* __patt.Cg( __patt.Cc(("lexical")),"scope")*
-        (s* __patt.V("block_body_stmt"))^0*
-        __patt.Cg( __patt.Cb("outer"),"scope")
+        __patt.Cg( __patt.Cc(("lexical")),"scope")*
+        (s* __patt.V("block_body_stmt"))^0
     );
     __rule(self,"block_body_stmt",
          __patt.V("var_decl")
@@ -1031,9 +1036,8 @@ __grammar(self,"Kula",function(self)
         + __patt.V("statement")
     );
     __rule(self,"lambda_body",
-        __patt.Cg( __patt.Cb("set_return"),"old_set_return")* __patt.Cg( __patt.Cc((true)),"set_return")*
-        __patt.V("block_body")* s*
-        __patt.Cg( __patt.Cb("old_set_return"),"set_return")
+        __patt.Cg( __patt.Cc((true)),"set_return")*
+        __patt.V("block_body")* s
     );
 
     __rule(self,"var_decl",
@@ -1057,9 +1061,8 @@ __grammar(self,"Kula",function(self)
         __patt.P(("}"))* __patt.Cb("scope")) )/( make_func_decl) )
     );
     __rule(self,"func_body",
-        __patt.Cg( __patt.Cb("scope"),"outer")* __patt.Cg( __patt.Cc(("lexical")),"scope")*
-        (s* __patt.V("func_body_stmt"))^0*
-        __patt.Cg( __patt.Cb("outer"),"scope")
+        __patt.Cg( __patt.Cc(("lexical")),"scope")*
+        (s* __patt.V("func_body_stmt"))^0
     );
     __rule(self,"func_body_stmt",
          __patt.V("var_decl")
@@ -1075,6 +1078,11 @@ __grammar(self,"Kula",function(self)
             __patt.Cs( __patt.V("func_body")* s )*
         (__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) )))
         )/( make_func) )
+    );
+    __rule(self,"short_func",
+        ((__patt.P(("->")) )/( ("")))*
+        ((s* __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")")) + __patt.Cc(Array(("_"))))* s* __patt.P(("{"))* __patt.Cs( __patt.V("func_body")* s )* (__patt.P(("}"))
+        )/( make_short_func))* __patt.Cc((")"))
     );
     __rule(self,"package_decl",
         __patt.P(("package"))* idsafe* s* ((__patt.V("qname") )/( quote))* s* __patt.P(("{"))*
@@ -1104,9 +1112,8 @@ __grammar(self,"Kula",function(self)
         )/( ("__object(self,\"%1\",{%2},{%3},function(self,super) %4 end);"))
     );
     __rule(self,"class_body",
-        __patt.Cg( __patt.Cb("scope"),"outer")* __patt.Cg( __patt.Cc(("lexical")),"scope")*
-        (s* __patt.V("class_body_stmt"))^0*
-        __patt.Cg( __patt.Cb("outer"),"scope")
+        __patt.Cg( __patt.Cc(("lexical")),"scope")*
+        (s* __patt.V("class_body_stmt"))^0
     );
     __rule(self,"class_from",
         __patt.P(("from"))* idsafe* s* __patt.Cs( __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0 )
@@ -1228,6 +1235,7 @@ __grammar(self,"Kula",function(self)
         + __patt.V("array")
         + __patt.V("hash")
         + __patt.V("func")
+        + __patt.V("short_func")
         + __patt.V("pattern")
         + __patt.P(("("))* s* __patt.V("expr")* s* (__patt.P((")")) + __patt.P( syntax_error(("expected ')'")) ))
     );
@@ -1243,7 +1251,9 @@ __grammar(self,"Kula",function(self)
         )
     );
     __rule(self,"method_expr",
-        __patt.Cs( ((__patt.P((".")) )/( (":")) + (__patt.P(("::")) )/( (".")))* s* __patt.V("ident")* s* __patt.V("paren_expr") )
+        __patt.Cs(
+         ((__patt.P(("."))  )/( (":")) + (__patt.P(("::")) )/( (".")))* s* __patt.V("ident")* s* (__patt.V("short_expr") + __patt.V("paren_expr"))
+        )
     );
     __rule(self,"access_expr",
         __patt.Cs(
@@ -1253,10 +1263,21 @@ __grammar(self,"Kula",function(self)
     );
     __rule(self,"invoke_expr",
         __patt.Cs(
-         (__patt.V("method_expr") + __patt.V("member_expr") + __patt.V("paren_expr"))* s* __patt.V("invoke_expr")
+         (
+             __patt.V("method_expr")
+            + __patt.V("member_expr")
+            + __patt.V("short_expr")
+            + __patt.V("paren_expr")
+        )* s* __patt.V("invoke_expr")
         + __patt.V("method_expr")
+        + __patt.V("short_expr")
         + __patt.V("paren_expr")
         )
+    );
+    __rule(self,"short_expr",
+        ((__patt.P(("->")) )/( ("(")))*
+        ((s* __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")")) + __patt.Cc(Array(("_"))))* s* __patt.P(("{"))* __patt.Cs( __patt.V("func_body")* s )* (__patt.P(("}"))
+        )/( make_short_func))* __patt.Cc((")"))
     );
     __rule(self,"suffix_expr",
          __patt.V("invoke_expr")
@@ -1391,9 +1412,8 @@ __grammar(self,"Kula",function(self)
         ) )/( ("__grammar(self,\"%1\",function(self) %2 end);")) )
     );
     __rule(self,"grammar_body",
-        __patt.Cg( __patt.Cb("scope"),"outer")* __patt.Cg( __patt.Cc(("lexical")),"scope")*
-        (s* __patt.V("grammar_body_stmt"))^0*
-        __patt.Cg( __patt.Cb("outer"),"scope")
+        __patt.Cg( __patt.Cc(("lexical")),"scope")*
+        (s* __patt.V("grammar_body_stmt"))^0
     );
     __rule(self,"grammar_body_stmt",
          __patt.V("rule_decl")
@@ -1454,7 +1474,9 @@ __grammar(self,"Kula",function(self)
         )* (s* __patt.V("rule_rep"))^0
     );
     __rule(self,"rule_group",
-        __patt.Cs( __patt.P(("("))* s* __patt.V("rule_alt")* s* __patt.P((")")) )
+        __patt.Cs( __patt.P(("("))* s* (__patt.V("rule_alt") + __patt.P( syntax_error(("expected <rule_alt>")) ))* s*
+            (__patt.P((")")) + __patt.P( syntax_error(("expected ')'")) ))
+        )
     );
     __rule(self,"rule_term",
         __patt.Cs( (__patt.V("string") )/( ("__patt.P(%1)")) )
