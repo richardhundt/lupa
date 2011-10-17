@@ -1,8 +1,21 @@
 #!/usr/bin/env luajit
+
 _G['package'].path  = ";;./src/?.lua;./lib/?.lua;${_G['package'].path}"
 _G['package'].cpath = ";;./lib/?.so;${_G['package'].cpath}"
 
 newtable = loadstring("return {...}")
+
+var rawget, rawset = _G.rawget, _G.rawset
+var getmetatable, setmetatable = _G.getmetatable, _G.setmetatable
+var newenv = function(scope, outer) {
+    return setmetatable({ }, {
+        __index    = scope,
+        __newindex = function(e,k,v) {
+            rawset(e,k,v)
+            outer[k] = v
+        }
+    })
+}
 
 __class = function(into, name, _from, _with, body) {
     if #_from == 0 {
@@ -58,7 +71,7 @@ __class = function(into, name, _from, _with, body) {
             rawset(obj, key, val)
         }
     }
-    _class.__apply = function(self, ...args) {
+    _class.new = function(self, ...args) {
         var obj = setmetatable(newtable(), self)
         if rawget(self, '__init') != nil {
             var ret = obj.__init(...args)
@@ -71,6 +84,8 @@ __class = function(into, name, _from, _with, body) {
 
     setmetatable(_class, Class)
 
+    var _env = newenv(into, _class)
+
     if _with {
         for i=1, #_with {
             _with[i].compose(_class)
@@ -78,7 +93,7 @@ __class = function(into, name, _from, _with, body) {
     }
 
     into[name] = _class
-    body(_class, _super)
+    body(_env, _class, _super)
     return _class
 }
 __trait = function(into, name, _with, body) {
@@ -108,16 +123,16 @@ __object = function(into, name, _from, ...args) {
 __method = function(into, name, code) {
     into[name] = code
 }
-__has = function(into, name, default) {
+__has = function(into, name, def) {
     var setter = '__set_'~name
     var getter = '__get_'~name
     into[setter] = function(obj, val) {
-        obj[name] = val
+        rawset(obj, name, val)
     }
     into[getter] = function(obj) {
-        var val = rawget(obj,name)
+        var val = rawget(obj, name)
         if val == nil {
-            val = default(obj)
+            val = def(obj)
             obj[setter](obj, val)
         }
         return val
@@ -289,26 +304,22 @@ __package = function(into, name, body, args) {
    return pckg
 }
 
-__import = function(into, _from, what, dest) {
+__import = function(into, _from, what) {
    var mod = __load(_from)
+   var out = { }
    if what {
-      if what.isa(Array) {
-         if dest {
-            into = __package(into, dest)
-         }
-         for i=1, #what {
-            into[what[i]] = mod[what[i]]
-         }
-      }
-      else if what.isa(Hash) {
-         for n,a in pairs(what) {
-            into[a] = what[n]
-         }
+      for i=1, #what {
+         out[what[i]] = mod[what[i]]
       }
    }
    else {
       return mod
    }
+}
+__export = function(self, ...what) {
+    for i=1, #what {
+        self.__export[what[i]] = true
+    }
 }
 
 __load = function(_from) {
@@ -403,7 +414,7 @@ Type.isa = function(self, that) {
    return getmetatable(self) == that
 }
 Type.can = function(self, key) {
-   return rawget(getmetatable(self), key)
+   return rawget(self, key) || rawget(getmetatable(self), key)
 }
 Type.does = function(self, that) {
    return false
@@ -436,7 +447,7 @@ Class.__newindex = function(self, key, val) {
     }
     else if key.match('^__set_') {
         var _k = key.match('^__set_(.-)$')
-        self.__writers[key] = val
+        self.__writers[_k] = val
     }
     rawset(self, key, val)
 }
@@ -640,6 +651,13 @@ debug::setmetatable(nil, Nil)
 Number = setmetatable(newtable(), Type)
 Number.__name = 'Number'
 Number.__index = Number
+Number.__apply = function(self, val) {
+    var v = tonumber(val)
+    if v == nil {
+        error("TypeError: cannot coerce '${val}' to Number", 2)
+    }
+    return v
+}
 Number.times = function(self, block) {
    for i=1, self { block(i) }
 }
@@ -648,6 +666,9 @@ debug::setmetatable(0, Number)
 String = setmetatable(string, Type)
 String.__name = 'String'
 String.__index = String
+String.__apply = function(self, val) {
+    return tostring(val)
+}
 String.__match = function(a,p) {
    return __patt::P(p).match(a)
 }
@@ -860,7 +881,7 @@ grammar Lupa {
     //*/
 
     function make_binop_bind(a, o, b) {
-        a~"="~a~o~b
+        return a~"="~binops[o].format(a,b)
     }
 
     function make_params(p) {
@@ -898,13 +919,13 @@ grammar Lupa {
     function make_meth_decl(n,p,b) {
         p.unshift('self')
         var p, h = make_params(p)
-        return "__method(self,%q,function(%s) %s%s end);".format(n,p,h,b)
+        return "__method(__env,%q,function(%s) %s%s end);".format(n,p,h,b)
     }
 
     function make_trait_decl(n,p,w,b) {
         var p, h = make_params(p)
         return
-            '__trait(self,%q,{%s},function(self,%s) %s%s end);'
+            '__trait(__env,%q,{%s},function(__env,self,%s) %s%s end);'
             .format(n,w,p,h,b)
     }
 
@@ -917,23 +938,28 @@ grammar Lupa {
         ).format(try_body, catch_args || '', catch_body || '')
     }
 
-    function make_import_stmt(n,f,a) {
-        if f == nil {
-            // import from <path>
-            return "__import(self,%s);".format(n)
+    function make_import_stmt(n,f) {
+        for i=1, #n { n[i] = quote(n[i]) }
+        return "local %s=__import(%s,{%s});".format(f, n.concat(','))
+    }
+    function make_export_stmt(n) {
+        var b = [ ]
+        for i=1, #n {
+            var q = quote(n[i])
+            b[i] = '__export[%s]=true;'.format(q)
         }
-        else if n.isa(Array) {
-            // import <list> from <path> (in <qname>)
-            if a {
-                return "__import(self,%s,Array(%s),%s);".format(f,n.concat(","),a)
-            } else {
-                return "__import(self,%s,Array(%s));".format(f,n.concat(","))
-            }
-        }
-        else {
-            // import <name> from <path> (as <alias>)
-            return "__import(self,%s,Hash({[%s]=%s}));".format(f,n,a)
-        }
+        return b.concat('')
+    }
+
+    function define(name, stash) {
+        stash[name] = true
+    }
+    function lookup(name, stash) {
+        if stash[name] { return name }
+        return name
+    }
+    function push_stash(outer, inner) {
+        return setmetatable(inner, { __index = outer })
     }
 
     rule __init {
@@ -942,9 +968,10 @@ grammar Lupa {
     rule unit {
         {:set_return: {`false`} :}
         {:scope: {`'global'`} :}
-        { s '#!' (!nl .)* s }?
-        {`'local self=_G;'`}
+        { %s* '#!' (!nl .)* %s* }? s
+        {`'module(..., package.seeall);__export={};'`}
         {~ (s <main_body_stmt>)* s ~}
+        {`'return __export;'`}
     }
     rule main_body_stmt {
         | <var_decl>
@@ -1007,34 +1034,25 @@ grammar Lupa {
         {~
         "try" idsafe s "{" {~ <lambda_body> s ~}
         ("}" | <{ syntax_error("expected '}'") }>)
-        (s "catch" idsafe s "(" s <ident> s ")" s "{" {~ <lambda_body> s ~} "}")?
+        (s "catch" idsafe s "(" s <name> s ")" s "{" {~ <lambda_body> s ~} "}")?
         -> make_try_stmt
         ~}
     }
     rule import_stmt {
         {~ (
-            "import" idsafe s (<import_in> | <import_as> | <import_from>)
+            "import" idsafe s {@ <name_list> @} s "from" (<qname> -> quote)
         ) -> make_import_stmt ~}
     }
-    rule import_as {
-        (<ident> -> quote) s "from" idsafe s (<qname> -> quote)
-        "as" idsafe s (<ident> -> quote)
-    }
-    rule import_in {
-        {@ (<ident> -> quote) (s "," s (<ident> -> quote))* @} s
-        "from" idsafe s (<qname> -> quote)
-        (s "in" idsafe s (<ident> -> quote))?
-    }
-    rule import_from {
-        "from" idsafe s (<qname> -> quote)
+    rule export_stmt {
+        {~ "export" idsafe s {@ <name_list> @} -> make_export_stmt ~}
     }
     rule for_stmt {
-        {~ "for" idsafe s <ident> s "=" s <expr> s "," s <expr>
+        {~ "for" idsafe s <name> s "=" s <expr> s "," s <expr>
             (s "," s <expr>)? s <loop_body>
         ~}
     }
     rule for_in_stmt {
-        {~ "for" idsafe s <ident_list> s "in" s
+        {~ "for" idsafe s <name_list> s "in" s
             (<expr> -> "__op_each(%1)") s <loop_body>
         ~}
     }
@@ -1056,6 +1074,7 @@ grammar Lupa {
     }
     rule block_body {
         {:scope: {`'lexical'`} :}
+        {:stash: =stash {`{ }`} -> push_stash :}
         (s <block_body_stmt>)*
     }
     rule block_body_stmt {
@@ -1071,12 +1090,12 @@ grammar Lupa {
 
     rule var_decl {
         {~ "var" idsafe -> "local" s
-            <ident_list> (s "=" s <expr> (s "," s <expr>)*)?
+            <name_list> (s "=" s <expr> (s "," s <expr>)*)?
         ~} -> '%1;' semicol
     }
     rule slot_decl {
-        {~ ("has" idsafe s <ident> (s "=" s <expr> | {`""`}) semicol)
-            -> '__has(self,"%1",function(self) return %2 end);'
+        {~ ("has" idsafe s <name> (s "=" s <expr> | {`""`}) semicol)
+            -> '__has(__env,"%1",function(self) return %2 end);'
         ~}
     }
     rule meth_decl {
@@ -1091,6 +1110,7 @@ grammar Lupa {
     }
     rule func_body {
         {:scope: {`'lexical'`} :}
+        {:stash: =stash {`{ }`} -> push_stash :}
         (s <func_body_stmt>)*
     }
     rule func_body_stmt {
@@ -1117,28 +1137,28 @@ grammar Lupa {
         "package" idsafe s (<qname> -> quote) s "{"
             {~ (s <main_body_stmt>)* s ~}
         ("}" | <{ syntax_error("expected '}'") }>)
-        -> '__package(self,%1,function(self) %2 end);'
+        -> '__package(__env,%1,function(__env,self) %2 end);'
     }
     rule class_decl {
-        "class" idsafe s <ident> s
+        "class" idsafe s <name> s
         (<class_from> | {`""`}) s
         (<class_with> | {`""`}) s
         "{" {~ <class_body> s ~} "}"
-        -> '__class(self,"%1",{%2},{%3},function(self,super) %4 end);'
+        -> '__class(__env,"%1",{%2},{%3},function(__env,self,super) %4 end);'
     }
     rule trait_decl {
-        "trait" idsafe s <ident> s
+        "trait" idsafe s <name> s
         ("(" s <param_list> s ")" | {`'...'`} {`''`}) s
         (<class_with> | {`""`}) s
         "{" {~ <class_body> s ~} "}"
         -> make_trait_decl
     }
     rule object_decl {
-        "object" idsafe s <ident> s
+        "object" idsafe s <name> s
         (<class_from> | {`""`}) s
         (<class_with> | {`""`}) s
         "{" {~ <class_body> s ~} "}"
-        -> '__object(self,"%1",{%2},{%3},function(self,super) %4 end);'
+        -> '__object(__env,"%1",{%2},{%3},function(__env,self,super) %4 end);'
     }
     rule class_body {
         {:scope: {`'lexical'`} :}
@@ -1162,23 +1182,26 @@ grammar Lupa {
         | <statement>
     }
     rule rest {
-        {~ {"..."} <ident> ~}
+        {~ {"..."} <name> ~}
     }
     rule param_list {
-        {@ 
-        | {~ <ident> s ~} ("," {~ s <ident> s ~})* ("," {~ s <rest> s ~})?
+        {@
+        | {~ <name> s ~} ("," {~ s <name> s ~})* ("," {~ s <rest> s ~})?
         | <rest>
         | {`nil`}
         @}
     }
-    rule ident {
+    rule ident { // XXX: currently unused
+        <name> =stash -> lookup
+    }
+    rule name {
         { !keyword ((%alpha | "_") (%alnum | "_")*) }
     }
-    rule ident_list {
-        {~ <ident> (s "," s <ident>)* ~}
+    rule name_list {
+        {~ <name> (s "," s <name>)* ~}
     }
     rule qname {
-        {~ <ident> ("." <ident>)* ~}
+        {~ <name> ("." <name>)* ~}
     }
     rule hexadec {
         "-"? "0x" %xdigit+
@@ -1254,11 +1277,11 @@ grammar Lupa {
         <hash_pair> (s "," s <hash_pair>)* (s ",")?
     }
     rule hash_pair {
-        (<ident> | "[" s <expr> s ("]" | <{syntax_error("expected ']'")}>)) s
+        (<name> | "[" s <expr> s ("]" | <{syntax_error("expected ']'")}>)) s
         "=" s <expr>
     }
     rule primary {
-        | <ident>
+        | <name>
         | <range>
         | <number>
         | <string>
@@ -1277,13 +1300,13 @@ grammar Lupa {
     }
     rule member_expr {
         {~
-        | "." s <ident>
+        | "." s <name>
         | "[" s <expr> s ("]" | <{ syntax_error("expected ']'") }>)
         ~}
     }
     rule method_expr {
         {~
-        | ("."  -> ":" | "::" -> ".") s <ident> s (<short_expr> | <paren_expr>)
+        | ("."  -> ":" | "::" -> ".") s <name> s (<short_expr> | <paren_expr>)
         ~}
     }
     rule access_expr {
@@ -1396,9 +1419,19 @@ grammar Lupa {
     }
     rule bind_expr {
         {~ <bind_list> s "=" s (
-            | <expr> (s "," s <expr>)*
+            | {@ <expr> (s "," s <expr>)* @}
             | <{syntax_error("bad right hand <expr>")}>
-        ) ~}
+        ) =stash -> function(l, r, s) {
+            print('l:', l, 'r:', r)
+            for x=1, #l {
+                var n = l[x]
+                var i = s[n]
+                if i && i.g {
+                    r[x] = i.g~'('~r[x]~')'
+                }
+            }
+            return l.concat(',')~'='~r.concat(',')
+        }~}
     }
     rule bind_binop {
         { "+" | "-" | "*" | "/" | "%" | "||" | "|"| "&&"
@@ -1409,12 +1442,12 @@ grammar Lupa {
         {~ <bind_term> s <bind_binop> s <expr> -> make_binop_bind ~}
     }
     rule bind_list {
-        <bind_term> (s "," s <bind_term>)*
+        {@ <bind_term> (s "," s <bind_term>)* @}
     }
     rule bind_term {
         {~
         | <primary> (s <bind_member>)+
-        | <ident>
+        | <name>
         ~}
     }
     rule bind_member {
@@ -1425,7 +1458,7 @@ grammar Lupa {
     }
     rule bind_suffix {
         {~
-        | "." s <ident> s
+        | "." s <name> s
         | "[" s <expr>  s "]"
         ~}
     }
@@ -1436,9 +1469,9 @@ grammar Lupa {
     }
     rule grammar_decl {
         {~ (
-            "grammar" idsafe s <ident> s
+            "grammar" idsafe s <name> s
             "{" {~ <grammar_body> s ~} "}"
-        ) -> '__grammar(self,"%1",function(self) %2 end);' ~}
+        ) -> '__grammar(__env,"%1",function(__env,self) %2 end);' ~}
     }
     rule grammar_body {
         {:scope: {`'lexical'`} :}
@@ -1452,8 +1485,8 @@ grammar Lupa {
         | <statement>
     }
     rule rule_decl {
-        "rule" idsafe s <ident> s "{" {~ s <rule_body> s ~} "}"
-        -> '__rule(self,"%1",%2);'
+        "rule" idsafe s <name> s "{" {~ s <rule_body> s ~} "}"
+        -> '__rule(__env,"%1",%2);'
     }
     rule rule_body {
         <rule_alt> | {`'__patt.P(nil)'`}
@@ -1524,7 +1557,7 @@ grammar Lupa {
         ~}
     }
     rule rule_predef {
-        {~ "%" <ident> -> '__patt.Def("%1")' ~}
+        {~ "%" <name> -> '__patt.Def("%1")' ~}
     }
     rule rule_range {
         {~ . ("-"->'') !"]" . ~} -> function(r) { '__patt.R(%q)'.format(r) }
@@ -1535,7 +1568,7 @@ grammar Lupa {
     rule rule_ref {
         {~
         ("<" -> '') s
-            ( <ident> -> '__patt.V("%1")'
+            ( <name> -> '__patt.V("%1")'
             | {~ ("{" -> '__patt.P(') s <expr> s ("}" -> ")") ~}
             ) s
         (">" -> '')
@@ -1543,12 +1576,12 @@ grammar Lupa {
         ~}
     }
     rule rule_group_capt {
-        {~ "{:" ((<ident> -> quote ":") | {`'nil'`}) {~ s <rule_alt> ~} s ":}"
+        {~ "{:" ((<name> -> quote ":") | {`'nil'`}) {~ s <rule_alt> ~} s ":}"
         -> '__patt.Cg(%2,%1)'
         ~}
     }
     rule rule_back_capt {
-        "=" (<ident> -> quote) -> '__patt.Cb(%1)'
+        "=" (<name> -> quote) -> '__patt.Cb(%1)'
     }
     rule rule_sub_capt {
         "{~" {~ s <rule_alt> s ~} "~}" -> '__patt.Cs(%1)'
@@ -1694,3 +1727,4 @@ Lupa.PATH = "./?.lu;./lib/?.lu;./src/?.lu"
 
 if arg[1] { run(unpack(arg)) }
 
+// vim: ft=lupa
