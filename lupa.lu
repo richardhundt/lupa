@@ -75,14 +75,14 @@ _G.__class = function(into, name, _from, _with, body) {
 
     setmetatable(_class, Class)
 
+    var _env = setmetatable({ }, { __index = into })
     if _with {
         for i=1, #_with {
-            _with[i].compose(_class)
+            _with[i].compose(_env, _class)
         }
     }
 
     into[name] = _class
-    var _env = setmetatable({ }, { __index = into })
     body(_env, _class, _super)
 
     return _class
@@ -92,7 +92,6 @@ _G.__trait = function(into, name, _with, body) {
     _trait.__name = name
     _trait.__body = body
     _trait.__with = _with
-    _trait.__into = into
     setmetatable(_trait, Trait)
     if into {
         into[name] = _trait
@@ -466,8 +465,8 @@ _G.Trait = setmetatable(newtable(), Type)
 Trait.__call = function(self, ...args) {
    var copy = __trait(nil, self.__name, self.__with, self.__body)
    var make = self.compose
-   copy.compose = function(self, into) {
-      return make(self, into, @args)
+   copy.compose = function(self, into, recv) {
+      return make(self, into, recv, @args)
    }
    return copy
 }
@@ -475,12 +474,12 @@ Trait.__tostring = function(self) {
    return 'trait '~self.__name
 }
 Trait.__index = Trait
-Trait.compose = function(self, into, ...) {
+Trait.compose = function(self, into, recv, ...) {
    for i=1, #self.__with {
-      self.__with[i].compose(into)
+      self.__with[i].compose(into, recv)
    }
-   self::__body(into, ...)
-   into.__with[self.__body] = true
+   self::__body(into, recv, ...)
+   recv.__with[self.__body] = true
    return into
 }
 
@@ -742,9 +741,9 @@ class Lupa {
     }
 
     class Context {
-        has scope = Lupa::Scope()
+        has scope = Lupa.Scope.new()
         method enter() {
-            self.scope = Lupa::Scope(self.scope)
+            self.scope = Lupa.Scope.new(self.scope)
         }
         method leave() {
             if 'outer' in self.scope {
@@ -1710,7 +1709,7 @@ class Lupa {
         }
     }
     method compile(lupa, name) {
-        var ctx = Lupa::Context()
+        var ctx = Lupa.Context.new()
         ctx.enter()
         ctx.define('_G')
         ctx.define('self')

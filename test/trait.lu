@@ -4,7 +4,6 @@ trait Guide(M) {
 
 trait Pet(N) {
     has size = N
-
     method wooz() {
         var x = 42
         print(x)
@@ -25,7 +24,7 @@ class Dog from Mammal with Guide("guiding"), Pet(42) {
     }
 }
 
-var d = Dog()
+var d = Dog.new()
 d.walk()
 d.greet()
 d.wooz()
