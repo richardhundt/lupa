@@ -1,5 +1,5 @@
 
-package My::Shapes {
+package My.Shapes {
     DEBUG = true
 
     package Inner {
@@ -19,17 +19,17 @@ package My::Shapes {
     }
 }
 
-package My::Shapes {
+package My.Shapes {
 
     ANSWER = 42
 
-    class Point3D extends Point {
+    class Point3D from Point {
         has z = 0
 
         method move(x, y, z) {
             super.move(x, y)
             if DEBUG {
-                print("moving %{self} to %{x}, %{y}, %{z}")
+                print("moving ${self} to ${x}, ${y}, ${z}")
             }
             self.z = z
         }
@@ -40,17 +40,15 @@ package My::Shapes {
     }
 }
 
-import Point3D from My::Shapes
-import Point3D from My::Shapes in Foo
-import Point from My::Shapes
+import Point, Point3D from My.Shapes
 
-Foo::Point3D.new()
-My::Shapes::Point.new()
-My::Shapes::Inner::deep()
+Point3D()
+My.Shapes.Point()
+My.Shapes.Inner::deep()
 
-var p = Point3D.new()
+var p = Point3D()
 p.move(1,2,3)
 
-var q = Point.new()
+var q = Point()
 
 

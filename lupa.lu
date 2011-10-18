@@ -310,13 +310,14 @@ __package = function(into, name, body, args) {
    return pckg
 }
 
-__import = function(into, _from, what) {
+__import = function(_from, what) {
    var mod = __load(_from)
-   var out = { }
+   var out = [ ]
    if what {
       for i=1, #what {
-         out[what[i]] = mod[what[i]]
+         out[i] = mod[what[i]]
       }
+      return ...out
    }
    else {
       return mod
@@ -978,8 +979,9 @@ class Lupa {
         }
 
         function make_import_stmt(n,f) {
-            for i=1, #n { n[i] = quote(n[i]) }
-            return "local %s=__import(%s,{%s});".format(f, n.concat(','))
+            var q = [ ]
+            for i=1, #n { q[i] = quote(n[i]) }
+            return "local %s=__import(%q,{%s});".format(n.concat(','), f, q.concat(','))
         }
         function make_export_stmt(n) {
             var b = [ ]
@@ -1070,8 +1072,8 @@ class Lupa {
             ~}
         }
         rule import_stmt {
-            {~ (
-                "import" idsafe s {@ <name_list> @} s "from" (<qname> -> quote)
+            {~ ("import" idsafe s
+               {@ <name> (s "," s <name>)* @} s "from" s <qname>
             ) -> make_import_stmt ~}
         }
         rule export_stmt {
