@@ -72,18 +72,17 @@ _G.__class = function(into, name, _from, _with, body)
          end 
          do return obj end
      end;
-    _class.__apply = _class.new;
 
     setmetatable(_class, __env.Class);
 
+    local _env = setmetatable(Hash({ }), Hash({ __index = into }));
     if _with then  
         for i=1, #(_with)  do local __break repeat 
-            _with[i]:compose(_class);
+            _with[i]:compose(_env, _class);
          until true if __break then break end end 
      end 
 
     into[name] = _class;
-    local _env = setmetatable(Hash({ }), Hash({ __index = into }));
     body(_env, _class, _super);
 
      do return _class end
@@ -93,7 +92,6 @@ _G.__trait = function(into, name, _with, body)
     _trait.__name = name;
     _trait.__body = body;
     _trait.__with = _with;
-    _trait.__into = into;
     setmetatable(_trait, __env.Trait);
     if into then  
         into[name] = _trait;
@@ -467,8 +465,8 @@ _G.Trait = setmetatable(__env.newtable(), __env.Type);
 __env.Trait.__call = function(self,...) local args=Array(...);
    local copy = __env.__trait((nil), self.__name, self.__with, self.__body);
    local make = self.compose;
-   copy.compose = function(self, into) 
-       do return make(self, into, __op_spread(args)) end
+   copy.compose = function(self, into, recv) 
+       do return make(self, into, recv, __op_spread(args)) end
     end;
     do return copy end
  end;
@@ -476,12 +474,12 @@ __env.Trait.__tostring = function(self)
     do return (("trait "))..(self.__name) end
  end;
 __env.Trait.__index = __env.Trait;
-__env.Trait.compose = function(self, into,...) 
+__env.Trait.compose = function(self, into, recv,...) 
    for i=1, #(self.__with)  do local __break repeat 
-      self.__with[i]:compose(into);
+      self.__with[i]:compose(into, recv);
     until true if __break then break end end 
-   self.__body(into, ...);
-   into.__with[self.__body] = (true);
+   self.__body(into, recv, ...);
+   recv.__with[self.__body] = (true);
     do return into end
  end;
 
@@ -743,9 +741,9 @@ self.Lupa=__class(__env,"Lupa",{},{},function(__env,self,super)
      end);
 
     self.Context=__class(__env,"Context",{},{},function(__env,self,super) 
-        __has(self,"scope",function(self) return __env.Lupa.Scope() end);
+        __has(self,"scope",function(self) return __env.Lupa.Scope:new() end);
         __method(self,"enter",function(self) 
-            self.scope = __env.Lupa.Scope(self.scope);
+            self.scope = __env.Lupa.Scope:new(self.scope);
          end);
         __method(self,"leave",function(self) 
             if __op_in(("outer") , self.scope) then  
@@ -952,7 +950,7 @@ self.Lupa=__class(__env,"Lupa",{},{},function(__env,self,super)
              elseif (#(n) )==( 1) then  
                  do return ("function __env.%s(%s) %s%s end"):format(n[1],p,h,b) end
              end 
-              do return ("function %s(%s) %s%s end"):format(n:concat((".")),p,h,b) end
+             do return ("function %s(%s) %s%s end"):format(n:concat((".")),p,h,b) end
          end
 
         local function make_meth_decl(ctx,n,p,b) 
@@ -1711,7 +1709,7 @@ self.Lupa=__class(__env,"Lupa",{},{},function(__env,self,super)
         );
      end);
     __method(self,"compile",function(self,lupa, name) 
-        local ctx = __env.Lupa.Context();
+        local ctx = __env.Lupa.Context:new();
         ctx:enter();
         ctx:define(("_G"));
         ctx:define(("self"));
@@ -1721,7 +1719,7 @@ self.Lupa=__class(__env,"Lupa",{},{},function(__env,self,super)
      end);
  end);
 
-__env.eval = function(src) 
+_G.eval = function(src) 
     local eval = __env.assert(__env.loadstring(__env.Lupa:compile(src),(("=eval:"))..(src)));
      do return eval() end
  end;

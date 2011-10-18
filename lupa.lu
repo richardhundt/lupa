@@ -1719,7 +1719,7 @@ class Lupa {
     }
 }
 
-eval = function(src) {
+_G.eval = function(src) {
     var eval = assert(loadstring(Lupa.compile(src),'=eval:'~src))
     return eval()
 }
