@@ -310,13 +310,14 @@ __package = function(into, name, body, args)
     do return pckg end
  end;
 
-__import = function(into, _from, what) 
+__import = function(_from, what) 
    local mod = __load(_from);
-   local out = Hash({ });
+   local out = Array( );
    if what then  
       for i=1, #(what)  do local __break repeat 
-         out[what[i]] = mod[what[i]];
+         out[i] = mod[what[i]];
        until true if __break then break end end 
+       do return __op_spread(out) end
    
    else 
        do return mod end
@@ -978,8 +979,9 @@ __class(self,"Lupa",{},{},function(self,super)
          end
 
         local function make_import_stmt(n,f) 
-            for i=1, #(n)  do local __break repeat  n[i] = quote(n[i]);  until true if __break then break end end 
-             do return ("local %s=__import(%s,{%s});"):format(f, n:concat((","))) end
+            local q = Array( );
+            for i=1, #(n)  do local __break repeat  q[i] = quote(n[i]);  until true if __break then break end end 
+             do return ("local %s=__import(%q,{%s});"):format(n:concat((",")), f, q:concat((","))) end
          end
         local function make_export_stmt(n) 
             local b = Array( );
@@ -1070,8 +1072,8 @@ __class(self,"Lupa",{},{},function(self,super)
             )
         );
         __rule(self,"import_stmt",
-            __patt.Cs( ((
-                __patt.P(("import"))* idsafe* s* __patt.Ca( __patt.V("name_list") )* s* __patt.P(("from"))* ((__patt.V("qname") )/( quote))
+            __patt.Cs( ((__patt.P(("import"))* idsafe* s*
+               __patt.Ca( __patt.V("name")* (s* __patt.P((","))* s* __patt.V("name"))^0 )* s* __patt.P(("from"))* s* __patt.V("qname")
             ) )/( make_import_stmt) )
         );
         __rule(self,"export_stmt",
