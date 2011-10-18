@@ -1022,6 +1022,7 @@ __class(self,"Lupa",{},{},function(self,super)
             + __patt.V("try_stmt")
             + __patt.V("for_stmt")
             + __patt.V("for_in_stmt")
+            + __patt.V("do_while_stmt")
             + __patt.V("while_stmt")
             + __patt.V("break_stmt")
             + __patt.V("continue_stmt")
@@ -1091,6 +1092,12 @@ __class(self,"Lupa",{},{},function(self,super)
         );
         __rule(self,"while_stmt",
             __patt.Cs( __patt.P(("while"))* idsafe* s* __patt.V("expr")* s* __patt.V("loop_body") )
+        );
+        __rule(self,"do_while_stmt",
+            __patt.Cs(
+               __patt.P(("do"))* idsafe* __patt.Cs( s* __patt.V("loop_body")* s )*
+               __patt.P(("while"))* idsafe* (__patt.Cs( s* __patt.V("expr") ) )/( ("repeat %1 until not(%2)"))
+            )
         );
         __rule(self,"loop_body",
             ((__patt.P(("{")) )/( (" do local __break repeat ")))* __patt.V("block_body")* s*

@@ -25,10 +25,10 @@ syn match   lupaComment "\%^#!.*"
 
 syn match   lupaSpecialCharacter "'\\.'"
 syn match   lupaNumber	       "-\=\<\(\d\|_\)\+L\=\>\|0[xX][0-9a-fA-F]\+\>"
-syn region  lupaRegexpString     start=+/[^/*]+me=e-1 skip=+\\\\\|\\/+ end=+/+me=e-1
+"syn region  lupaRegexpString     start=+/[^/*]+me=e-1 skip=+\\\\\|\\/+ end=+/+me=e-1
 
 syn keyword lupaConditional	if else switch
-syn keyword lupaRepeat		while for
+syn keyword lupaRepeat		while for do
 syn keyword lupaBranch		break continue
 syn keyword lupaOperator	in is typeof like
 syn keyword lupaType		Array Boolean Date Function Number Object String RegExp int8 int16 int32 int64 uint8 uint16 uint32 uint64

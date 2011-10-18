@@ -1022,6 +1022,7 @@ class Lupa {
             | <try_stmt>
             | <for_stmt>
             | <for_in_stmt>
+            | <do_while_stmt>
             | <while_stmt>
             | <break_stmt>
             | <continue_stmt>
@@ -1091,6 +1092,12 @@ class Lupa {
         }
         rule while_stmt {
             {~ "while" idsafe s <expr> s <loop_body> ~}
+        }
+        rule do_while_stmt {
+            {~
+               "do" idsafe {~ s <loop_body> s ~}
+               "while" idsafe {~ s <expr> ~} -> 'repeat %1 until not(%2)'
+            ~}
         }
         rule loop_body {
             ("{" -> " do local __break repeat ") <block_body> s
