@@ -62,10 +62,10 @@ __class = function(into, name, _from, _with, body)
             rawset(obj, key, val);
          end 
      end;
-    _class.__apply = function(self,...) local  args=Array(...);
+    _class.__apply = function(self,...) 
         local obj = setmetatable(newtable(), self);
         if (rawget(self, ("__init")) )~=( (nil)) then  
-            local ret = obj:__init(__op_spread(args));
+            local ret = obj:__init(...);
             if (ret )~=( (nil)) then  
                  do return ret end
              end 
@@ -140,8 +140,8 @@ __has = function(into, name, def)
 __grammar = function(into, name, body) 
    local gram = newtable();
    local patt;
-   function gram.match(self,...) local  args=Array(...);
-       do return patt:match(__op_spread(args)) end
+   function gram.match(self,...) 
+       do return patt:match(...) end
     end
    local fenv = getfenv(2);
    setfenv(body, setmetatable(Hash({ }), Hash({ __index = fenv })));
@@ -259,8 +259,8 @@ do
 _G.__main = _G;
 _G.__main.__env = _G;
 
-__unit = function(main,...) local  args=Array(...);
-    do return __package(_G, ("__main"), main, args) end
+__unit = function(main,...) 
+    do return __package(_G, ("__main"), main, ...) end
  end;
 
 __package = function(into, name, body, args) 
@@ -323,7 +323,7 @@ __import = function(_from, what)
        do return mod end
     end 
  end;
-__export = function(self,...) local  what=Array(...);
+__export = function(self,...) local what=Array(...);
     for i=1, #(what)  do local __break repeat 
         self.__export[what[i]] = (true);
      until true if __break then break end end 
@@ -347,6 +347,7 @@ __load = function(_from)
 __op_as     = setmetatable;
 __op_typeof = getmetatable;
 __op_yield  = coroutine[("yield")];
+__op_throw  = error;
 
 __op_in = function(key, obj) 
     do return (rawget(obj, key) )~=( (nil)) end
@@ -368,8 +369,8 @@ __op_spread = function(a)
    if __spread then    do return __spread(a) end  end 
     do return unpack(a) end
  end;
-__op_each = function(a,...) local  args=Array(...);
-   if (type(a) )==( ("function")) then    do return a, __op_spread(args) end  end 
+__op_each = function(a,...) 
+   if (type(a) )==( ("function")) then    do return a, ... end  end 
    local mt = getmetatable(a);
    local __each = (mt )and( rawget(mt, ("__each")));
    if __each then    do return __each(a) end  end 
@@ -414,9 +415,9 @@ __op_bnot = function(a)
 
 Type = newtable();
 Type.__name = ("Type");
-Type.__call = loadstring(("\
-   return (...).__apply(...)\
-"));
+Type.__call = function(self,...) 
+    do return self:__apply(...) end
+ end;
 Type.isa = function(self, that) 
     do return (getmetatable(self) )==( that) end
  end;
@@ -426,16 +427,7 @@ Type.can = function(self, key)
 Type.does = function(self, that) 
     do return (false) end
  end;
-Type.__index = function(self, key) 
-    do return Type[key] end
-   --[=[
-   var val = Type[key]
-   if val == nil {
-      error("AccessError: no such member '${key}' in ${self}", 2)
-   }
-   return val
-   ]=]
- end;
+Type.__index = Type;
 Type.__tostring = function(self) 
     do return (("type "))..(((rawget(self, ("__name")) )or( ("Type")))) end
  end;
@@ -458,8 +450,8 @@ Class.__newindex = function(self, key, val)
      end 
     do return rawset(self, key, val) end
  end;
-Class.__call = function(self,...) local  args=Array(...);
-    do return self:__apply(__op_spread(args)) end
+Class.__call = function(self,...) 
+    do return self:__apply(...) end
  end;
 
 Object = setmetatable(newtable(), Class);
@@ -485,11 +477,11 @@ Object.does = function(self, that)
  end;
 
 Trait = setmetatable(newtable(), Type);
-Trait.__call = function(self,...) local  args=Array(...);
+Trait.__call = function(self,...) local args=Array(...);
    local copy = __trait((nil), self.__name, self.__with, self.__body);
    local make = self.compose;
    copy.compose = function(self, into) 
-       do return make(self, into, unpack(args)) end
+       do return make(self, into, __op_spread(args)) end
     end;
     do return copy end
  end;
@@ -497,11 +489,11 @@ Trait.__tostring = function(self)
     do return (("trait "))..(self.__name) end
  end;
 Trait.__index = Trait;
-Trait.compose = function(self, into,...) local  args=Array(...);
+Trait.compose = function(self, into,...) 
    for i=1, #(self.__with)  do local __break repeat 
       self.__with[i]:compose(into);
     until true if __break then break end end 
-   self.__body(into, __op_spread(args));
+   self.__body(into, ...);
    into.__with[self.__body] = (true);
     do return into end
  end;
@@ -538,10 +530,9 @@ Hash.__each = pairs;
 Array = setmetatable(newtable(), Type);
 Array.__name = ("Array");
 Array.__index = Array;
-Array.__apply = loadstring(("\
-   local self = ...\
-   return setmetatable({ select(2, ...) }, self)\
-"));
+Array.__apply = function(self,...) 
+    do return setmetatable(newtable(...), self) end
+ end;
 Array.__tostring = function(self) 
    local buf = newtable();
    for i=1, #(self)  do local __break repeat 
@@ -606,7 +597,7 @@ Array.unshift = function(self, v)
     until true if __break then break end end 
    self[1] = v;
  end;
-Array.splice = function(self, offset, count,...) local  args=Array(...);
+Array.splice = function(self, offset, count,...) local args=Array(...);
    local out = Array();
    for i=offset, ((offset )+( count ))-( 1)  do local __break repeat 
       out:push(self:remove(offset));
@@ -652,7 +643,13 @@ Range.each = function(self, block)
 
 Nil = setmetatable(newtable(), Type);
 Nil.__name = ("Nil");
-Nil.__index = Nil;
+Nil.__index = function(self, key) 
+    local val = Type[key];
+    if (val )==( (nil)) then  
+        error(("TypeError: no such member "..tostring(key).." in type Nil"), 2);
+     end 
+     do return val end
+ end;
 debug.setmetatable((nil), Nil);
 
 Number = setmetatable(newtable(), Type);
@@ -857,7 +854,9 @@ __class(self,"Lupa",{},{},function(self,super)
             [("#")] = ("#(%s)"),
             [("-")] = ("-(%s)"),
             [("~")] = ("__op_bnot(%s)"),
-            [("...")] = ("__op_spread(%s)"),
+            [("@")] = ("__op_spread(%s)"),
+            [("throw")] = ("__op_throw(%s)"),
+            [("typeof")] = ("__op_typeof(%s)"),
         });
 
         local binops = Hash({
@@ -887,6 +886,9 @@ __class(self,"Lupa",{},{},function(self,super)
         });
 
         local function fold_prefix(o,e) 
+            if ((o )==( ("#") ))and( e:match(("^%s*%.%.%.%s*$"))) then  
+                 do return ("select(\"#\",...)") end
+             end 
              do return unrops[o]:format(e) end
          end
 
@@ -928,9 +930,11 @@ __class(self,"Lupa",{},{},function(self,super)
             local h = ("");
             if ((#(p) )>( 0 ))and( p[#(p)]:find(("..."), 1, (true))) then  
                 local r = p[#(p)];
-                local n = r:gsub(("%.%.%."),(""));
+                local n = r:match(("%.%.%.([%w_0-9]+)"));
                 p[#(p)] = ("...");
-                h = ("local %s=Array(...);"):format(n);
+                if n then  
+                    h = ("local %s=Array(...);"):format(n);
+                 end 
              end 
              do return p:concat((",")), h end
          end
@@ -1226,7 +1230,13 @@ __class(self,"Lupa",{},{},function(self,super)
             + __patt.V("statement")
         );
         __rule(self,"rest",
-            __patt.Cs( __patt.C(__patt.P(("...")))* __patt.V("param") )
+            __patt.Cs( __patt.C(__patt.P(("...")))* __patt.V("param")^-1 )
+        );
+        __rule(self,"stack",
+            __patt.Cs(
+             ((__patt.P(("..."))* s* __patt.P(("["))* s* __patt.V("expr")* s* (__patt.P(("]")) + __patt.P( syntax_error(("expected ']'")) ))) )/( ("select(%1,...)"))
+            + __patt.C(__patt.P(("...")))
+            )
         );
         __rule(self,"param_list",
             __patt.Ca(
@@ -1335,6 +1345,7 @@ __class(self,"Lupa",{},{},function(self,super)
             + __patt.V("vnil")
             + __patt.V("vtrue")
             + __patt.V("vfalse")
+            + __patt.V("stack")
             + __patt.V("array")
             + __patt.V("hash")
             + __patt.V("func")
@@ -1456,7 +1467,10 @@ __class(self,"Lupa",{},{},function(self,super)
         //]=]
 
         __rule(self,"prefix_expr",
-            (__patt.Cg( __patt.C( __patt.P(("...")) + __patt.P(("!")) + __patt.P(("#")) + __patt.P(("-")) + __patt.P(("~")) )* s* __patt.V("prefix_expr"),nil) )/( fold_prefix)
+            (__patt.Cg( __patt.C(
+                 __patt.P(("@")) + __patt.P(("!")) + __patt.P(("#")) + __patt.P(("-")) + __patt.P(("~"))
+                + (__patt.P(("throw")) + __patt.P(("typeof")))* idsafe
+            )* s* __patt.V("prefix_expr"),nil) )/( fold_prefix)
             + __patt.Cs( s* __patt.V("term") )
         );
 
@@ -1652,7 +1666,7 @@ eval = function(src)
      do return eval() end
  end;
 
-local getopt = function(args) 
+local getopt = function(...) local args=Array(...);
    local opt = Hash({ });
    local idx = 0;
    local len = #(args);
@@ -1683,8 +1697,8 @@ local getopt = function(args)
     do return opt end
  end;
 
-local run = function(...) local args=Array(...);
-   local opt = getopt(args);
+local run = function(...) 
+   local opt = getopt(...);
    local sfh = assert(io.open(opt[("file")]));
    local src = sfh:read(("*a"));
    sfh:close();
@@ -1711,7 +1725,7 @@ local run = function(...) local args=Array(...);
       else 
          local main_env = setmetatable(Hash({ }), Hash({ __index = _G }));
          setfenv(main, main_env);
-         main(opt[("file")], __op_spread(args));
+         main(opt[("file")], ...);
        end 
     end 
  end;

@@ -62,10 +62,10 @@ __class = function(into, name, _from, _with, body) {
             rawset(obj, key, val)
         }
     }
-    _class.__apply = function(self, ...args) {
+    _class.__apply = function(self, ...) {
         var obj = setmetatable(newtable(), self)
         if rawget(self, '__init') != nil {
-            var ret = obj.__init(...args)
+            var ret = obj.__init(...)
             if ret != nil {
                 return ret
             }
@@ -140,8 +140,8 @@ __has = function(into, name, def) {
 __grammar = function(into, name, body) {
    var gram = newtable()
    var patt
-   function gram.match(self, ...args) {
-      return patt.match(...args)
+   function gram.match(self, ...) {
+      return patt.match(...)
    }
    var fenv = getfenv(2)
    setfenv(body, setmetatable({ }, { __index = fenv }))
@@ -259,8 +259,8 @@ __patt::setmaxstack(1024)
 _G.__main = _G
 _G.__main.__env = _G
 
-__unit = function(main, ...args) {
-   return __package(_G, "__main", main, args)
+__unit = function(main, ...) {
+   return __package(_G, "__main", main, ...)
 }
 
 __package = function(into, name, body, args) {
@@ -317,7 +317,7 @@ __import = function(_from, what) {
       for i=1, #what {
          out[i] = mod[what[i]]
       }
-      return ...out
+      return @out
    }
    else {
       return mod
@@ -347,6 +347,7 @@ __load = function(_from) {
 __op_as     = setmetatable
 __op_typeof = getmetatable
 __op_yield  = coroutine['yield']
+__op_throw  = error
 
 __op_in = function(key, obj) {
    return rawget(obj, key) != nil
@@ -368,8 +369,8 @@ __op_spread = function(a) {
    if __spread { return __spread(a) }
    return unpack(a)
 }
-__op_each = function(a, ...args) {
-   if type(a) == 'function' { return a, ...args }
+__op_each = function(a, ...) {
+   if type(a) == 'function' { return a, ... }
    var mt = getmetatable(a)
    var __each = mt && rawget(mt, '__each')
    if __each { return __each(a) }
@@ -414,9 +415,9 @@ __op_bnot = function(a) {
 
 Type = newtable()
 Type.__name = 'Type'
-Type.__call = loadstring('''
-   return (...).__apply(...)
-''')
+Type.__call = function(self, ...) {
+   return self.__apply(...)
+}
 Type.isa = function(self, that) {
    return getmetatable(self) == that
 }
@@ -426,16 +427,7 @@ Type.can = function(self, key) {
 Type.does = function(self, that) {
    return false
 }
-Type.__index = function(self, key) {
-   return Type[key]
-   /*
-   var val = Type[key]
-   if val == nil {
-      error("AccessError: no such member '${key}' in ${self}", 2)
-   }
-   return val
-   */
-}
+Type.__index = Type
 Type.__tostring = function(self) {
    return 'type '~(rawget(self, '__name') || 'Type')
 }
@@ -458,8 +450,8 @@ Class.__newindex = function(self, key, val) {
     }
     rawset(self, key, val)
 }
-Class.__call = function(self, ...args) {
-   return self.__apply(...args)
+Class.__call = function(self, ...) {
+   return self.__apply(...)
 }
 
 Object = setmetatable(newtable(), Class)
@@ -489,7 +481,7 @@ Trait.__call = function(self, ...args) {
    var copy = __trait(nil, self.__name, self.__with, self.__body)
    var make = self.compose
    copy.compose = function(self, into) {
-      return make(self, into, unpack(args))
+      return make(self, into, @args)
    }
    return copy
 }
@@ -497,11 +489,11 @@ Trait.__tostring = function(self) {
    return 'trait '~self.__name
 }
 Trait.__index = Trait
-Trait.compose = function(self, into, ...args) {
+Trait.compose = function(self, into, ...) {
    for i=1, #self.__with {
       self.__with[i].compose(into)
    }
-   self::__body(into, ...args)
+   self::__body(into, ...)
    into.__with[self.__body] = true
    return into
 }
@@ -538,10 +530,9 @@ Hash.__each = pairs
 Array = setmetatable(newtable(), Type)
 Array.__name = 'Array'
 Array.__index = Array
-Array.__apply = loadstring('''
-   local self = ...
-   return setmetatable({ select(2, ...) }, self)
-''')
+Array.__apply = function(self, ...) {
+   return setmetatable(newtable(...), self)
+}
 Array.__tostring = function(self) {
    var buf = newtable()
    for i=1, #self {
@@ -652,7 +643,13 @@ Range.each = function(self, block) {
 
 Nil = setmetatable(newtable(), Type)
 Nil.__name = 'Nil'
-Nil.__index = Nil
+Nil.__index = function(self, key) {
+    var val = Type[key]
+    if val == nil {
+        error("TypeError: no such member ${key} in type Nil", 2)
+    }
+    return val
+}
 debug::setmetatable(nil, Nil)
 
 Number = setmetatable(newtable(), Type)
@@ -748,7 +745,7 @@ class Lupa {
             if name in self.entries {
                 return self.entries[name]
             }
-            else if self.outer {
+            else if 'outer' in self {
                 return self.outer.lookup(name)
             }
         }
@@ -857,7 +854,9 @@ class Lupa {
             ["#"] = "#(%s)",
             ["-"] = "-(%s)",
             ["~"] = "__op_bnot(%s)",
-            ["..."] = "__op_spread(%s)",
+            ["@"] = "__op_spread(%s)",
+            ["throw"] = "__op_throw(%s)",
+            ["typeof"] = "__op_typeof(%s)",
         }
 
         var binops = {
@@ -887,6 +886,9 @@ class Lupa {
         }
 
         function fold_prefix(o,e) {
+            if o == '#' && e.match('^%s*%.%.%.%s*$') {
+                return 'select("#",...)'
+            }
             return unrops[o].format(e)
         }
 
@@ -926,11 +928,13 @@ class Lupa {
 
         function make_params(p) {
             var h = ''
-            if #p > 0 && p[#p].find("...", 1, true) {
+            if #p > 0 && p[#p].find('...', 1, true) {
                 var r = p[#p]
-                var n = r.gsub('%.%.%.','')
+                var n = r.match('%.%.%.([%w_0-9]+)')
                 p[#p] = "..."
-                h = "local %s=Array(...);".format(n)
+                if n {
+                    h = "local %s=Array(...);".format(n)
+                }
             }
             return p.concat(","), h
         }
@@ -946,7 +950,7 @@ class Lupa {
             return "function(%s) %s%s end".format(p,h,b)
         }
 
-        function make_func_decl(n,p,b,s) {
+        function make_func_decl(c,n,p,b,s) {
             var p, h = make_params(p)
             if s == 'lexical' && !n.find('.',1,true) {
                 return "local function %s(%s) %s%s end".format(n,p,h,b)
@@ -991,8 +995,32 @@ class Lupa {
             }
             return b.concat('')
         }
-        function define(name, ctx) {
-            ctx.define(name, { })
+        function define(name, ctx, base) {
+            ctx.define(name, { base = base })
+            return name
+        }
+        function define_qname(qname, ctx) {
+            var name = qname.match('^([^%.]+)')
+            ctx.define(name, '__env')
+            return quote(qname)
+        }
+        function lookup(name, ctx) {
+            var info = ctx.lookup(name)
+            if info {
+                if info.base { return info.base~'.'~name }
+                return name
+            }
+            return '__env.'~name
+        }
+        function lookup_or_define(name, ctx) {
+            var info = ctx.lookup(name)
+            if !info {
+                define(name, ctx, '__env')
+                return '__env.'~name
+            }
+            if info.base {
+                return info.base~'.'~name
+            }
             return name
         }
 
@@ -1003,7 +1031,7 @@ class Lupa {
             {:set_return: {`false`} :}
             {:scope: {`'global'`} :}
             { %s* '#!' (!nl .)* %s* }? s
-            {`'local self=_G;'`}
+            {`'local __env=setmetatable({},{__index=_G});local self={};'`}
             {~ (s <main_body_stmt>)* s ~}
         }
         rule main_body_stmt {
@@ -1074,19 +1102,19 @@ class Lupa {
         }
         rule import_stmt {
             {~ ("import" idsafe s
-               {@ <name> (s "," s <name>)* @} s "from" s <qname>
+               {@ <param> (s "," s <param>)* @} s "from" s <qname>
             ) -> make_import_stmt ~}
         }
         rule export_stmt {
             {~ "export" idsafe s {@ <name_list> @} -> make_export_stmt ~}
         }
         rule for_stmt {
-            {~ "for" idsafe s <name> s "=" s <expr> s "," s <expr>
+            {~ "for" idsafe s <param> s "=" s <expr> s "," s <expr>
                 (s "," s <expr>)? s <loop_body>
             ~}
         }
         rule for_in_stmt {
-            {~ "for" idsafe s <name_list> s "in" s
+            {~ "for" idsafe s <param> (s "," s <param>)* s "in" idsafe s
                 (<expr> -> "__op_each(%1)") s <loop_body>
             ~}
         }
@@ -1133,8 +1161,8 @@ class Lupa {
             ~} -> '%1;' semicol
         }
         rule var_list {
-            //(<name> %1 -> define) (s "," s (<name> %1 -> define))*
-            <name> (s "," s <name>)*
+            (<name> %1 -> define) (s "," s (<name> %1 -> define))*
+            //<name> (s "," s <name>)*
         }
         rule slot_decl {
             {~ ("has" idsafe s <name> (s "=" s <expr> | {`""`}) semicol)
@@ -1142,13 +1170,13 @@ class Lupa {
             ~}
         }
         rule meth_decl {
-            {~ ("method" idsafe
-            s <qname> s "(" s <param_list> s ")" s "{"
+            {~ ("method" idsafe s <param> s
+            "(" s <param_list> s ")" s "{"
                 {~ <func_body> s ~}
             "}") -> make_meth_decl ~}
         }
         rule func_decl {
-            {~ ("function" idsafe
+            {~ ("function" idsafe %1
             s <qname> s "(" s <param_list> s ")" s "{"
                 {~ <func_body> s ~}
             "}" =scope) -> make_func_decl ~}
@@ -1178,27 +1206,28 @@ class Lupa {
             -> make_short_func) {`')'`}
         }
         rule package_decl {
-            "package" idsafe s (<qname> -> quote) s "{"
+            "package" idsafe s {~ <qname> %1 -> define_qname ~} s
+            "{"
                 {~ (s <main_body_stmt>)* s ~}
             ("}" | <{ syntax_error("expected '}'") }>)
             -> '__package(self,%1,function(self) %2 end);'
         }
         rule class_decl {
-            "class" idsafe s <name> s
+            "class" idsafe s {~ <name> %1 {`'__env'`} -> define ~} s
             (<class_from> | {`""`}) s
             (<class_with> | {`""`}) s "{"
             {~ <class_body> s ~} "}"
-            -> '__class(self,"%1",{%2},{%3},function(self,super) %4 end);'
+            -> '__env.%1=__class(self,"%1",{%2},{%3},function(self,super) %4 end);'
         }
         rule trait_decl {
-            "trait" idsafe s <name> s
+            "trait" idsafe s {~ <name> %1 {`'self'`} -> define ~} s
             ("(" s <param_list> s ")" | {`'...'`} {`''`}) s
             (<class_with> | {`""`}) s
             "{" {~ <class_body> s ~} "}"
             -> make_trait_decl
         }
         rule object_decl {
-            "object" idsafe s <name> s
+            "object" idsafe s {~ <name> %1 {`'self'`} -> define ~} s
             (<class_from> | {`""`}) s
             (<class_with> | {`""`}) s
             "{" {~ <class_body> s ~} "}"
@@ -1226,7 +1255,13 @@ class Lupa {
             | <statement>
         }
         rule rest {
-            {~ {"..."} <param> ~}
+            {~ {"..."} <param>? ~}
+        }
+        rule stack {
+            {~
+            | ("..." s "[" s <expr> s ("]" | <{ syntax_error("expected ']'") }>)) -> 'select(%1,...)'
+            | {"..."}
+            ~}
         }
         rule param_list {
             {@
@@ -1236,10 +1271,10 @@ class Lupa {
             @}
         }
         rule ident {
-            <name>
+            {~ <name> %1 -> lookup ~}
         }
         rule param {
-            <name>
+            <name> %1 -> define
         }
         rule name {
             { !keyword ((%alpha | "_") (%alnum | "_")*) }
@@ -1248,7 +1283,7 @@ class Lupa {
             {~ <name> (s "," s <name>)* ~}
         }
         rule qname {
-            {~ <name> ("." <name>)* ~}
+            {~ <ident> ("." <name>)* ~}
         }
         rule hexadec {
             "-"? "0x" %xdigit+
@@ -1335,6 +1370,7 @@ class Lupa {
             | <vnil>
             | <vtrue>
             | <vfalse>
+            | <stack>
             | <array>
             | <hash>
             | <func>
@@ -1456,7 +1492,10 @@ class Lupa {
         //*/
 
         rule prefix_expr {
-            {: { "..." | "!" | "#" | "-" | "~" } s <prefix_expr> :} -> fold_prefix
+            {: {
+                | "@" | "!" | "#" | "-" | "~"
+                | ("throw" | "typeof") idsafe
+            } s <prefix_expr> :} -> fold_prefix
             | {~ s <term> ~}
         }
 
@@ -1484,7 +1523,7 @@ class Lupa {
         rule bind_term {
             {~
             | <primary> (s <bind_member>)+
-            | <name>
+            | {~ <name> %1 -> lookup_or_define ~}
             ~}
         }
         rule bind_member {
@@ -1506,7 +1545,7 @@ class Lupa {
         }
         rule grammar_decl {
             {~ (
-                "grammar" idsafe s <name> s
+                "grammar" idsafe s {~ <name> %1 {`'self'`} -> define ~} s
                 "{" {~ <grammar_body> s ~} "}"
             ) -> '__grammar(self,"%1",function(self) %2 end);' ~}
         }
@@ -1529,16 +1568,16 @@ class Lupa {
             <rule_alt> | {`'__patt.P(nil)'`}
         }
         rule rule_alt {
-            {~ ({"|"} -> '' s)? <rule_seq> (s ({"|"} -> "+") s <rule_seq>)* ~}
+            {~ ("|" -> '' s)? <rule_seq> (s ("|" -> "+") s <rule_seq>)* ~}
         }
         rule rule_seq {
             {@ {~ s <rule_suffix> ~}+ @} -> function(a) { a.concat('*') }
         }
         rule rule_rep {
-            {~ {"+"}->"^1"|{"*"}->"^0"|{"?"}->"^-1"|{"^"s("+"|"-")?s[0-9]+} ~}
+            {~ "+" -> "^1" | "*" -> "^0" | "?" -> "^-1" | "^"s("+"|"-")?s[0-9]+ ~}
         }
         rule rule_prefix {
-            {~ (({"&"} -> "#") | ({"!"} -> "-")) {~ s <rule_prefix> ~} -> '%1%2'
+            {~ (("&" -> "#") | ("!" -> "-")) {~ s <rule_prefix> ~} -> '%1%2'
             | <rule_primary>
             ~}
         }
@@ -1547,15 +1586,32 @@ class Lupa {
 
         rule rule_suffix {
             ({~ <rule_prefix> (&(s prod_oper) s)? ~}
-            {: {prod_oper} {~ s <term> ~} :}*) ~> function(a,o,b) {
+            {: {prod_oper} {~ s <rule_prod> ~} :}*) ~> function(a,o,b,t) {
                 if o == "=>" {
                     return '__patt.Cmt(%s,%s)'.format(a,b)
                 }
                 else if o == "~>" {
                     return '__patt.Cf(%s,%s)'.format(a,b)
                 }
-                return "(%s)/(%s)".format(a,b)
+                else {
+                    if t == 'array' {
+                        return '__patt.Ca(%s,%s)'.format(a,b)
+                    }
+                    else if t == 'hash' {
+                        return '__patt.Ch(%s,%s)'.format(a,b)
+                    }
+                    else {
+                        return '(%s)/(%s)'.format(a,b)
+                    }
+                }
             }
+        }
+        rule rule_prod {
+            {~
+            | <array> {`'array'`}
+            | <hash>  {`'hash'`}
+            | <term>  {`'term'`}
+            ~}
         }
         rule rule_primary {
             ( <rule_group>
@@ -1639,7 +1695,6 @@ class Lupa {
             "{" {~ s <rule_alt> s ~} "}" -> '__patt.C(%1)'
         }
     }
-
     method compile(lupa, name) {
         var ctx = Lupa.Context()
         var lua = Lupa.Grammar.match(lupa, 1, ctx)
@@ -1652,7 +1707,7 @@ eval = function(src) {
     return eval()
 }
 
-var getopt = function(args) {
+var getopt = function(...args) {
    var opt = { }
    var idx = 0
    var len = #args
@@ -1683,8 +1738,8 @@ var getopt = function(args) {
    return opt
 }
 
-var run = function(...args) {
-   var opt = getopt(args)
+var run = function(...) {
+   var opt = getopt(...)
    var sfh = assert(io::open(opt['file']))
    var src = sfh.read('*a')
    sfh.close()
@@ -1711,7 +1766,7 @@ var run = function(...args) {
       else {
          var main_env = setmetatable({ }, { __index = _G })
          setfenv(main, main_env)
-         main(opt['file'], ...args)
+         main(opt['file'], ...)
       }
    }
 }
@@ -1774,5 +1829,5 @@ Lupa.PATH = "./?.lu;./lib/?.lu;./src/?.lu"
 }
 
 if arg[1] { run(unpack(arg)) }
-
+print(Lupa.compile('class A { } var a = A()'))
 // vim: ft=lupa
