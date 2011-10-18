@@ -1227,14 +1227,14 @@ class Lupa {
             -> 'self.%1=__class(__env,"%1",{%2},{%3},function(__env,self,super) %4 end);'
         }
         rule trait_decl {
-            "trait" idsafe s {~ <name> %1 {`'self'`} -> define ~} s
+            "trait" idsafe s {~ <name> %1 {`'__env'`} -> define ~} s
             ("(" s <param_list> s ")" | {`'...'`} {`''`}) s
             (<class_with> | {`""`}) s
             "{" {~ <class_body> s ~} "}"
             -> make_trait_decl
         }
         rule object_decl {
-            "object" idsafe s {~ <name> %1 {`'self'`} -> define ~} s
+            "object" idsafe s {~ <name> %1 {`'__env'`} -> define ~} s
             (<class_from> | {`""`}) s
             (<class_with> | {`""`}) s
             "{" {~ <class_body> s ~} "}"
@@ -1558,7 +1558,7 @@ class Lupa {
         }
         rule grammar_decl {
             {~ (
-                "grammar" idsafe s {~ <name> %1 {`'self'`} -> define ~} s
+                "grammar" idsafe s {~ <name> %1 {`'__env'`} -> define ~} s
                 "{" {~ <grammar_body> s ~} "}"
             ) -> 'self.%1=__grammar(__env,"%1",function(__env,self) %2 end);' ~}
         }

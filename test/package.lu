@@ -27,7 +27,7 @@ package My.Shapes {
         has z = 0
 
         method move(x, y, z) {
-            super.move(x, y)
+            super::move(self, x, y)
             if DEBUG {
                 print("moving ${self} to ${x}, ${y}, ${z}")
             }

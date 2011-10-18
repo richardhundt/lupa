@@ -1227,14 +1227,14 @@ self.Lupa=__class(__env,"Lupa",{},{},function(__env,self,super)
             )/( ("self.%1=__class(__env,\"%1\",{%2},{%3},function(__env,self,super) %4 end);"))
         );
         __rule(self,"trait_decl",
-            __patt.P(("trait"))* idsafe* s* __patt.Cs( __patt.V("name")* __patt.Carg(1)* (__patt.Cc(("self")) )/( define) )* s*
+            __patt.P(("trait"))* idsafe* s* __patt.Cs( __patt.V("name")* __patt.Carg(1)* (__patt.Cc(("__env")) )/( define) )* s*
             (__patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")")) + __patt.Cc(("..."))* __patt.Cc(("")))* s*
             (__patt.V("class_with") + __patt.Cc(("")))* s*
             __patt.P(("{"))* __patt.Cs( __patt.V("class_body")* s )* (__patt.P(("}"))
             )/( make_trait_decl)
         );
         __rule(self,"object_decl",
-            __patt.P(("object"))* idsafe* s* __patt.Cs( __patt.V("name")* __patt.Carg(1)* (__patt.Cc(("self")) )/( define) )* s*
+            __patt.P(("object"))* idsafe* s* __patt.Cs( __patt.V("name")* __patt.Carg(1)* (__patt.Cc(("__env")) )/( define) )* s*
             (__patt.V("class_from") + __patt.Cc(("")))* s*
             (__patt.V("class_with") + __patt.Cc(("")))* s*
             __patt.P(("{"))* __patt.Cs( __patt.V("class_body")* s )* (__patt.P(("}"))
@@ -1558,7 +1558,7 @@ self.Lupa=__class(__env,"Lupa",{},{},function(__env,self,super)
         );
         __rule(self,"grammar_decl",
             __patt.Cs( ((
-                __patt.P(("grammar"))* idsafe* s* __patt.Cs( __patt.V("name")* __patt.Carg(1)* (__patt.Cc(("self")) )/( define) )* s*
+                __patt.P(("grammar"))* idsafe* s* __patt.Cs( __patt.V("name")* __patt.Carg(1)* (__patt.Cc(("__env")) )/( define) )* s*
                 __patt.P(("{"))* __patt.Cs( __patt.V("grammar_body")* s )* __patt.P(("}"))
             ) )/( ("self.%1=__grammar(__env,\"%1\",function(__env,self) %2 end);")) )
         );
