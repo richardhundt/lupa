@@ -1,44 +1,44 @@
 #!/usr/bin/env luajit
 
-local self=_G;_G[("package")].path  = (";;./src/?.lua;./lib/?.lua;"..tostring(_G[("package")].path).."");
+local __env=setmetatable({},{__index=_G});local self={};_G[("package")].path  = (";;./src/?.lua;./lib/?.lua;"..tostring(_G[("package")].path).."");
 _G[("package")].cpath = (";;./lib/?.so;"..tostring(_G[("package")].cpath).."");
 
-newtable = loadstring(("return {...}"));
+_G.newtable = __env.loadstring(("return {...}"));
 
 local rawget, rawset = _G.rawget, _G.rawset;
 local getmetatable, setmetatable = _G.getmetatable, _G.setmetatable;
 
-__class = function(into, name, _from, _with, body) 
+_G.__class = function(into, name, _from, _with, body) 
     if (#(_from) )==( 0) then  
-        _from[(#(_from) )+( 1)] = Object;
+        _from[(#(_from) )+( 1)] = __env.Object;
      end 
 
-    local _super = newtable();
-    local _class = newtable();
+    local _super = __env.newtable();
+    local _class = __env.newtable();
     _class.__name = name;
     _class.__from = _from;
 
-    local readers = newtable();
-    local writers = newtable();
+    local readers = __env.newtable();
+    local writers = __env.newtable();
 
     _class.__readers = readers;
     _class.__writers = writers;
 
-    local queue  = newtable(unpack(_from));
+    local queue  = __env.newtable(__env.unpack(_from));
     while  (#(queue) )>( 0)  do local __break repeat 
-        local base = table.remove(queue, 1);
-        if (getmetatable(base) )~=( Class) then  
-            error(("TypeError: "..tostring(base).." is not a Class"), 2);
+        local base = __env.table.remove(queue, 1);
+        if (getmetatable(base) )~=( __env.Class) then  
+            __env.error(("TypeError: "..tostring(base).." is not a Class"), 2);
          end 
         _from[base] = (true);
-        for k,v in __op_each(pairs(base))  do local __break repeat 
+        for k,v in __op_each(__env.pairs(base))  do local __break repeat 
             if (_class[k] )==( (nil)) then   _class[k] = v;  end 
             if (_super[k] )==( (nil)) then   _super[k] = v;  end 
          until true if __break then break end end 
-        for k,v in __op_each(pairs(base.__readers))  do local __break repeat 
+        for k,v in __op_each(__env.pairs(base.__readers))  do local __break repeat 
             if (readers[k] )==( (nil)) then   readers[k] = v;  end 
          until true if __break then break end end 
-        for k,v in __op_each(pairs(base.__writers))  do local __break repeat 
+        for k,v in __op_each(__env.pairs(base.__writers))  do local __break repeat 
             if (writers[k] )==( (nil)) then   writers[k] = v;  end 
          until true if __break then break end end 
         if base.__from then  
@@ -62,8 +62,8 @@ __class = function(into, name, _from, _with, body)
             rawset(obj, key, val);
          end 
      end;
-    _class.__apply = function(self,...) 
-        local obj = setmetatable(newtable(), self);
+    _class.new = function(self,...) 
+        local obj = setmetatable(__env.newtable(), self);
         if (rawget(self, ("__init")) )~=( (nil)) then  
             local ret = obj:__init(...);
             if (ret )~=( (nil)) then  
@@ -72,8 +72,9 @@ __class = function(into, name, _from, _with, body)
          end 
          do return obj end
      end;
+    _class.__apply = _class.new;
 
-    setmetatable(_class, Class);
+    setmetatable(_class, __env.Class);
 
     if _with then  
         for i=1, #(_with)  do local __break repeat 
@@ -81,48 +82,39 @@ __class = function(into, name, _from, _with, body)
          until true if __break then break end end 
      end 
 
-    local fenv = getfenv(2);
     into[name] = _class;
-    fenv[name] = _class;
-    setfenv(body, setmetatable(Hash({ }), Hash({ __index = fenv })));
-    body(_class, _super);
+    local _env = setmetatable(Hash({ }), Hash({ __index = into }));
+    body(_env, _class, _super);
 
      do return _class end
  end;
-__trait = function(into, name, _with, body) 
-    local _trait = newtable();
+_G.__trait = function(into, name, _with, body) 
+    local _trait = __env.newtable();
     _trait.__name = name;
     _trait.__body = body;
     _trait.__with = _with;
-    setmetatable(_trait, Trait);
+    _trait.__into = into;
+    setmetatable(_trait, __env.Trait);
     if into then  
-        local fenv = getfenv(2);
-        setfenv(body, setmetatable(Hash({ }), Hash({ __index = fenv })));
-        fenv[name] = _trait;
         into[name] = _trait;
      end 
      do return _trait end
  end;
-__object = function(into, name, _from, _with, body) 
+_G.__object = function(into, name, _from, _with, body) 
     for i=1, #(_from)  do local __break repeat 
-        if (getmetatable(_from[i]) )~=( Class) then  
+        if (getmetatable(_from[i]) )~=( __env.Class) then  
             _from[i] = getmetatable(_from[i]);
          end 
      until true if __break then break end end 
-    local anon = __class(into, (("#"))..(name), _from, _with, body);
+    local anon = __env.__class(into, (("#"))..(name), _from, _with, body);
     local inst = anon();
-    if into then  
-        local fenv = getfenv(2);
-        setfenv(body, setmetatable(Hash({ }), Hash({ __index = fenv })));
-        fenv[name] = inst;
-        into[name] = inst;
-     end 
+    into[name] = inst;
      do return inst end
  end;
-__method = function(into, name, code) 
+_G.__method = function(into, name, code) 
     into[name] = code;
  end;
-__has = function(into, name, def) 
+_G.__has = function(into, name, def) 
     local setter = (("__set_"))..(name);
     local getter = (("__get_"))..(name);
     into[setter] = function(obj, val) 
@@ -137,29 +129,29 @@ __has = function(into, name, def)
          do return val end
      end;
  end;
-__grammar = function(into, name, body) 
-   local gram = newtable();
+_G.__grammar = function(into, name, body) 
+   local gram = __env.newtable();
    local patt;
    function gram.match(self,...) 
        do return patt:match(...) end
     end
-   local fenv = getfenv(2);
-   setfenv(body, setmetatable(Hash({ }), Hash({ __index = fenv })));
-   body(gram);
+   local _env = setmetatable(Hash({ }), Hash({ __index = into }));
+   body(_env, gram);
    do 
-      local grmr = newtable();
-      for k,v in __op_each(pairs(gram))  do local __break repeat 
-         if (__patt.type(v) )==( ("pattern")) then  
+      local grmr = __env.newtable();
+      for k,v in __op_each(__env.pairs(gram))  do local __break repeat 
+         if (__env.__patt.type(v) )==( ("pattern")) then  
             grmr[k] = v;
           end 
        until true if __break then break end end 
       grmr[1] = (rawget(gram, 1) )or( ("__init"));
-      patt = __patt.P(grmr);
+      patt = __env.__patt.P(grmr);
     end
 
    into[name] = gram;
+    do return gram end
  end;
-__rule = function(into, name, patt) 
+_G.__rule = function(into, name, patt) 
    if ((name )==( ("__init") ))or(( rawget(into,1) )==( (nil))) then  
       into[1] = name;
     end 
@@ -168,27 +160,27 @@ __rule = function(into, name, patt)
    into[(("__get_"))..(name)] = function(self) 
       local _rule = rawget(self, rule_name);
       if (_rule )==( (nil)) then  
-         local grmr = newtable();
-         for k,v in __op_each(pairs(self))  do local __break repeat 
-            if (__patt.type(v) )==( ("pattern")) then  
+         local grmr = __env.newtable();
+         for k,v in __op_each(__env.pairs(self))  do local __break repeat 
+            if (__env.__patt.type(v) )==( ("pattern")) then  
                grmr[k] = v;
              end 
           until true if __break then break end end 
          grmr[1] = name;
-         _rule = __patt.P(grmr);
+         _rule = __env.__patt.P(grmr);
          rawset(self, rule_name, _rule);
        end 
        do return _rule end
     end;
  end;
 
-__try = function(_try, _catch) 
-    local ok, er = pcall(_try);
+_G.__try = function(_try, _catch) 
+    local ok, er = __env.pcall(_try);
     if not(ok) then   _catch(er);  end 
  end;
 
-__patt = require(("lpeg"));
-__patt.setmaxstack(1024);
+_G.__patt = __env.require(("lpeg"));
+_G.__patt.setmaxstack(1024);
 do 
    local function make_capt_hash(init) 
        do return function(tab) 
@@ -197,7 +189,7 @@ do
                if (tab[k] )==( (nil)) then   tab[k] = v;  end 
              until true if __break then break end end 
           end 
-          do return __op_as(tab , Hash) end
+          do return __op_as(tab , __env.Hash) end
        end end
     end
    local function make_capt_array(init) 
@@ -207,24 +199,24 @@ do
                if (tab[i] )==( (nil)) then   tab[i] = init[i];  end 
              until true if __break then break end end 
           end 
-          do return __op_as(tab , Array) end
+          do return __op_as(tab , __env.Array) end
        end end
     end
 
-   __patt.Ch = function(patt,init) 
-       do return Pattern.__div(__patt.Ct(patt), make_capt_hash(init)) end
+   __env.__patt.Ch = function(patt,init) 
+       do return __env.Pattern.__div(__env.__patt.Ct(patt), make_capt_hash(init)) end
     end;
-   __patt.Ca = function(patt,init) 
-       do return Pattern.__div(__patt.Ct(patt), make_capt_array(init)) end
+   __env.__patt.Ca = function(patt,init) 
+       do return __env.Pattern.__div(__env.__patt.Ct(patt), make_capt_array(init)) end
     end;
 
-   local predef = newtable();
+   local predef = __env.newtable();
 
-   predef.nl  = __patt.P(("\n"));
-   predef.pos = __patt.Cp();
+   predef.nl  = __env.__patt.P(("\n"));
+   predef.pos = __env.__patt.Cp();
 
-   local any = __patt.P(1);
-   __patt.locale(predef);
+   local any = __env.__patt.P(1);
+   __env.__patt.locale(predef);
 
    predef.a = predef.alpha;
    predef.c = predef.cntrl;
@@ -247,10 +239,10 @@ do
    predef.W = (any )-( predef.w);
    predef.X = (any )-( predef.x);
 
-   __patt.predef = predef;
-   __patt.Def = function(id) 
+   __env.__patt.predef = predef;
+   __env.__patt.Def = function(id) 
       if (predef[id] )==( (nil)) then  
-         error(("No predefined pattern '"..tostring(id).."'"), 2);
+         __env.error(("No predefined pattern '"..tostring(id).."'"), 2);
        end 
        do return predef[id] end
     end;
@@ -259,12 +251,8 @@ do
 _G.__main = _G;
 _G.__main.__env = _G;
 
-__unit = function(main,...) 
-    do return __package(_G, ("__main"), main, ...) end
- end;
-
-__package = function(into, name, body, args) 
-   local path = newtable();
+_G.__package = function(into, name, body, args) 
+   local path = __env.newtable();
    for frag in __op_each(name:gmatch(("([^%.]+)")))  do local __break repeat 
       path[(#(path) )+( 1)] = frag;
     until true if __break then break end end 
@@ -274,10 +262,10 @@ __package = function(into, name, body, args)
       local name = path[i];
 
       if (rawget(pckg, name) )==( (nil)) then  
-         local pkg = newtable();
-         local env = newtable();
-         local env_meta = newtable();
-         local pkg_meta = newtable();
+         local pkg = __env.newtable();
+         local env = __env.newtable();
+         local env_meta = __env.newtable();
+         local pkg_meta = __env.newtable();
 
          function env_meta.__index(env, key) 
             local val = pkg[key];
@@ -304,14 +292,13 @@ __package = function(into, name, body, args)
    into[name] = pckg;
    _G[("package")].loaded[name] = pckg;
    if body then  
-      setfenv(body, pckg.__env);
-      body(pckg);
+      body(pckg.__env, pckg);
     end 
     do return pckg end
  end;
 
-__import = function(_from, what) 
-   local mod = __load(_from);
+_G.__import = function(_from, what) 
+   local mod = __env.__load(_from);
    local out = Array( );
    if what then  
       for i=1, #(what)  do local __break repeat 
@@ -323,18 +310,18 @@ __import = function(_from, what)
        do return mod end
     end 
  end;
-__export = function(self,...) local what=Array(...);
+_G.__export = function(self,...) local what=Array(...);
     for i=1, #(what)  do local __break repeat 
         self.__export[what[i]] = (true);
      until true if __break then break end end 
  end;
 
-__load = function(_from) 
+_G.__load = function(_from) 
    local path = _from;
-   if (type(_from) )==( ("table")) then  
-      path = table.concat(_from, ("."));
+   if (__env.type(_from) )==( ("table")) then  
+      path = __env.table.concat(_from, ("."));
     end 
-   local mod = require(path);
+   local mod = __env.require(path);
    if (mod )==( (true)) then  
       mod = _G;
       for i=1, #(_from)  do local __break repeat 
@@ -344,17 +331,17 @@ __load = function(_from)
     do return mod end
  end;
 
-__op_as     = setmetatable;
-__op_typeof = getmetatable;
-__op_yield  = coroutine[("yield")];
-__op_throw  = error;
+_G.__op_as     = setmetatable;
+_G.__op_typeof = getmetatable;
+_G.__op_yield  = __env.coroutine[("yield")];
+_G.__op_throw  = __env.error;
 
-__op_in = function(key, obj) 
+_G.__op_in = function(key, obj) 
     do return (rawget(obj, key) )~=( (nil)) end
  end;
-__op_like = function(this, that) 
-   for k,v in __op_each(pairs(that))  do local __break repeat 
-      if (type(this[k]) )~=( type(v)) then  
+_G.__op_like = function(this, that) 
+   for k,v in __op_each(__env.pairs(that))  do local __break repeat 
+      if (__env.type(this[k]) )~=( __env.type(v)) then  
           do return (false) end
        end 
       if not(this[k]:isa(getmetatable(v))) then  
@@ -363,83 +350,83 @@ __op_like = function(this, that)
     until true if __break then break end end 
     do return (true) end
  end;
-__op_spread = function(a) 
+_G.__op_spread = function(a) 
    local mt = getmetatable(a);
    local __spread = (mt )and( rawget(mt, ("__spread")));
    if __spread then    do return __spread(a) end  end 
-    do return unpack(a) end
+    do return __env.unpack(a) end
  end;
-__op_each = function(a,...) 
-   if (type(a) )==( ("function")) then    do return a, ... end  end 
+_G.__op_each = function(a,...) 
+   if (__env.type(a) )==( ("function")) then    do return a, ... end  end 
    local mt = getmetatable(a);
    local __each = (mt )and( rawget(mt, ("__each")));
    if __each then    do return __each(a) end  end 
-    do return pairs(a) end
+    do return __env.pairs(a) end
  end;
-__op_lshift = function(a,b) 
+_G.__op_lshift = function(a,b) 
    local mt = getmetatable(a);
    local __lshift = (mt )and( rawget(mt, ("__lshift")));
    if __lshift then    do return __lshift(a, b) end  end 
-    do return bit.lshift(a, b) end
+    do return __env.bit.lshift(a, b) end
  end;
-__op_rshift = function(a,b) 
+_G.__op_rshift = function(a,b) 
    local mt = getmetatable(a);
    local __rshift = (mt )and( rawget(mt, ("__rshift")));
    if __rshift then    do return __rshift(a, b) end  end 
-    do return bit.rshift(a, b) end
+    do return __env.bit.rshift(a, b) end
  end;
-__op_arshift = function(a,b) 
+_G.__op_arshift = function(a,b) 
    local mt = getmetatable(a);
    local __arshift = (mt )and( rawget(mt, ("__arshift")));
    if __arshift then    do return __arshift(a, b) end  end 
-    do return bit.arshift(a, b) end
+    do return __env.bit.arshift(a, b) end
  end;
-__op_bor = function(a,b) 
+_G.__op_bor = function(a,b) 
    local mt = getmetatable(a);
    local __bor = (mt )and( rawget(mt, ("__bor")));
    if __bor then    do return __bor(a, b) end  end 
-    do return bit.bor(a, b) end
+    do return __env.bit.bor(a, b) end
  end;
-__op_bxor = function(a,b) 
+_G.__op_bxor = function(a,b) 
    local mt = getmetatable(a);
    local __bxor = (mt )and( rawget(mt, ("__bxor")));
    if __bxor then    do return __bxor(a, b) end  end 
-    do return bit.bxor(a, b) end
+    do return __env.bit.bxor(a, b) end
  end;
-__op_bnot = function(a) 
+_G.__op_bnot = function(a) 
    local mt = getmetatable(a);
    local __bnot = (mt )and( rawget(mt, ("__bnot")));
    if __bnot then    do return __bnot(a) end  end 
-    do return bit.bnot(a) end
+    do return __env.bit.bnot(a) end
  end;
 
-Type = newtable();
-Type.__name = ("Type");
-Type.__call = function(self,...) 
+_G.Type = __env.newtable();
+__env.Type.__name = ("Type");
+__env.Type.__call = function(self,...) 
     do return self:__apply(...) end
  end;
-Type.isa = function(self, that) 
+__env.Type.isa = function(self, that) 
     do return (getmetatable(self) )==( that) end
  end;
-Type.can = function(self, key) 
+__env.Type.can = function(self, key) 
     do return (rawget(self, key) )or( rawget(getmetatable(self), key)) end
  end;
-Type.does = function(self, that) 
+__env.Type.does = function(self, that) 
     do return (false) end
  end;
-Type.__index = Type;
-Type.__tostring = function(self) 
+__env.Type.__index = __env.Type;
+__env.Type.__tostring = function(self) 
     do return (("type "))..(((rawget(self, ("__name")) )or( ("Type")))) end
  end;
 
-Class = setmetatable(newtable(), Type);
-Class.__tostring = function(self) 
+_G.Class = setmetatable(__env.newtable(), __env.Type);
+__env.Class.__tostring = function(self) 
     do return self.__name end
  end;
-Class.__index = function(self, key) 
-   do return error(("AccessError: no such member '"..tostring(key).."' in "..tostring(self.__name)..""), 2) end
+__env.Class.__index = function(self, key) 
+   do return __env.error(("AccessError: no such member '"..tostring(key).."' in "..tostring(self.__name)..""), 2) end
  end;
-Class.__newindex = function(self, key, val) 
+__env.Class.__newindex = function(self, key, val) 
     if key:match(("^__get_")) then  
         local _k = key:match(("^__get_(.-)$"));
         self.__readers[_k] = val;
@@ -450,46 +437,46 @@ Class.__newindex = function(self, key, val)
      end 
     do return rawset(self, key, val) end
  end;
-Class.__call = function(self,...) 
+__env.Class.__call = function(self,...) 
     do return self:__apply(...) end
  end;
 
-Object = setmetatable(newtable(), Class);
-Object.__name = ("Object");
-Object.__from = newtable();
-Object.__with = newtable();
-Object.__readers = newtable();
-Object.__writers = newtable();
-Object.__tostring = function(self) 
+_G.Object = setmetatable(__env.newtable(), __env.Class);
+__env.Object.__name = ("Object");
+__env.Object.__from = __env.newtable();
+__env.Object.__with = __env.newtable();
+__env.Object.__readers = __env.newtable();
+__env.Object.__writers = __env.newtable();
+__env.Object.__tostring = function(self) 
     do return ("object "..tostring(getmetatable(self)).."") end
  end;
-Object.__index = Object;
-Object.isa = function(self, that) 
+__env.Object.__index = __env.Object;
+__env.Object.isa = function(self, that) 
    local meta = getmetatable(self);
     do return ((meta )==( that ))or( ((meta.__from )and( ((meta.__from[that] )~=( (nil)))))) end
  end;
-Object.can = function(self, key) 
+__env.Object.can = function(self, key) 
    local meta = getmetatable(self);
     do return rawget(meta, key) end
  end;
-Object.does = function(self, that) 
+__env.Object.does = function(self, that) 
     do return (self.__with[that.__body] )~=( (nil)) end
  end;
 
-Trait = setmetatable(newtable(), Type);
-Trait.__call = function(self,...) local args=Array(...);
-   local copy = __trait((nil), self.__name, self.__with, self.__body);
+_G.Trait = setmetatable(__env.newtable(), __env.Type);
+__env.Trait.__call = function(self,...) local args=Array(...);
+   local copy = __env.__trait((nil), self.__name, self.__with, self.__body);
    local make = self.compose;
    copy.compose = function(self, into) 
        do return make(self, into, __op_spread(args)) end
     end;
     do return copy end
  end;
-Trait.__tostring = function(self) 
+__env.Trait.__tostring = function(self) 
     do return (("trait "))..(self.__name) end
  end;
-Trait.__index = Trait;
-Trait.compose = function(self, into,...) 
+__env.Trait.__index = __env.Trait;
+__env.Trait.compose = function(self, into,...) 
    for i=1, #(self.__with)  do local __break repeat 
       self.__with[i]:compose(into);
     until true if __break then break end end 
@@ -498,23 +485,23 @@ Trait.compose = function(self, into,...)
     do return into end
  end;
 
-Hash = setmetatable(newtable(), Type);
-Hash.__name = ("Hash");
-Hash.__index = Hash;
-Hash.__apply = function(self, table) 
-    do return setmetatable((table )or( newtable()), self) end
+_G.Hash = setmetatable(__env.newtable(), __env.Type);
+__env.Hash.__name = ("Hash");
+__env.Hash.__index = __env.Hash;
+__env.Hash.__apply = function(self, table) 
+    do return setmetatable((table )or( __env.newtable()), self) end
  end;
-Hash.__tostring = function(self) 
-   local buf = newtable();
-   for k, v in __op_each(pairs(self))  do local __break repeat 
+__env.Hash.__tostring = function(self) 
+   local buf = __env.newtable();
+   for k, v in __op_each(__env.pairs(self))  do local __break repeat 
       local _v;
-      if (type(v) )==( ("string")) then  
-         _v = string.format(("%q"), v);
+      if (__env.type(v) )==( ("string")) then  
+         _v = __env.string.format(("%q"), v);
       
       else 
-         _v = tostring(v);
+         _v = __env.tostring(v);
        end 
-      if (type(k) )==( ("string")) then  
+      if (__env.type(k) )==( ("string")) then  
          buf[(#(buf) )+( 1)] = ((k)..(("=")))..(_v);
       
       else 
@@ -523,50 +510,50 @@ Hash.__tostring = function(self)
     until true if __break then break end end 
     do return ((("{"))..(table.concat(buf, (","))))..(("}")) end
  end;
-Hash.__getitem = rawget;
-Hash.__setitem = rawset;
-Hash.__each = pairs;
+__env.Hash.__getitem = rawget;
+__env.Hash.__setitem = rawset;
+__env.Hash.__each = __env.pairs;
 
-Array = setmetatable(newtable(), Type);
-Array.__name = ("Array");
-Array.__index = Array;
-Array.__apply = function(self,...) 
-    do return setmetatable(newtable(...), self) end
+_G.Array = setmetatable(__env.newtable(), __env.Type);
+__env.Array.__name = ("Array");
+__env.Array.__index = __env.Array;
+__env.Array.__apply = function(self,...) 
+    do return setmetatable(__env.newtable(...), self) end
  end;
-Array.__tostring = function(self) 
-   local buf = newtable();
+__env.Array.__tostring = function(self) 
+   local buf = __env.newtable();
    for i=1, #(self)  do local __break repeat 
-      if (type(self[i]) )==( ("string")) then  
-         buf[(#(buf) )+( 1)] = string.format(("%q"), self[i]);
+      if (__env.type(self[i]) )==( ("string")) then  
+         buf[(#(buf) )+( 1)] = __env.string.format(("%q"), self[i]);
       
       else 
-         buf[(#(buf) )+( 1)] = tostring(self[i]);
+         buf[(#(buf) )+( 1)] = __env.tostring(self[i]);
        end 
     until true if __break then break end end 
     do return ((("["))..(table.concat(buf,(","))))..(("]")) end
  end;
-Array.__each = ipairs;
-Array.__spread = unpack;
-Array.__getitem = rawget;
-Array.__setitem = rawset;
-Array.unpack = unpack;
-Array.insert = table.insert;
-Array.remove = table.remove;
-Array.concat = table.concat;
-Array.sort = table.sort;
-Array.each = function(self, block) 
+__env.Array.__each = __env.ipairs;
+__env.Array.__spread = __env.unpack;
+__env.Array.__getitem = rawget;
+__env.Array.__setitem = rawset;
+__env.Array.unpack = __env.unpack;
+__env.Array.insert = table.insert;
+__env.Array.remove = table.remove;
+__env.Array.concat = table.concat;
+__env.Array.sort = table.sort;
+__env.Array.each = function(self, block) 
    for i=1, #(self)  do local __break repeat  block(self[i]);  until true if __break then break end end 
  end;
-Array.map = function(self, block) 
-   local out = Array();
+__env.Array.map = function(self, block) 
+   local out = __env.Array();
    for i=1, #(self)  do local __break repeat 
       local v = self[i];
       out[(#(out) )+( 1)] = block(v);
     until true if __break then break end end 
     do return out end
  end;
-Array.grep = function(self, block) 
-   local out = Array();
+__env.Array.grep = function(self, block) 
+   local out = __env.Array();
    for i=1, #(self)  do local __break repeat 
       local v = self[i];
       if block(v) then  
@@ -575,15 +562,15 @@ Array.grep = function(self, block)
     until true if __break then break end end 
     do return out end
  end;
-Array.push = function(self, v) 
+__env.Array.push = function(self, v) 
    self[(#(self) )+( 1)] = v;
  end;
-Array.pop = function(self) 
+__env.Array.pop = function(self) 
    local v = self[#(self)];
    self[#(self)] = (nil);
     do return v end
  end;
-Array.shift = function(self) 
+__env.Array.shift = function(self) 
    local v = self[1];
    for i=2, #(self)  do local __break repeat 
       self[(i)-(1)] = self[i];
@@ -591,14 +578,14 @@ Array.shift = function(self)
    self[#(self)] = (nil);
     do return v end
  end;
-Array.unshift = function(self, v) 
+__env.Array.unshift = function(self, v) 
    for i=(#(self))+(1), 1, -(1)  do local __break repeat 
       self[i] = self[(i)-(1)];
     until true if __break then break end end 
    self[1] = v;
  end;
-Array.splice = function(self, offset, count,...) local args=Array(...);
-   local out = Array();
+__env.Array.splice = function(self, offset, count,...) local args=Array(...);
+   local out = __env.Array();
    for i=offset, ((offset )+( count ))-( 1)  do local __break repeat 
       out:push(self:remove(offset));
     until true if __break then break end end 
@@ -607,24 +594,24 @@ Array.splice = function(self, offset, count,...) local args=Array(...);
     until true if __break then break end end 
     do return out end
  end;
-Array.reverse = function(self) 
-   local out = Array();
+__env.Array.reverse = function(self) 
+   local out = __env.Array();
    for i=1, #(self)  do local __break repeat 
       out[i] = self[(((#(self) )-( i)) )+( 1)];
     until true if __break then break end end 
     do return out end
  end;
 
-Range = setmetatable(newtable(), Type);
-Range.__name = ("Range");
-Range.__index = Range;
-Range.__apply = function(self, min, max, inc) 
-   min = assert(tonumber(min), ("range min is not a number"));
-   max = assert(tonumber(max), ("range max is not a number"));
-   inc = assert(tonumber((inc )or( 1)), ("range inc is not a number"));
-    do return setmetatable(newtable(min, max, inc), self) end
+_G.Range = setmetatable(__env.newtable(), __env.Type);
+__env.Range.__name = ("Range");
+__env.Range.__index = __env.Range;
+__env.Range.__apply = function(self, min, max, inc) 
+   min = __env.assert(__env.tonumber(min), ("range min is not a number"));
+   max = __env.assert(__env.tonumber(max), ("range max is not a number"));
+   inc = __env.assert(__env.tonumber((inc )or( 1)), ("range inc is not a number"));
+    do return setmetatable(__env.newtable(min, max, inc), self) end
  end;
-Range.__each = function(self) 
+__env.Range.__each = function(self) 
    local inc = self[3];
    local cur = (self[1] )-( inc);
    local max = self[2];
@@ -635,57 +622,57 @@ Range.__each = function(self)
        end 
     end end
  end;
-Range.each = function(self, block) 
-   for i in __op_each(Range:__each(self))  do local __break repeat 
+__env.Range.each = function(self, block) 
+   for i in __op_each(__env.Range:__each(self))  do local __break repeat 
       block(i);
     until true if __break then break end end 
  end;
 
-Nil = setmetatable(newtable(), Type);
-Nil.__name = ("Nil");
-Nil.__index = function(self, key) 
-    local val = Type[key];
+_G.Nil = setmetatable(__env.newtable(), __env.Type);
+__env.Nil.__name = ("Nil");
+__env.Nil.__index = function(self, key) 
+    local val = __env.Type[key];
     if (val )==( (nil)) then  
-        error(("TypeError: no such member "..tostring(key).." in type Nil"), 2);
+        __env.error(("TypeError: no such member "..tostring(key).." in type Nil"), 2);
      end 
      do return val end
  end;
-debug.setmetatable((nil), Nil);
+__env.debug.setmetatable((nil), __env.Nil);
 
-Number = setmetatable(newtable(), Type);
-Number.__name = ("Number");
-Number.__index = Number;
-Number.__apply = function(self, val) 
-    local v = tonumber(val);
+_G.Number = setmetatable(__env.newtable(), __env.Type);
+__env.Number.__name = ("Number");
+__env.Number.__index = __env.Number;
+__env.Number.__apply = function(self, val) 
+    local v = __env.tonumber(val);
     if (v )==( (nil)) then  
-        error(("TypeError: cannot coerce '"..tostring(val).."' to Number"), 2);
+        __env.error(("TypeError: cannot coerce '"..tostring(val).."' to Number"), 2);
      end 
      do return v end
  end;
-Number.times = function(self, block) 
+__env.Number.times = function(self, block) 
    for i=1, self  do local __break repeat  block(i);  until true if __break then break end end 
  end;
-debug.setmetatable(0, Number);
+__env.debug.setmetatable(0, __env.Number);
 
-String = setmetatable(string, Type);
-String.__name = ("String");
-String.__index = String;
-String.__apply = function(self, val) 
-     do return tostring(val) end
+_G.String = setmetatable(__env.string, __env.Type);
+__env.String.__name = ("String");
+__env.String.__index = __env.String;
+__env.String.__apply = function(self, val) 
+     do return __env.tostring(val) end
  end;
-String.__match = function(a,p) 
-    do return __patt.P(p):match(a) end
+__env.String.__match = function(a,p) 
+    do return __env.__patt.P(p):match(a) end
  end;
-String.split = function(str, sep, max) 
+__env.String.split = function(str, sep, max) 
    if not(str:find(sep)) then  
-       do return Array(str) end
+       do return __env.Array(str) end
     end 
    if ((max )==( (nil) ))or((  max )<( 1)) then  
       max = 0;
     end 
    local pat = ((("(.-)"))..(sep))..(("()"));
    local idx = 0;
-   local list = Array();
+   local list = __env.Array();
    local last;
    for part, pos in __op_each(str:gmatch(pat))  do local __break repeat 
       idx = (idx )+( 1);
@@ -698,54 +685,55 @@ String.split = function(str, sep, max)
     end 
     do return list end
  end;
-debug.setmetatable((""), String);
+__env.debug.setmetatable((""), __env.String);
 
-Boolean = setmetatable(newtable(), Type);
-Boolean.__name = ("Boolean");
-Boolean.__index = Boolean;
-debug.setmetatable((true), Boolean);
+_G.Boolean = setmetatable(__env.newtable(), __env.Type);
+__env.Boolean.__name = ("Boolean");
+__env.Boolean.__index = __env.Boolean;
+__env.debug.setmetatable((true), __env.Boolean);
 
-Function = setmetatable(newtable(), Type);
-Function.__name = ("Function");
-Function.__index = Function;
-Function.__apply = function(self, code, fenv) 
-    code = Lupa:compile(code);
-    local func = assert(loadstring(code, ("=eval")));
+_G.Function = setmetatable(__env.newtable(), __env.Type);
+__env.Function.__name = ("Function");
+__env.Function.__index = __env.Function;
+__env.Function.__apply = function(self, code, fenv) 
+    code = __env.Lupa:compile(code);
+    local func = __env.assert(__env.loadstring(code, ("=eval")));
     if fenv then  
-        setfenv(func, fenv);
+        __env.setfenv(func, fenv);
      end 
      do return func end
  end;
-Function.__get_gen = function(self) 
-    do return coroutine.wrap(self) end
- end;
-debug.setmetatable(function()   end, Function);
+__env.debug.setmetatable(function()   end, __env.Function);
 
-Coroutine = setmetatable(newtable(), Type);
-Coroutine.__name = ("Coroutine");
-Coroutine.__index = Coroutine;
-for k,v in __op_each(pairs(coroutine))  do local __break repeat 
-   Coroutine[k] = v;
+_G.Coroutine = setmetatable(__env.newtable(), __env.Type);
+__env.Coroutine.__name = ("Coroutine");
+__env.Coroutine.__index = __env.Coroutine;
+for k,v in __op_each(__env.pairs(__env.coroutine))  do local __break repeat 
+   __env.Coroutine[k] = v;
  until true if __break then break end end 
-debug.setmetatable(coroutine.create(function()   end), Coroutine);
+__env.debug.setmetatable(__env.coroutine.create(function()   end), __env.Coroutine);
 
-Pattern = setmetatable(getmetatable(__patt.P(1)), Type);
-Pattern.__call = function(patt, subj) 
+_G.Pattern = setmetatable(getmetatable(__env.__patt.P(1)), __env.Type);
+__env.Pattern.__call = function(patt, subj) 
     do return patt:match(subj) end
  end;
-Pattern.__match = function(patt, subj) 
+__env.Pattern.__match = function(patt, subj) 
     do return patt:match(subj) end
  end;
 
-__class(self,"Lupa",{},{},function(self,super) 
+self.Lupa=__class(__env,"Lupa",{},{},function(__env,self,super) 
 
-    __class(self,"Scope",{},{},function(self,super) 
+    self.Scope=__class(__env,"Scope",{},{},function(__env,self,super) 
         __has(self,"entries",function(self) return Hash({ }) end);
+        __has(self,"outer",function(self) return _G end);
+        __method(self,"__init",function(self,outer) 
+            self.outer = outer;
+         end);
         __method(self,"lookup",function(self,name) 
             if __op_in(name , self.entries) then  
                  do return self.entries[name] end
             
-             elseif self.outer then  
+             elseif __op_in(("outer") , self) then  
                  do return self.outer:lookup(name) end
              end 
          end);
@@ -754,23 +742,28 @@ __class(self,"Lupa",{},{},function(self,super)
          end);
      end);
 
-    __class(self,"Context",{},{},function(self,super) 
-        __has(self,"scope",function(self) return Lupa:Scope() end);
+    self.Context=__class(__env,"Context",{},{},function(__env,self,super) 
+        __has(self,"scope",function(self) return __env.Lupa.Scope() end);
         __method(self,"enter",function(self) 
-            self.scope = Lupa:Scope(self.scope);
+            self.scope = __env.Lupa.Scope(self.scope);
          end);
         __method(self,"leave",function(self) 
-            self.scope = self.scope.outer;
+            if __op_in(("outer") , self.scope) then  
+               local outer = self.scope.outer;
+               self.scope = outer;
+                do return outer end
+             end 
+            do return __env.error(("no outer scope")) end
          end);
         __method(self,"define",function(self,name, info) 
-            do return self.scope:define(name, info) end
+            do return self.scope:define(name, (info )or( Hash({ }))) end
          end);
         __method(self,"lookup",function(self,name) 
             do return self.scope:lookup(name) end
          end);
      end);
 
-    __grammar(self,"Grammar",function(self) 
+    self.Grammar=__grammar(__env,"Grammar",function(__env,self) 
 
         local function error_line(src, pos) 
             local line = 1;
@@ -794,7 +787,7 @@ __class(self,"Lupa",{},{},function(self,super)
         local function syntax_error(m) 
              do return function(src, pos) 
                 local line, near = error_line(src, pos), error_near(src, pos);
-                do return error(("SyntaxError: "..tostring((m)or((""))).." on line "..tostring(line).." near '"..tostring(near).."'")) end
+                do return __env.error(("SyntaxError: "..tostring((m)or((""))).." on line "..tostring(line).." near '"..tostring(near).."'")) end
              end end
          end
 
@@ -903,7 +896,7 @@ __class(self,"Lupa",{},{},function(self,super)
                     if ((n )==( (nil) ))or(( prec[p] )<=( prec[n])) then  
                         local b, o, a = s:pop(), s:pop(), s:pop();
                         if not(binops[o]) then  
-                            error(("bad expression: "..tostring(e)..", stack: "..tostring(s)..""));
+                            __env.error(("bad expression: "..tostring(e)..", stack: "..tostring(s)..""));
                          end 
                         s:push(binops[o]:format(a, b));
                     
@@ -950,17 +943,19 @@ __class(self,"Lupa",{},{},function(self,super)
              do return ("function(%s) %s%s end"):format(p,h,b) end
          end
 
-        local function make_func_decl(n,p,b,s) 
+        local function make_func_decl(c,n,p,b,s) 
             local p, h = make_params(p);
-            if ((s )==( ("lexical") ))and( not(n:find(("."),1,(true)))) then  
-                 do return ("local function %s(%s) %s%s end"):format(n,p,h,b) end
+            if ((s )==( ("lexical") ))and(( #(n) )==( 1)) then  
+                c:define(n[1]);
+                 do return ("local function %s(%s) %s%s end"):format(n[1],p,h,b) end
             
-            else 
-                 do return ("function %s(%s) %s%s end"):format(n,p,h,b) end
+             elseif (#(n) )==( 1) then  
+                 do return ("function __env.%s(%s) %s%s end"):format(n[1],p,h,b) end
              end 
+              do return ("function %s(%s) %s%s end"):format(n:concat((".")),p,h,b) end
          end
 
-        local function make_meth_decl(n,p,b) 
+        local function make_meth_decl(ctx,n,p,b) 
             p:unshift(("self"));
             local p, h = make_params(p);
              do return ("__method(self,%q,function(%s) %s%s end);"):format(n,p,h,b) end
@@ -969,8 +964,8 @@ __class(self,"Lupa",{},{},function(self,super)
         local function make_trait_decl(n,p,w,b) 
             local p, h = make_params(p);
             
-                do return ("__trait(self,%q,{%s},function(self,%s) %s%s end);")
-                :format(n,w,p,h,b) end
+                do return ("self.%s=__trait(__env,%q,{%s},function(__env,self,%s) %s%s end);")
+                :format(n,n,w,p,h,b) end
          end
 
         local function make_try_stmt(try_body, catch_args, catch_body) 
@@ -995,8 +990,44 @@ __class(self,"Lupa",{},{},function(self,super)
              until true if __break then break end end 
              do return b:concat(("")) end
          end
-        local function define(name, ctx) 
-            ctx:define(name, Hash({ }));
+        local function define(name, ctx, base) 
+            ctx:define(name, Hash({ base = base }));
+             do return name end
+         end
+        local function define_const(name, ctx) 
+            ctx:define(name);
+             do return ("") end
+         end
+        local function enter(ctx) 
+            ctx:enter();
+             do return ("") end
+         end
+        local function leave(ctx) 
+            ctx:leave();
+             do return ("") end
+         end
+        local function define_pname(pname, ctx) 
+            local name = pname[1];
+            ctx:define(name, ("__env"));
+             do return quote(pname:concat(("."))) end
+         end
+        local function lookup(name, ctx) 
+            local info = ctx:lookup(name);
+            if info then  
+                if info.base then    do return ((info.base)..((".")))..(name) end  end 
+                 do return name end
+             end 
+             do return (("__env."))..(name) end
+         end
+        local function lookup_or_define(name, ctx) 
+            local info = ctx:lookup(name);
+            if not(info) then  
+                define(name, ctx, ("__env"));
+                 do return (("__env."))..(name) end
+             end 
+            if info.base then  
+                 do return ((info.base)..((".")))..(name) end
+             end 
              do return name end
          end
 
@@ -1007,8 +1038,10 @@ __class(self,"Lupa",{},{},function(self,super)
             __patt.Cg( __patt.Cc((false)),"set_return")*
             __patt.Cg( __patt.Cc(("global")),"scope")*
             __patt.C( __patt.Def("s")^0* __patt.P(("#!"))* (-nl* __patt.P(1))^0* __patt.Def("s")^0 )^-1* s*
-            __patt.Cc(("local self=_G;"))*
-            __patt.Cs( (s* __patt.V("main_body_stmt"))^0* s )
+            __patt.Cc(("local __env=setmetatable({},{__index=_G});local self={};"))*
+            ((__patt.Carg(1) )/( enter))*
+            __patt.Cs( (s* __patt.V("main_body_stmt"))^0* s )*
+            ((__patt.Carg(1) )/( leave))
         );
         __rule(self,"main_body_stmt",
              __patt.V("var_decl")
@@ -1078,19 +1111,19 @@ __class(self,"Lupa",{},{},function(self,super)
         );
         __rule(self,"import_stmt",
             __patt.Cs( ((__patt.P(("import"))* idsafe* s*
-               __patt.Ca( __patt.V("name")* (s* __patt.P((","))* s* __patt.V("name"))^0 )* s* __patt.P(("from"))* s* __patt.V("qname")
+               __patt.Ca( __patt.V("param")* (s* __patt.P((","))* s* __patt.V("param"))^0 )* s* __patt.P(("from"))* s* __patt.V("qname")
             ) )/( make_import_stmt) )
         );
         __rule(self,"export_stmt",
             __patt.Cs( __patt.P(("export"))* idsafe* s* (__patt.Ca( __patt.V("name_list") ) )/( make_export_stmt) )
         );
         __rule(self,"for_stmt",
-            __patt.Cs( __patt.P(("for"))* idsafe* s* __patt.V("name")* s* __patt.P(("="))* s* __patt.V("expr")* s* __patt.P((","))* s* __patt.V("expr")*
+            __patt.Cs( __patt.P(("for"))* idsafe* s* __patt.V("param")* s* __patt.P(("="))* s* __patt.V("expr")* s* __patt.P((","))* s* __patt.V("expr")*
                 (s* __patt.P((","))* s* __patt.V("expr"))^-1* s* __patt.V("loop_body")
             )
         );
         __rule(self,"for_in_stmt",
-            __patt.Cs( __patt.P(("for"))* idsafe* s* __patt.V("name_list")* s* __patt.P(("in"))* s*
+            __patt.Cs( __patt.P(("for"))* idsafe* s* __patt.V("param")* (s* __patt.P((","))* s* __patt.V("param"))^0* s* __patt.P(("in"))* idsafe* s*
                 ((__patt.V("expr") )/( ("__op_each(%1)")))* s* __patt.V("loop_body")
             )
         );
@@ -1137,8 +1170,8 @@ __class(self,"Lupa",{},{},function(self,super)
             ) )/( ("%1;"))* semicol
         );
         __rule(self,"var_list",
-            --(<name> %1 -> define) (s "," s (<name> %1 -> define))*
-            __patt.V("name")* (s* __patt.P((","))* s* __patt.V("name"))^0
+            (__patt.V("name")* (__patt.Carg(1) )/( define))* (s* __patt.P((","))* s* (__patt.V("name")* (__patt.Carg(1) )/( define)))^0
+            --<name> (s "," s <name>)*
         );
         __rule(self,"slot_decl",
             __patt.Cs( ((__patt.P(("has"))* idsafe* s* __patt.V("name")* (s* __patt.P(("="))* s* __patt.V("expr") + __patt.Cc(("")))* semicol)
@@ -1146,14 +1179,14 @@ __class(self,"Lupa",{},{},function(self,super)
             )
         );
         __rule(self,"meth_decl",
-            __patt.Cs( ((__patt.P(("method"))* idsafe*
-            s* __patt.V("qname")* s* __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")"))* s* __patt.P(("{"))*
+            __patt.Cs( ((__patt.P(("method"))* idsafe* __patt.Carg(1)* s* __patt.V("param")* s*
+            __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")"))* s* __patt.P(("{"))*
                 __patt.Cs( __patt.V("func_body")* s )*
             __patt.P(("}"))) )/( make_meth_decl) )
         );
         __rule(self,"func_decl",
-            __patt.Cs( ((__patt.P(("function"))* idsafe*
-            s* __patt.V("qname")* s* __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")"))* s* __patt.P(("{"))*
+            __patt.Cs( ((__patt.P(("function"))* idsafe* __patt.Carg(1)*
+            s* __patt.Ca( __patt.V("name")* (s* __patt.P(("."))* s* __patt.V("name"))^0 )* s* __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")"))* s* __patt.P(("{"))*
                 __patt.Cs( __patt.V("func_body")* s )*
             __patt.P(("}"))* __patt.Cb("scope")) )/( make_func_decl) )
         );
@@ -1182,35 +1215,39 @@ __class(self,"Lupa",{},{},function(self,super)
             )/( make_short_func))* __patt.Cc((")"))
         );
         __rule(self,"package_decl",
-            __patt.P(("package"))* idsafe* s* ((__patt.V("qname") )/( quote))* s* __patt.P(("{"))*
+            __patt.P(("package"))* idsafe* s* __patt.Cs( __patt.V("pname")* (__patt.Carg(1) )/( define_pname) )* s*
+            __patt.P(("{"))*
                 __patt.Cs( (s* __patt.V("main_body_stmt"))^0* s )*
             ((__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) ))
-            )/( ("__package(self,%1,function(self) %2 end);"))
+            )/( ("_G.package.loaded[%1]=__package(__env,%1,function(__env,self) %2 end);"))
         );
         __rule(self,"class_decl",
-            __patt.P(("class"))* idsafe* s* __patt.V("name")* s*
+            __patt.P(("class"))* idsafe* s* __patt.Cs( __patt.V("name")* __patt.Carg(1)* (__patt.Cc(("__env")) )/( define) )* s*
             (__patt.V("class_from") + __patt.Cc(("")))* s*
-            (__patt.V("class_with") + __patt.Cc(("")))* s* __patt.P(("{"))*
-            __patt.Cs( __patt.V("class_body")* s )* (__patt.P(("}"))
-            )/( ("__class(self,\"%1\",{%2},{%3},function(self,super) %4 end);"))
+            (__patt.V("class_with") + __patt.Cc(("")))* s*
+            __patt.P(("{"))* __patt.Cs( __patt.V("class_body")* s )* (__patt.P(("}"))
+            )/( ("self.%1=__class(__env,\"%1\",{%2},{%3},function(__env,self,super) %4 end);"))
         );
         __rule(self,"trait_decl",
-            __patt.P(("trait"))* idsafe* s* __patt.V("name")* s*
+            __patt.P(("trait"))* idsafe* s* __patt.Cs( __patt.V("name")* __patt.Carg(1)* (__patt.Cc(("self")) )/( define) )* s*
             (__patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")")) + __patt.Cc(("..."))* __patt.Cc(("")))* s*
             (__patt.V("class_with") + __patt.Cc(("")))* s*
             __patt.P(("{"))* __patt.Cs( __patt.V("class_body")* s )* (__patt.P(("}"))
             )/( make_trait_decl)
         );
         __rule(self,"object_decl",
-            __patt.P(("object"))* idsafe* s* __patt.V("name")* s*
+            __patt.P(("object"))* idsafe* s* __patt.Cs( __patt.V("name")* __patt.Carg(1)* (__patt.Cc(("self")) )/( define) )* s*
             (__patt.V("class_from") + __patt.Cc(("")))* s*
             (__patt.V("class_with") + __patt.Cc(("")))* s*
             __patt.P(("{"))* __patt.Cs( __patt.V("class_body")* s )* (__patt.P(("}"))
-            )/( ("__object(self,\"%1\",{%2},{%3},function(self,super) %4 end);"))
+            )/( ("self.%1=__object(__env,\"%1\",{%2},{%3},function(__env,self,super) %4 end);"))
         );
         __rule(self,"class_body",
             __patt.Cg( __patt.Cc(("lexical")),"scope")*
-            (s* __patt.V("class_body_stmt"))^0
+            ((__patt.Carg(1) )/( enter))*
+            (__patt.Cc(("super"))* (__patt.Carg(1) )/( define_const))*
+            __patt.Cs( (s* __patt.V("class_body_stmt"))^0 )*
+            ((__patt.Carg(1) )/( leave))
         );
         __rule(self,"class_from",
             __patt.P(("from"))* idsafe* s* __patt.Cs( __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0 )
@@ -1246,10 +1283,10 @@ __class(self,"Lupa",{},{},function(self,super)
             )
         );
         __rule(self,"ident",
-            __patt.V("name")
+            __patt.Cs( __patt.V("name")* (__patt.Carg(1) )/( lookup) )
         );
         __rule(self,"param",
-            __patt.V("name")
+            __patt.V("name")* (__patt.Carg(1) )/( define)
         );
         __rule(self,"name",
             __patt.C( -keyword* ((__patt.Def("alpha") + __patt.P(("_")))* (__patt.Def("alnum") + __patt.P(("_")))^0) )
@@ -1258,7 +1295,10 @@ __class(self,"Lupa",{},{},function(self,super)
             __patt.Cs( __patt.V("name")* (s* __patt.P((","))* s* __patt.V("name"))^0 )
         );
         __rule(self,"qname",
-            __patt.Cs( __patt.V("name")* (__patt.P(("."))* __patt.V("name"))^0 )
+            __patt.Cs( __patt.V("ident")* (__patt.P(("."))* __patt.V("name"))^0 )
+        );
+        __rule(self,"pname",
+            __patt.Ca( __patt.V("name")* (__patt.P(("."))* __patt.V("name"))^0 )
         );
         __rule(self,"hexadec",
             __patt.P(("-"))^-1* __patt.P(("0x"))* __patt.Def("xdigit")^1
@@ -1498,7 +1538,7 @@ __class(self,"Lupa",{},{},function(self,super)
         __rule(self,"bind_term",
             __patt.Cs(
              __patt.V("primary")* (s* __patt.V("bind_member"))^1
-            + __patt.V("name")
+            + __patt.Cs( __patt.V("name")* (__patt.Carg(1) )/( lookup_or_define) )
             )
         );
         __rule(self,"bind_member",
@@ -1520,9 +1560,9 @@ __class(self,"Lupa",{},{},function(self,super)
         );
         __rule(self,"grammar_decl",
             __patt.Cs( ((
-                __patt.P(("grammar"))* idsafe* s* __patt.V("name")* s*
+                __patt.P(("grammar"))* idsafe* s* __patt.Cs( __patt.V("name")* __patt.Carg(1)* (__patt.Cc(("self")) )/( define) )* s*
                 __patt.P(("{"))* __patt.Cs( __patt.V("grammar_body")* s )* __patt.P(("}"))
-            ) )/( ("__grammar(self,\"%1\",function(self) %2 end);")) )
+            ) )/( ("self.%1=__grammar(__env,\"%1\",function(__env,self) %2 end);")) )
         );
         __rule(self,"grammar_body",
             __patt.Cg( __patt.Cc(("lexical")),"scope")*
@@ -1543,16 +1583,16 @@ __class(self,"Lupa",{},{},function(self,super)
             __patt.V("rule_alt") + __patt.Cc(("__patt.P(nil)"))
         );
         __rule(self,"rule_alt",
-            __patt.Cs( ((__patt.C(__patt.P(("|"))) )/( (""))* s)^-1* __patt.V("rule_seq")* (s* ((__patt.C(__patt.P(("|"))) )/( ("+")))* s* __patt.V("rule_seq"))^0 )
+            __patt.Cs( ((__patt.P(("|")) )/( (""))* s)^-1* __patt.V("rule_seq")* (s* ((__patt.P(("|")) )/( ("+")))* s* __patt.V("rule_seq"))^0 )
         );
         __rule(self,"rule_seq",
             (__patt.Ca( __patt.Cs( s* __patt.V("rule_suffix") )^1 ) )/( function(a)  do return a:concat(("*")) end  end)
         );
         __rule(self,"rule_rep",
-            __patt.Cs( (__patt.C(__patt.P(("+"))))/(("^1"))+(__patt.C(__patt.P(("*"))))/(("^0"))+(__patt.C(__patt.P(("?"))))/(("^-1"))+__patt.C(__patt.P(("^"))*s*(__patt.P(("+"))+__patt.P(("-")))^-1*s*((__patt.R("09")))^1) )
+            __patt.Cs( (__patt.P(("+")) )/( ("^1")) + (__patt.P(("*")) )/( ("^0")) + (__patt.P(("?")) )/( ("^-1")) + __patt.P(("^"))*s*(__patt.P(("+"))+__patt.P(("-")))^-1*s*((__patt.R("09")))^1 )
         );
         __rule(self,"rule_prefix",
-            __patt.Cs( (((__patt.C(__patt.P(("&"))) )/( ("#"))) + ((__patt.C(__patt.P(("!"))) )/( ("-"))))* (__patt.Cs( s* __patt.V("rule_prefix") ) )/( ("%1%2"))
+            __patt.Cs( (((__patt.P(("&")) )/( ("#"))) + ((__patt.P(("!")) )/( ("-"))))* (__patt.Cs( s* __patt.V("rule_prefix") ) )/( ("%1%2"))
             + __patt.V("rule_primary")
             )
         );
@@ -1561,15 +1601,32 @@ __class(self,"Lupa",{},{},function(self,super)
 
         __rule(self,"rule_suffix",
             __patt.Cf((__patt.Cs( __patt.V("rule_prefix")* (#(s* prod_oper)* s)^-1 )*
-            __patt.Cg( __patt.C(prod_oper)* __patt.Cs( s* __patt.V("term") ),nil)^0) , function(a,o,b) 
+            __patt.Cg( __patt.C(prod_oper)* __patt.Cs( s* __patt.V("rule_prod") ),nil)^0) , function(a,o,b,t) 
                 if (o )==( ("=>")) then  
                      do return ("__patt.Cmt(%s,%s)"):format(a,b) end
                 
                  elseif (o )==( ("~>")) then  
                      do return ("__patt.Cf(%s,%s)"):format(a,b) end
+                
+                else 
+                    if (t )==( ("array")) then  
+                         do return ("__patt.Ca(%s,%s)"):format(a,b) end
+                    
+                     elseif (t )==( ("hash")) then  
+                         do return ("__patt.Ch(%s,%s)"):format(a,b) end
+                    
+                    else 
+                         do return ("(%s)/(%s)"):format(a,b) end
+                     end 
                  end 
-                 do return ("(%s)/(%s)"):format(a,b) end
              end)
+        );
+        __rule(self,"rule_prod",
+            __patt.Cs(
+             __patt.V("array")* __patt.Cc(("array"))
+            + __patt.V("hash")*  __patt.Cc(("hash"))
+            + __patt.V("term")
+            )
         );
         __rule(self,"rule_primary",
             ( __patt.V("rule_group")
@@ -1653,16 +1710,19 @@ __class(self,"Lupa",{},{},function(self,super)
             __patt.P(("{"))* __patt.Cs( s* __patt.V("rule_alt")* s )* (__patt.P(("}")) )/( ("__patt.C(%1)"))
         );
      end);
-
     __method(self,"compile",function(self,lupa, name) 
-        local ctx = Lupa:Context();
-        local lua = Lupa.Grammar:match(lupa, 1, ctx);
+        local ctx = __env.Lupa.Context();
+        ctx:enter();
+        ctx:define(("_G"));
+        ctx:define(("self"));
+        local lua = __env.Lupa.Grammar:match(lupa, 1, ctx);
+        ctx:leave();
          do return lua end
      end);
  end);
 
-eval = function(src) 
-    local eval = assert(loadstring(Lupa:compile(src),(("=eval:"))..(src)));
+__env.eval = function(src) 
+    local eval = __env.assert(__env.loadstring(__env.Lupa:compile(src),(("=eval:"))..(src)));
      do return eval() end
  end;
 
@@ -1687,7 +1747,7 @@ local getopt = function(...) local args=Array(...);
             opt[("b")] = args[idx];
          
          else 
-            error((("unknown option: "))..(arg), 2);
+            __env.error((("unknown option: "))..(arg), 2);
           end 
       
       else 
@@ -1699,50 +1759,50 @@ local getopt = function(...) local args=Array(...);
 
 local run = function(...) 
    local opt = getopt(...);
-   local sfh = assert(io.open(opt[("file")]));
+   local sfh = __env.assert(__env.io.open(opt[("file")]));
    local src = sfh:read(("*a"));
    sfh:close();
 
-   local lua = Lupa:compile(src);
+   local lua = __env.Lupa:compile(src);
    if opt[("l")] then  
-      io.stdout:write(lua);
-      os.exit(0);
+      __env.io.stdout:write(lua);
+      __env.os.exit(0);
     end 
 
    if opt[("o")] then  
-      local outc = io.open(opt[("o")], ("w+"));
+      local outc = __env.io.open(opt[("o")], ("w+"));
       outc:write(lua);
       outc:close();
    
    else 
       lua = lua:gsub(("^%s*#![^\n]*"),(""));
-      local main = assert(loadstring(lua,(("="))..(opt[("file")])));
+      local main = __env.assert(__env.loadstring(lua,(("="))..(opt[("file")])));
       if opt[("b")] then  
-         local outc = io.open(opt.b, ("wb+"));
-         outc:write(String.dump(main));
+         local outc = __env.io.open(opt.b, ("wb+"));
+         outc:write(__env.String.dump(main));
          outc:close();
       
       else 
          local main_env = setmetatable(Hash({ }), Hash({ __index = _G }));
-         setfenv(main, main_env);
+         __env.setfenv(main, main_env);
          main(opt[("file")], ...);
        end 
     end 
  end;
 
-arg = arg  and  Array( unpack(arg) )  or  Array( );
+arg = arg  and  Array( __env.unpack(arg) )  or  Array( );
 do 
    -- from strict.lua
    local mt = getmetatable(_G);
    if (mt )==( (nil)) then  
-      mt = newtable();
+      mt = __env.newtable();
       setmetatable(_G, mt);
     end 
 
-   mt.__declared = newtable();
+   mt.__declared = __env.newtable();
 
    local function what() 
-      local d = debug.getinfo(3, ("S"));
+      local d = __env.debug.getinfo(3, ("S"));
        do return ((d )and( d.what ))or( ("C")) end
     end
 
@@ -1760,25 +1820,25 @@ do
    ]=]
    mt.__index = function(t, n) 
       if (not(mt.__declared[n]) )and(( what() )~=( ("C"))) then  
-         error(("variable '"..tostring(n).."' is not declared"), 2);
+         __env.error(("variable '"..tostring(n).."' is not declared"), 2);
        end 
        do return rawget(t, n) end
     end;
  end
 
-Lupa.PATH = ("./?.lu;./lib/?.lu;./src/?.lu");
+__env.Lupa.PATH = ("./?.lu;./lib/?.lu;./src/?.lu");
 do 
    local P = _G[("package")];
    P.loaders[(#(P.loaders) )+( 1)] = function(modname) 
       local filename = modname:gsub(("%."), ("/"));
-      for path in __op_each(Lupa.PATH:gmatch(("([^;]+)")))  do local __break repeat 
+      for path in __op_each(__env.Lupa.PATH:gmatch(("([^;]+)")))  do local __break repeat 
          if (path )~=( ("")) then  
             local filepath = path:gsub(("?"), filename);
-            local file = io.open(filepath, ("r"));
+            local file = __env.io.open(filepath, ("r"));
             if file then  
                local src = file:read(("*a"));
-               local lua = Lupa:compile(src);
-               local mod = assert(loadstring(lua, (("="))..(filepath)))();
+               local lua = __env.Lupa:compile(src);
+               local mod = __env.assert(__env.loadstring(lua, (("="))..(filepath)))();
                P.loaded[modname] = mod;
                 do return mod end
              end 
@@ -1787,6 +1847,6 @@ do
     end;
  end
 
-if arg[1] then   run(unpack(arg));  end 
-
+if arg[1] then   run(__env.unpack(arg));  end 
 -- vim: ft=lupa
+

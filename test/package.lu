@@ -42,13 +42,14 @@ package My.Shapes {
 
 import Point, Point3D from My.Shapes
 
-Point3D()
-My.Shapes.Point()
+Point3D.new()
+My.Shapes.Point.new()
 My.Shapes.Inner::deep()
 
-var p = Point3D()
+var p = Point3D.new()
 p.move(1,2,3)
 
-var q = Point()
+var q = Point.new()
+print(q)
 
 

@@ -27,7 +27,7 @@ class Point3D from Point {
     }
 }
 
-var p = Point3D()
+var p = Point3D.new()
 assert(Point.Inner)
 p.move(11,22,33)
 print(p.x, p.y, p.z)
