@@ -1,38 +1,34 @@
-package Acme {
 
-    class Point {
-        has x : Number = 0
-        has y : Number = 0
+class Point {
+    has x = 0
+    has y = 0
 
-        method move(x, y) {
-            self.x = x
-            self.y = y
+    class Inner {
+        method greet(whom) {
+            print("Hello ${whom}!")
         }
     }
-
-    class Point3D from Point {
-        has z : Number = 0
-
-        method move(x, y, z) {
-            super::move(self, x, y)
-            self.z = z
-        }
+    method __init() {
+        var i = Inner()
+        i.greet("World")
+    }
+    method move(x, y) {
+        self.x = x
+        self.y = y
     }
 }
 
-var p = Acme.Point3D.new()
-{
-    var n : Number = 42
-    var o : Number = 69
-    n, o = "cheese", "sixty-nine"
-}
-var s : String = "cheese"
+class Point3D from Point {
+    has z = 0
 
+    method move(x, y, z) {
+        super::move(self, x, y)
+        self.z = z
+    }
+}
+
+var p = Point3D()
+assert(Point.Inner)
 p.move(11,22,33)
-/*
-for i=1,10_000_000 {
-    p.move(i, i+1, i+2)
-}
-*/
 print(p.x, p.y, p.z)
 

@@ -1,8 +1,12 @@
 #!/usr/bin/env luajit
+
 local self=_G;_G[("package")].path  = (";;./src/?.lua;./lib/?.lua;"..tostring(_G[("package")].path).."");
 _G[("package")].cpath = (";;./lib/?.so;"..tostring(_G[("package")].cpath).."");
 
 newtable = loadstring(("return {...}"));
+
+local rawget, rawset = _G.rawget, _G.rawset;
+local getmetatable, setmetatable = _G.getmetatable, _G.setmetatable;
 
 __class = function(into, name, _from, _with, body) 
     if (#(_from) )==( 0) then  
@@ -77,8 +81,12 @@ __class = function(into, name, _from, _with, body)
          until true if __break then break end end 
      end 
 
+    local fenv = getfenv(2);
     into[name] = _class;
+    fenv[name] = _class;
+    setfenv(body, setmetatable(Hash({ }), Hash({ __index = fenv })));
     body(_class, _super);
+
      do return _class end
  end;
 __trait = function(into, name, _with, body) 
@@ -88,19 +96,25 @@ __trait = function(into, name, _with, body)
     _trait.__with = _with;
     setmetatable(_trait, Trait);
     if into then  
+        local fenv = getfenv(2);
+        setfenv(body, setmetatable(Hash({ }), Hash({ __index = fenv })));
+        fenv[name] = _trait;
         into[name] = _trait;
      end 
      do return _trait end
  end;
-__object = function(into, name, _from,...) local  args=Array(...);
+__object = function(into, name, _from, _with, body) 
     for i=1, #(_from)  do local __break repeat 
         if (getmetatable(_from[i]) )~=( Class) then  
             _from[i] = getmetatable(_from[i]);
          end 
      until true if __break then break end end 
-    local anon = __class(into, (("#"))..(name), _from, __op_spread(args));
+    local anon = __class(into, (("#"))..(name), _from, _with, body);
     local inst = anon();
     if into then  
+        local fenv = getfenv(2);
+        setfenv(body, setmetatable(Hash({ }), Hash({ __index = fenv })));
+        fenv[name] = inst;
         into[name] = inst;
      end 
      do return inst end
@@ -108,16 +122,16 @@ __object = function(into, name, _from,...) local  args=Array(...);
 __method = function(into, name, code) 
     into[name] = code;
  end;
-__has = function(into, name, default) 
+__has = function(into, name, def) 
     local setter = (("__set_"))..(name);
     local getter = (("__get_"))..(name);
     into[setter] = function(obj, val) 
-        obj[name] = val;
+        do return rawset(obj, name, val) end
      end;
     into[getter] = function(obj) 
-        local val = rawget(obj,name);
+        local val = rawget(obj, name);
         if (val )==( (nil)) then  
-            val = default(obj);
+            val = def(obj);
             obj[setter](obj, val);
          end 
          do return val end
@@ -129,6 +143,8 @@ __grammar = function(into, name, body)
    function gram.match(self,...) local  args=Array(...);
        do return patt:match(__op_spread(args)) end
     end
+   local fenv = getfenv(2);
+   setfenv(body, setmetatable(Hash({ }), Hash({ __index = fenv })));
    body(gram);
    do 
       local grmr = newtable();
@@ -164,6 +180,11 @@ __rule = function(into, name, patt)
        end 
        do return _rule end
     end;
+ end;
+
+__try = function(_try, _catch) 
+    local ok, er = pcall(_try);
+    if not(ok) then   _catch(er);  end 
  end;
 
 __patt = require(("lpeg"));
@@ -289,26 +310,22 @@ __package = function(into, name, body, args)
     do return pckg end
  end;
 
-__import = function(into, _from, what, dest) 
+__import = function(into, _from, what) 
    local mod = __load(_from);
+   local out = Hash({ });
    if what then  
-      if what:isa(Array) then  
-         if dest then  
-            into = __package(into, dest);
-          end 
-         for i=1, #(what)  do local __break repeat 
-            into[what[i]] = mod[what[i]];
-          until true if __break then break end end 
-      
-       elseif what:isa(Hash) then  
-         for n,a in __op_each(pairs(what))  do local __break repeat 
-            into[a] = what[n];
-          until true if __break then break end end 
-       end 
+      for i=1, #(what)  do local __break repeat 
+         out[what[i]] = mod[what[i]];
+       until true if __break then break end end 
    
    else 
        do return mod end
     end 
+ end;
+__export = function(self,...) local  what=Array(...);
+    for i=1, #(what)  do local __break repeat 
+        self.__export[what[i]] = (true);
+     until true if __break then break end end 
  end;
 
 __load = function(_from) 
@@ -403,7 +420,7 @@ Type.isa = function(self, that)
     do return (getmetatable(self) )==( that) end
  end;
 Type.can = function(self, key) 
-    do return rawget(getmetatable(self), key) end
+    do return (rawget(self, key) )or( rawget(getmetatable(self), key)) end
  end;
 Type.does = function(self, that) 
     do return (false) end
@@ -436,7 +453,7 @@ Class.__newindex = function(self, key, val)
     
      elseif key:match(("^__set_")) then  
         local _k = key:match(("^__set_(.-)$"));
-        self.__writers[key] = val;
+        self.__writers[_k] = val;
      end 
     do return rawset(self, key, val) end
  end;
@@ -640,6 +657,13 @@ debug.setmetatable((nil), Nil);
 Number = setmetatable(newtable(), Type);
 Number.__name = ("Number");
 Number.__index = Number;
+Number.__apply = function(self, val) 
+    local v = tonumber(val);
+    if (v )==( (nil)) then  
+        error(("TypeError: cannot coerce '"..tostring(val).."' to Number"), 2);
+     end 
+     do return v end
+ end;
 Number.times = function(self, block) 
    for i=1, self  do local __break repeat  block(i);  until true if __break then break end end 
  end;
@@ -648,6 +672,9 @@ debug.setmetatable(0, Number);
 String = setmetatable(string, Type);
 String.__name = ("String");
 String.__index = String;
+String.__apply = function(self, val) 
+     do return tostring(val) end
+ end;
 String.__match = function(a,p) 
     do return __patt.P(p):match(a) end
  end;
@@ -684,7 +711,7 @@ Function = setmetatable(newtable(), Type);
 Function.__name = ("Function");
 Function.__index = Function;
 Function.__apply = function(self, code, fenv) 
-    code = Lupa:match(code);
+    code = Lupa:compile(code);
     local func = assert(loadstring(code, ("=eval")));
     if fenv then  
         setfenv(func, fenv);
@@ -712,863 +739,907 @@ Pattern.__match = function(patt, subj)
     do return patt:match(subj) end
  end;
 
-__grammar(self,"Lupa",function(self) 
+__class(self,"Lupa",{},{},function(self,super) 
 
-    local function error_line(src, pos) 
-        local line = 1;
-        local index, limit = 1, pos;
-        while (index )<=( limit)  do local __break repeat 
-            local s, e = src:find(("\n"), index, (true));
-            if ((s )==( (nil) ))or(( e )>( limit)) then   do __break = true; break end  end 
-            index = (e )+( 1);
-            line  = (line )+( 1);
-         until true if __break then break end end 
-         do return line end
-     end
-    local function error_near(src, pos) 
-        if ((#(src) )<(( pos )+( 20))) then  
-             do return src:sub(pos) end
-        
-        else 
-             do return (src:sub(pos, (pos )+( 20)))..(("...")) end
-         end 
-     end
-    local function syntax_error(m) 
-         do return function(src, pos) 
-            local line, near = error_line(src, pos), error_near(src, pos);
-            do return error(("SyntaxError: "..tostring((m)or((""))).." on line "..tostring(line).." near '"..tostring(near).."'")) end
-         end end
-     end
+    __class(self,"Scope",{},{},function(self,super) 
+        __has(self,"entries",function(self) return Hash({ }) end);
+        __method(self,"lookup",function(self,name) 
+            if __op_in(name , self.entries) then  
+                 do return self.entries[name] end
+            
+             elseif self.outer then  
+                 do return self.outer:lookup(name) end
+             end 
+         end);
+        __method(self,"define",function(self,name, info) 
+            self.entries[name] = info;
+         end);
+     end);
 
-    local id_counter = 9;
-    local function genid() 
-        id_counter=id_counter+1;
-         do return (("_"))..(id_counter) end
-     end
+    __class(self,"Context",{},{},function(self,super) 
+        __has(self,"scope",function(self) return Lupa:Scope() end);
+        __method(self,"enter",function(self) 
+            self.scope = Lupa:Scope(self.scope);
+         end);
+        __method(self,"leave",function(self) 
+            self.scope = self.scope.outer;
+         end);
+        __method(self,"define",function(self,name, info) 
+            do return self.scope:define(name, info) end
+         end);
+        __method(self,"lookup",function(self,name) 
+            do return self.scope:lookup(name) end
+         end);
+     end);
 
-    local function quote(c)  do return ("%q"):format(c) end  end
+    __grammar(self,"Grammar",function(self) 
 
-    local nl      = __patt.P( __patt.P(("\n")) );
-    local comment = __patt.P( __patt.Cs(
-         ((-nl* __patt.Def("s"))^0* ((__patt.P(("//")) )/( ("--")))* (-nl* __patt.P(1))^0* nl)
-        + ((__patt.P(("/*")) )/( ("--[=[")))* ((__patt.P(("]=]")) )/( ("]\\=]")) + -__patt.P(("*/"))* __patt.P(1))^0* ((__patt.P(("*/")) )/( ("]=]")))
-    ) );
-    local idsafe  = __patt.P( -(__patt.Def("alnum") + __patt.P(("_"))) );
-    local s       = __patt.P( (comment + __patt.Def("s"))^0 );
-    local semicol = __patt.P( ((__patt.P((";")) )/( ("")))^-1 );
-    local digits  = __patt.P( (__patt.Def("digit")* __patt.Cs( (__patt.P(("_")) )/( ("")) )^-1)^1 );
-    local keyword = __patt.P( (
-          __patt.P(("var")) + __patt.P(("function")) + __patt.P(("class")) + __patt.P(("with")) + __patt.P(("like")) + __patt.P(("in"))
-        + __patt.P(("nil")) + __patt.P(("true")) + __patt.P(("false")) + __patt.P(("typeof")) + __patt.P(("return")) + __patt.P(("as"))
-        + __patt.P(("for")) + __patt.P(("throw")) + __patt.P(("method")) + __patt.P(("has")) + __patt.P(("from")) + __patt.P(("break"))
-        + __patt.P(("continue")) + __patt.P(("package")) + __patt.P(("import")) + __patt.P(("try")) + __patt.P(("catch"))
-        + __patt.P(("finally")) + __patt.P(("if")) + __patt.P(("else")) + __patt.P(("yield")) + __patt.P(("grammar")) + __patt.P(("rule"))
-    )* idsafe );
-
-    local prec = Hash({
-        [("^^")]  = 4,
-        [("*")]   = 5,
-        [("/")]   = 5,
-        [("%")]   = 5,
-        [("+")]   = 6,
-        [("-")]   = 6,
-        [("~")]   = 6,
-        [(">>")]  = 7,
-        [("<<")]  = 7,
-        [(">>>")] = 7,
-        [("<=")]  = 8,
-        [(">=")]  = 8,
-        [("<")]   = 8,
-        [(">")]   = 8,
-        [("in")]  = 8,
-        [("as")]  = 8,
-        [("==")]  = 9,
-        [("!=")]  = 9,
-        [("&")]   = 10,
-        [("^")]   = 11,
-        [("|")]   = 12,
-        [("&&")]  = 13,
-        [("||")]  = 14,
-    });
-
-    local unrops = Hash({
-        [("!")] = ("not(%s)"),
-        [("#")] = ("#(%s)"),
-        [("-")] = ("-(%s)"),
-        [("~")] = ("__op_bnot(%s)"),
-        [("...")] = ("__op_spread(%s)"),
-    });
-
-    local binops = Hash({
-        [("^^")] = ("(%s)^(%s)"),
-        [("*")] = ("(%s)*(%s)"),
-        [("/")] = ("(%s)/(%s)"),
-        [("%")] = ("(%s)%%(%s)"),
-        [("+")] = ("(%s)+(%s)"),
-        [("-")] = ("(%s)-(%s)"),
-        [("~")] = ("(%s)..(%s)"),
-        [(">>")] = ("__op_rshift(%s,%s)"),
-        [("<<")] = ("__op_lshift(%s,%s)"),
-        [(">>>")] = ("__op_arshift(%s,%s)"),
-        [("<=")] = ("(%s)<=(%s)"),
-        [(">=")] = ("(%s)>=(%s)"),
-        [("<")] = ("(%s)<(%s)"),
-        [(">")] = ("(%s)>(%s)"),
-        [("in")] = ("__op_in(%s,%s)"),
-        [("as")] = ("__op_as(%s,%s)"),
-        [("==")] = ("(%s)==(%s)"),
-        [("!=")] = ("(%s)~=(%s)"),
-        [("&")] = ("__op_band(%s,%s)"),
-        [("^")] = ("__op_bxor(%s,%s)"),
-        [("|")] = ("__op_bor(%s,%s)"),
-        [("&&")] = ("(%s)and(%s)"),
-        [("||")] = ("(%s)or(%s)"),
-    });
-
-    local function fold_prefix(o,e) 
-         do return unrops[o]:format(e) end
-     end
-
-    --/*
-    local function fold_infix(e) 
-        local s = Array( e[1] );
-        for i=2, #(e)  do local __break repeat 
-            s[(#(s) )+( 1)] = e[i];
-            while (not(binops[s[#(s)]]) )and( s[(#(s) )-( 1)])  do local __break repeat 
-                local p = s[(#(s) )-( 1)];
-                local n = e[(i )+( 1)];
-                if ((n )==( (nil) ))or(( prec[p] )<=( prec[n])) then  
-                    local b, o, a = s:pop(), s:pop(), s:pop();
-                    if not(binops[o]) then  
-                        error(("bad expression: "..tostring(e)..", stack: "..tostring(s)..""));
-                     end 
-                    s:push(binops[o]:format(a, b));
-                
-                else 
-                    do __break = true; break end
-                 end 
+        local function error_line(src, pos) 
+            local line = 1;
+            local index, limit = 1, pos;
+            while (index )<=( limit)  do local __break repeat 
+                local s, e = src:find(("\n"), index, (true));
+                if ((s )==( (nil) ))or(( e )>( limit)) then   do __break = true; break end  end 
+                index = (e )+( 1);
+                line  = (line )+( 1);
              until true if __break then break end end 
-         until true if __break then break end end 
-         do return s[1] end
-     end
-    --*/
-
-    --[=[ enable for recursive descent expr parsing
-    function fold_infix(a,o,b) {
-        return binops[o].format(a,b)
-    }
-    //]=]
-
-    local function make_binop_bind(a, o, b) 
-        do return ((((a)..(("=")))..(a))..(o))..(b) end
-     end
-
-    local function make_params(p) 
-        local h = ("");
-        if ((#(p) )>( 0 ))and( p[#(p)]:find(("..."), 1, (true))) then  
-            local r = p[#(p)];
-            local n = r:gsub(("%.%.%."),(""));
-            p[#(p)] = ("...");
-            h = ("local %s=Array(...);"):format(n);
-         end 
-         do return p:concat((",")), h end
-     end
-
-    local function make_func(p,b) 
-        local p, h = make_params(p);
-         do return ("function(%s) %s%s end"):format(p,h,b) end
-     end
-
-    local function make_short_func(p,b) 
-        if (#(p) )==( 0) then   p:push(("_"));  end 
-        local p, h = make_params(p);
-         do return ("function(%s) %s%s end"):format(p,h,b) end
-     end
-
-    local function make_func_decl(n,p,b,s) 
-        local p, h = make_params(p);
-        if ((s )==( ("lexical") ))and( not(n:find(("."),1,(true)))) then  
-             do return ("local function %s(%s) %s%s end"):format(n,p,h,b) end
-        
-        else 
-             do return ("function %s(%s) %s%s end"):format(n,p,h,b) end
-         end 
-     end
-
-    local function make_meth_decl(n,p,b) 
-        p:unshift(("self"));
-        local p, h = make_params(p);
-         do return ("__method(self,%q,function(%s) %s%s end);"):format(n,p,h,b) end
-     end
-
-    local function make_trait_decl(n,p,w,b) 
-        local p, h = make_params(p);
-        
-            do return ("__trait(self,%q,{%s},function(self,%s) %s%s end);")
-            :format(n,w,p,h,b) end
-     end
-
-    local function make_try_stmt(try_body, catch_args, catch_body) 
-         do return (
-            (((("do local __return;"))..(
-            ("__try(function() %s end,function(%s) %s end);") ))..(
-            ("if __return then return __spread(__return) end")))..(
-            (" end"))
-        ):format(try_body, (catch_args )or( ("")), (catch_body )or( (""))) end
-     end
-
-    local function make_import_stmt(n,f,a) 
-        if (f )==( (nil)) then  
-            -- import from <path>
-             do return ("__import(self,%s);"):format(n) end
-        
-         elseif n:isa(Array) then  
-            -- import <list> from <path> (in <qname>)
-            if a then  
-                 do return ("__import(self,%s,Array(%s),%s);"):format(f,n:concat((",")),a) end
-             else 
-                 do return ("__import(self,%s,Array(%s));"):format(f,n:concat((","))) end
+             do return line end
+         end
+        local function error_near(src, pos) 
+            if ((#(src) )<(( pos )+( 20))) then  
+                 do return src:sub(pos) end
+            
+            else 
+                 do return (src:sub(pos, (pos )+( 20)))..(("...")) end
              end 
-        
-        else 
-            -- import <name> from <path> (as <alias>)
-             do return ("__import(self,%s,Hash({[%s]=%s}));"):format(f,n,a) end
-         end 
-     end
+         end
+        local function syntax_error(m) 
+             do return function(src, pos) 
+                local line, near = error_line(src, pos), error_near(src, pos);
+                do return error(("SyntaxError: "..tostring((m)or((""))).." on line "..tostring(line).." near '"..tostring(near).."'")) end
+             end end
+         end
 
-    __rule(self,"__init",
-        __patt.Cs( __patt.V("unit") )* (-__patt.P(1) + __patt.P(syntax_error(("expected <EOF>"))))
-    );
-    __rule(self,"unit",
-        __patt.Cg( __patt.Cc((false)),"set_return")*
-        __patt.Cg( __patt.Cc(("global")),"scope")*
-        __patt.C( s* __patt.P(("#!"))* (-nl* __patt.P(1))^0* s )^-1*
-        __patt.Cc(("local self=_G;"))*
-        __patt.Cs( (s* __patt.V("main_body_stmt"))^0* s )
-    );
-    __rule(self,"main_body_stmt",
-         __patt.V("var_decl")
-        + __patt.V("func_decl")
-        + __patt.V("class_decl")
-        + __patt.V("trait_decl")
-        + __patt.V("object_decl")
-        + __patt.V("grammar_decl")
-        + __patt.V("package_decl")
-        + __patt.V("import_stmt")
-        + __patt.V("statement")
-    );
-    __rule(self,"statement",
-         __patt.V("if_stmt")
-        + __patt.V("try_stmt")
-        + __patt.V("for_stmt")
-        + __patt.V("for_in_stmt")
-        + __patt.V("while_stmt")
-        + __patt.V("break_stmt")
-        + __patt.V("continue_stmt")
-        + __patt.V("yield_stmt")
-        + __patt.V("block_stmt")
-        + __patt.V("bind_stmt")
-        + __patt.V("call_stmt")
-    );
-    __rule(self,"call_stmt",
-        __patt.Cs( (__patt.Cs( __patt.V("primary")* s* (
-            __patt.V("invoke_expr") + __patt.P(syntax_error(("expected <invoke_expr>")) )
-        ) ) )/( ("%1;"))* semicol )
-    );
-    __rule(self,"return_stmt",
-        __patt.Cs( (__patt.P(("return")) )/( (""))* idsafe* s* (
-        __patt.Cb("set_return")* ((__patt.V("expr_list") + __patt.Cc((""))) )/( function(l,e) 
-            if l then  
-                 do return ("do __return = {%s}; return end"):format(e) end
+        local id_counter = 9;
+        local function genid() 
+            id_counter=(id_counter)+(1);
+             do return (("_"))..(id_counter) end
+         end
+
+        local function quote(c)  do return ("%q"):format(c) end  end
+
+        local nl      = __patt.P( __patt.P(("\n")) );
+        local comment = __patt.P( __patt.Cs(
+             ((-nl* __patt.Def("s"))^0* ((__patt.P(("//")) )/( ("--")))* (-nl* __patt.P(1))^0* nl)
+            + ((__patt.P(("/*")) )/( ("--[=[")))* ((__patt.P(("]=]")) )/( ("]\\=]")) + -__patt.P(("*/"))* __patt.P(1))^0* ((__patt.P(("*/")) )/( ("]=]")))
+        ) );
+        local idsafe  = __patt.P( -(__patt.Def("alnum") + __patt.P(("_"))) );
+        local s       = __patt.P( (comment + __patt.Def("s"))^0 );
+        local semicol = __patt.P( ((__patt.P((";")) )/( ("")))^-1 );
+        local digits  = __patt.P( (__patt.Def("digit")* __patt.Cs( (__patt.P(("_")) )/( ("")) )^-1)^1 );
+        local keyword = __patt.P( (
+              __patt.P(("var")) + __patt.P(("function")) + __patt.P(("class")) + __patt.P(("with")) + __patt.P(("like")) + __patt.P(("in"))
+            + __patt.P(("nil")) + __patt.P(("true")) + __patt.P(("false")) + __patt.P(("typeof")) + __patt.P(("return")) + __patt.P(("as"))
+            + __patt.P(("for")) + __patt.P(("throw")) + __patt.P(("method")) + __patt.P(("has")) + __patt.P(("from")) + __patt.P(("break"))
+            + __patt.P(("continue")) + __patt.P(("package")) + __patt.P(("import")) + __patt.P(("try")) + __patt.P(("catch"))
+            + __patt.P(("finally")) + __patt.P(("if")) + __patt.P(("else")) + __patt.P(("yield")) + __patt.P(("grammar")) + __patt.P(("rule"))
+        )* idsafe );
+
+        local prec = Hash({
+            [("^^")]  = 4,
+            [("*")]   = 5,
+            [("/")]   = 5,
+            [("%")]   = 5,
+            [("+")]   = 6,
+            [("-")]   = 6,
+            [("~")]   = 6,
+            [(">>")]  = 7,
+            [("<<")]  = 7,
+            [(">>>")] = 7,
+            [("<=")]  = 8,
+            [(">=")]  = 8,
+            [("<")]   = 8,
+            [(">")]   = 8,
+            [("in")]  = 8,
+            [("as")]  = 8,
+            [("==")]  = 9,
+            [("!=")]  = 9,
+            [("&")]   = 10,
+            [("^")]   = 11,
+            [("|")]   = 12,
+            [("&&")]  = 13,
+            [("||")]  = 14,
+        });
+
+        local unrops = Hash({
+            [("!")] = ("not(%s)"),
+            [("#")] = ("#(%s)"),
+            [("-")] = ("-(%s)"),
+            [("~")] = ("__op_bnot(%s)"),
+            [("...")] = ("__op_spread(%s)"),
+        });
+
+        local binops = Hash({
+            [("^^")] = ("(%s)^(%s)"),
+            [("*")] = ("(%s)*(%s)"),
+            [("/")] = ("(%s)/(%s)"),
+            [("%")] = ("(%s)%%(%s)"),
+            [("+")] = ("(%s)+(%s)"),
+            [("-")] = ("(%s)-(%s)"),
+            [("~")] = ("(%s)..(%s)"),
+            [(">>")] = ("__op_rshift(%s,%s)"),
+            [("<<")] = ("__op_lshift(%s,%s)"),
+            [(">>>")] = ("__op_arshift(%s,%s)"),
+            [("<=")] = ("(%s)<=(%s)"),
+            [(">=")] = ("(%s)>=(%s)"),
+            [("<")] = ("(%s)<(%s)"),
+            [(">")] = ("(%s)>(%s)"),
+            [("in")] = ("__op_in(%s,%s)"),
+            [("as")] = ("__op_as(%s,%s)"),
+            [("==")] = ("(%s)==(%s)"),
+            [("!=")] = ("(%s)~=(%s)"),
+            [("&")] = ("__op_band(%s,%s)"),
+            [("^")] = ("__op_bxor(%s,%s)"),
+            [("|")] = ("__op_bor(%s,%s)"),
+            [("&&")] = ("(%s)and(%s)"),
+            [("||")] = ("(%s)or(%s)"),
+        });
+
+        local function fold_prefix(o,e) 
+             do return unrops[o]:format(e) end
+         end
+
+        --/*
+        local function fold_infix(e) 
+            local s = Array( e[1] );
+            for i=2, #(e)  do local __break repeat 
+                s[(#(s) )+( 1)] = e[i];
+                while (not(binops[s[#(s)]]) )and( s[(#(s) )-( 1)])  do local __break repeat 
+                    local p = s[(#(s) )-( 1)];
+                    local n = e[(i )+( 1)];
+                    if ((n )==( (nil) ))or(( prec[p] )<=( prec[n])) then  
+                        local b, o, a = s:pop(), s:pop(), s:pop();
+                        if not(binops[o]) then  
+                            error(("bad expression: "..tostring(e)..", stack: "..tostring(s)..""));
+                         end 
+                        s:push(binops[o]:format(a, b));
+                    
+                    else 
+                        do __break = true; break end
+                     end 
+                 until true if __break then break end end 
+             until true if __break then break end end 
+             do return s[1] end
+         end
+        --*/
+
+        --[=[ enable for recursive descent expr parsing
+        function fold_infix(a,o,b) {
+            return binops[o].format(a,b)
+        }
+        //]=]
+
+        local function make_binop_bind(a, o, b) 
+             do return ((a)..(("=")))..(binops[o]:format(a,b)) end
+         end
+
+        local function make_params(p) 
+            local h = ("");
+            if ((#(p) )>( 0 ))and( p[#(p)]:find(("..."), 1, (true))) then  
+                local r = p[#(p)];
+                local n = r:gsub(("%.%.%."),(""));
+                p[#(p)] = ("...");
+                h = ("local %s=Array(...);"):format(n);
              end 
-             do return ("do return %s end"):format(e) end
-         end)) )
-    );
-    __rule(self,"yield_stmt",
-        __patt.P(("yield"))* idsafe* (__patt.Cs( s* __patt.V("expr_list") ) )/( ("__op_yield(%1);"))* semicol
-    );
-    __rule(self,"break_stmt",
-        __patt.Cs( (__patt.C( __patt.P(("break"))* idsafe ) )/( ("do __break = true; break end")) )
-    );
-    __rule(self,"continue_stmt",
-        __patt.Cs( (__patt.C( __patt.P(("continue"))* idsafe ) )/( ("do break end")) )
-    );
-    __rule(self,"if_stmt",
-        __patt.Cs(
-        __patt.P(("if"))* idsafe* s* __patt.V("expr")* __patt.Cc((" then "))* s* __patt.V("block")* (
-            (s* ((__patt.C(__patt.P(("else"))* idsafe* s* __patt.P(("if"))* idsafe) )/( (" elseif")))* s*
-                __patt.V("expr")* __patt.Cc((" then "))* s* __patt.V("block")
-            )^0*
-            (s* __patt.P(("else"))* idsafe* s* __patt.V("block")* __patt.Cc((" end ")) + __patt.Cc((" end ")))
-        )
-        )
-    );
-    __rule(self,"try_stmt",
-        __patt.Cs(
-        __patt.P(("try"))* idsafe* s* __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s )*
-        (__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) ))*
-        ((s* __patt.P(("catch"))* idsafe* s* __patt.P(("("))* s* __patt.V("ident")* s* __patt.P((")"))* s* __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s )* __patt.P(("}")))^-1
-        )/( make_try_stmt)
-        )
-    );
-    __rule(self,"import_stmt",
-        __patt.Cs( ((
-            __patt.P(("import"))* idsafe* s* (__patt.V("import_in") + __patt.V("import_as") + __patt.V("import_from"))
-        ) )/( make_import_stmt) )
-    );
-    __rule(self,"import_as",
-        ((__patt.V("ident") )/( quote))* s* __patt.P(("from"))* idsafe* s* ((__patt.V("qname") )/( quote))*
-        __patt.P(("as"))* idsafe* s* ((__patt.V("ident") )/( quote))
-    );
-    __rule(self,"import_in",
-        __patt.Ca( ((__patt.V("ident") )/( quote))* (s* __patt.P((","))* s* ((__patt.V("ident") )/( quote)))^0 )* s*
-        __patt.P(("from"))* idsafe* s* ((__patt.V("qname") )/( quote))*
-        (s* __patt.P(("in"))* idsafe* s* ((__patt.V("ident") )/( quote)))^-1
-    );
-    __rule(self,"import_from",
-        __patt.P(("from"))* idsafe* s* ((__patt.V("qname") )/( quote))
-    );
-    __rule(self,"for_stmt",
-        __patt.Cs( __patt.P(("for"))* idsafe* s* __patt.V("ident")* s* __patt.P(("="))* s* __patt.V("expr")* s* __patt.P((","))* s* __patt.V("expr")*
-            (s* __patt.P((","))* s* __patt.V("expr"))^-1* s* __patt.V("loop_body")
-        )
-    );
-    __rule(self,"for_in_stmt",
-        __patt.Cs( __patt.P(("for"))* idsafe* s* __patt.V("ident_list")* s* __patt.P(("in"))* s*
-            ((__patt.V("expr") )/( ("__op_each(%1)")))* s* __patt.V("loop_body")
-        )
-    );
-    __rule(self,"while_stmt",
-        __patt.Cs( __patt.P(("while"))* idsafe* s* __patt.V("expr")* s* __patt.V("loop_body") )
-    );
-    __rule(self,"loop_body",
-        ((__patt.P(("{")) )/( (" do local __break repeat ")))* __patt.V("block_body")* s*
-        (
+             do return p:concat((",")), h end
+         end
+
+        local function make_func(p,b) 
+            local p, h = make_params(p);
+             do return ("function(%s) %s%s end"):format(p,h,b) end
+         end
+
+        local function make_short_func(p,b) 
+            if (#(p) )==( 0) then   p:push(("_"));  end 
+            local p, h = make_params(p);
+             do return ("function(%s) %s%s end"):format(p,h,b) end
+         end
+
+        local function make_func_decl(n,p,b,s) 
+            local p, h = make_params(p);
+            if ((s )==( ("lexical") ))and( not(n:find(("."),1,(true)))) then  
+                 do return ("local function %s(%s) %s%s end"):format(n,p,h,b) end
+            
+            else 
+                 do return ("function %s(%s) %s%s end"):format(n,p,h,b) end
+             end 
+         end
+
+        local function make_meth_decl(n,p,b) 
+            p:unshift(("self"));
+            local p, h = make_params(p);
+             do return ("__method(self,%q,function(%s) %s%s end);"):format(n,p,h,b) end
+         end
+
+        local function make_trait_decl(n,p,w,b) 
+            local p, h = make_params(p);
+            
+                do return ("__trait(self,%q,{%s},function(self,%s) %s%s end);")
+                :format(n,w,p,h,b) end
+         end
+
+        local function make_try_stmt(try_body, catch_args, catch_body) 
+             do return (
+                (((("do local __return;"))..(
+                ("__try(function() %s end,function(%s) %s end);") ))..(
+                ("if __return then return __op_spread(__return) end")))..(
+                (" end"))
+            ):format(try_body, (catch_args )or( ("")), (catch_body )or( (""))) end
+         end
+
+        local function make_import_stmt(n,f) 
+            for i=1, #(n)  do local __break repeat  n[i] = quote(n[i]);  until true if __break then break end end 
+             do return ("local %s=__import(%s,{%s});"):format(f, n:concat((","))) end
+         end
+        local function make_export_stmt(n) 
+            local b = Array( );
+            for i=1, #(n)  do local __break repeat 
+                local q = quote(n[i]);
+                b[i] = ("__export[%s]=true;"):format(q);
+             until true if __break then break end end 
+             do return b:concat(("")) end
+         end
+        local function define(name, ctx) 
+            ctx:define(name, Hash({ }));
+             do return name end
+         end
+
+        __rule(self,"__init",
+            __patt.Cs( __patt.V("unit") )* (-__patt.P(1) + __patt.P(syntax_error(("expected <EOF>"))))
+        );
+        __rule(self,"unit",
+            __patt.Cg( __patt.Cc((false)),"set_return")*
+            __patt.Cg( __patt.Cc(("global")),"scope")*
+            __patt.C( __patt.Def("s")^0* __patt.P(("#!"))* (-nl* __patt.P(1))^0* __patt.Def("s")^0 )^-1* s*
+            __patt.Cc(("local self=_G;"))*
+            __patt.Cs( (s* __patt.V("main_body_stmt"))^0* s )
+        );
+        __rule(self,"main_body_stmt",
+             __patt.V("var_decl")
+            + __patt.V("func_decl")
+            + __patt.V("class_decl")
+            + __patt.V("trait_decl")
+            + __patt.V("object_decl")
+            + __patt.V("grammar_decl")
+            + __patt.V("package_decl")
+            + __patt.V("import_stmt")
+            + __patt.V("statement")
+        );
+        __rule(self,"statement",
+             __patt.V("if_stmt")
+            + __patt.V("try_stmt")
+            + __patt.V("for_stmt")
+            + __patt.V("for_in_stmt")
+            + __patt.V("while_stmt")
+            + __patt.V("break_stmt")
+            + __patt.V("continue_stmt")
+            + __patt.V("yield_stmt")
+            + __patt.V("block_stmt")
+            + __patt.V("bind_stmt")
+            + __patt.V("call_stmt")
+        );
+        __rule(self,"call_stmt",
+            __patt.Cs( (__patt.Cs( __patt.V("primary")* s* (
+                __patt.V("invoke_expr") + __patt.P(syntax_error(("expected <invoke_expr>")) )
+            ) ) )/( ("%1;"))* semicol )
+        );
+        __rule(self,"return_stmt",
+            __patt.Cs( (__patt.P(("return")) )/( (""))* idsafe* s* (
+            __patt.Cb("set_return")* ((__patt.V("expr_list") + __patt.Cc((""))) )/( function(l,e) 
+                if l then  
+                     do return ("do __return = {%s}; return end"):format(e) end
+                 end 
+                 do return ("do return %s end"):format(e) end
+             end)) )
+        );
+        __rule(self,"yield_stmt",
+            __patt.P(("yield"))* idsafe* (__patt.Cs( s* __patt.V("expr_list") ) )/( ("__op_yield(%1);"))* semicol
+        );
+        __rule(self,"break_stmt",
+            __patt.Cs( (__patt.C( __patt.P(("break"))* idsafe ) )/( ("do __break = true; break end")) )
+        );
+        __rule(self,"continue_stmt",
+            __patt.Cs( (__patt.C( __patt.P(("continue"))* idsafe ) )/( ("do break end")) )
+        );
+        __rule(self,"if_stmt",
+            __patt.Cs(
+            __patt.P(("if"))* idsafe* s* __patt.V("expr")* __patt.Cc((" then "))* s* __patt.V("block")* (
+                (s* ((__patt.C(__patt.P(("else"))* idsafe* s* __patt.P(("if"))* idsafe) )/( (" elseif")))* s*
+                    __patt.V("expr")* __patt.Cc((" then "))* s* __patt.V("block")
+                )^0*
+                (s* __patt.P(("else"))* idsafe* s* __patt.V("block")* __patt.Cc((" end ")) + __patt.Cc((" end ")))
+            )
+            )
+        );
+        __rule(self,"try_stmt",
+            __patt.Cs(
+            __patt.P(("try"))* idsafe* s* __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s )*
+            (__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) ))*
+            ((s* __patt.P(("catch"))* idsafe* s* __patt.P(("("))* s* __patt.V("name")* s* __patt.P((")"))* s* __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s )* __patt.P(("}")))^-1
+            )/( make_try_stmt)
+            )
+        );
+        __rule(self,"import_stmt",
+            __patt.Cs( ((
+                __patt.P(("import"))* idsafe* s* __patt.Ca( __patt.V("name_list") )* s* __patt.P(("from"))* ((__patt.V("qname") )/( quote))
+            ) )/( make_import_stmt) )
+        );
+        __rule(self,"export_stmt",
+            __patt.Cs( __patt.P(("export"))* idsafe* s* (__patt.Ca( __patt.V("name_list") ) )/( make_export_stmt) )
+        );
+        __rule(self,"for_stmt",
+            __patt.Cs( __patt.P(("for"))* idsafe* s* __patt.V("name")* s* __patt.P(("="))* s* __patt.V("expr")* s* __patt.P((","))* s* __patt.V("expr")*
+                (s* __patt.P((","))* s* __patt.V("expr"))^-1* s* __patt.V("loop_body")
+            )
+        );
+        __rule(self,"for_in_stmt",
+            __patt.Cs( __patt.P(("for"))* idsafe* s* __patt.V("name_list")* s* __patt.P(("in"))* s*
+                ((__patt.V("expr") )/( ("__op_each(%1)")))* s* __patt.V("loop_body")
+            )
+        );
+        __rule(self,"while_stmt",
+            __patt.Cs( __patt.P(("while"))* idsafe* s* __patt.V("expr")* s* __patt.V("loop_body") )
+        );
+        __rule(self,"loop_body",
+            ((__patt.P(("{")) )/( (" do local __break repeat ")))* __patt.V("block_body")* s*
+            (
+                ((__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) ))
+                )/( (" until true if __break then break end end "))
+            )
+        );
+        __rule(self,"block",
+            __patt.Cs( ((__patt.P(("{")) )/( ("")))* __patt.V("block_body")* s* (((__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) )) )/( (""))) )
+        );
+        __rule(self,"block_stmt",
+            __patt.Cs( ((__patt.P(("{")) )/( ("do ")))* __patt.V("block_body")* s* (((__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) )) )/( (" end"))) )
+        );
+        __rule(self,"block_body",
+            __patt.Cg( __patt.Cc(("lexical")),"scope")*
+            (s* __patt.V("block_body_stmt"))^0
+        );
+        __rule(self,"block_body_stmt",
+             __patt.V("var_decl")
+            + __patt.V("func_decl")
+            + __patt.V("return_stmt")
+            + __patt.V("statement")
+        );
+        __rule(self,"lambda_body",
+            __patt.Cg( __patt.Cc((true)),"set_return")*
+            __patt.V("block_body")* s
+        );
+
+        __rule(self,"var_decl",
+            (__patt.Cs( __patt.P(("var"))* (idsafe )/( ("local"))* s*
+                __patt.V("var_list")* (s* __patt.P(("="))* s* __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0)^-1
+            ) )/( ("%1;"))* semicol
+        );
+        __rule(self,"var_list",
+            --(<name> %1 -> define) (s "," s (<name> %1 -> define))*
+            __patt.V("name")* (s* __patt.P((","))* s* __patt.V("name"))^0
+        );
+        __rule(self,"slot_decl",
+            __patt.Cs( ((__patt.P(("has"))* idsafe* s* __patt.V("name")* (s* __patt.P(("="))* s* __patt.V("expr") + __patt.Cc(("")))* semicol)
+                )/( ("__has(self,\"%1\",function(self) return %2 end);"))
+            )
+        );
+        __rule(self,"meth_decl",
+            __patt.Cs( ((__patt.P(("method"))* idsafe*
+            s* __patt.V("qname")* s* __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")"))* s* __patt.P(("{"))*
+                __patt.Cs( __patt.V("func_body")* s )*
+            __patt.P(("}"))) )/( make_meth_decl) )
+        );
+        __rule(self,"func_decl",
+            __patt.Cs( ((__patt.P(("function"))* idsafe*
+            s* __patt.V("qname")* s* __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")"))* s* __patt.P(("{"))*
+                __patt.Cs( __patt.V("func_body")* s )*
+            __patt.P(("}"))* __patt.Cb("scope")) )/( make_func_decl) )
+        );
+        __rule(self,"func_body",
+            __patt.Cg( __patt.Cc(("lexical")),"scope")*
+            (s* __patt.V("func_body_stmt"))^0
+        );
+        __rule(self,"func_body_stmt",
+             __patt.V("var_decl")
+            + __patt.V("func_decl")
+            + __patt.V("return_stmt")
+            + __patt.V("block_stmt")
+            + (__patt.V("expr")* (#(s* __patt.P(("}"))) )/( ("do return %1 end")))
+            + __patt.V("statement")
+        );
+        __rule(self,"func",
+            __patt.Cs( ((__patt.P(("function"))* idsafe* s*
+            __patt.P(("("))* s* __patt.V("param_list")* s* (__patt.P((")")) + __patt.P( syntax_error(("expected ')'")) ))* s* __patt.P(("{"))*
+                __patt.Cs( __patt.V("func_body")* s )*
+            (__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) )))
+            )/( make_func) )
+        );
+        __rule(self,"short_func",
+            ((__patt.P((":")) )/( ("")))*
+            ((s* __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")")) + __patt.Cc(Array(("_"))))* s* __patt.P(("{"))* __patt.Cs( __patt.V("func_body")* s )* (__patt.P(("}"))
+            )/( make_short_func))* __patt.Cc((")"))
+        );
+        __rule(self,"package_decl",
+            __patt.P(("package"))* idsafe* s* ((__patt.V("qname") )/( quote))* s* __patt.P(("{"))*
+                __patt.Cs( (s* __patt.V("main_body_stmt"))^0* s )*
             ((__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) ))
-            )/( (" until true if __break then break end end "))
-        )
-    );
-    __rule(self,"block",
-        __patt.Cs( ((__patt.P(("{")) )/( ("")))* __patt.V("block_body")* s* (((__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) )) )/( (""))) )
-    );
-    __rule(self,"block_stmt",
-        __patt.Cs( ((__patt.P(("{")) )/( ("do ")))* __patt.V("block_body")* s* (((__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) )) )/( (" end"))) )
-    );
-    __rule(self,"block_body",
-        __patt.Cg( __patt.Cc(("lexical")),"scope")*
-        (s* __patt.V("block_body_stmt"))^0
-    );
-    __rule(self,"block_body_stmt",
-         __patt.V("var_decl")
-        + __patt.V("func_decl")
-        + __patt.V("return_stmt")
-        + __patt.V("statement")
-    );
-    __rule(self,"lambda_body",
-        __patt.Cg( __patt.Cc((true)),"set_return")*
-        __patt.V("block_body")* s
-    );
-
-    __rule(self,"var_decl",
-        (__patt.Cs( __patt.P(("var"))* (idsafe )/( ("local"))* s*
-            __patt.V("ident_list")* (s* __patt.P(("="))* s* __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0)^-1
-        ) )/( ("%1;"))* semicol
-    );
-    __rule(self,"slot_decl",
-        __patt.Cs( ((__patt.P(("has"))* idsafe* s* __patt.V("ident")* (s* __patt.P(("="))* s* __patt.V("expr") + __patt.Cc(("")))* semicol)
-            )/( ("__has(self,\"%1\",function(self) return %2 end);"))
-        )
-    );
-    __rule(self,"meth_decl",
-        __patt.Cs( ((__patt.P(("method"))* idsafe* s* __patt.V("qname")* s* __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")"))* s* __patt.P(("{"))*
-            __patt.Cs( __patt.V("func_body")* s )*
-        __patt.P(("}"))) )/( make_meth_decl) )
-    );
-    __rule(self,"func_decl",
-        __patt.Cs( ((__patt.P(("function"))* idsafe* s* __patt.V("qname")* s* __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")"))* s* __patt.P(("{"))*
-            __patt.Cs( __patt.V("func_body")* s )*
-        __patt.P(("}"))* __patt.Cb("scope")) )/( make_func_decl) )
-    );
-    __rule(self,"func_body",
-        __patt.Cg( __patt.Cc(("lexical")),"scope")*
-        (s* __patt.V("func_body_stmt"))^0
-    );
-    __rule(self,"func_body_stmt",
-         __patt.V("var_decl")
-        + __patt.V("func_decl")
-        + __patt.V("return_stmt")
-        + __patt.V("block_stmt")
-        + (__patt.V("expr")* (#(s* __patt.P(("}"))) )/( ("do return %1 end")))
-        + __patt.V("statement")
-    );
-    __rule(self,"func",
-        __patt.Cs( ((__patt.P(("function"))* idsafe* s*
-        __patt.P(("("))* s* __patt.V("param_list")* s* (__patt.P((")")) + __patt.P( syntax_error(("expected ')'")) ))* s* __patt.P(("{"))*
-            __patt.Cs( __patt.V("func_body")* s )*
-        (__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) )))
-        )/( make_func) )
-    );
-    __rule(self,"short_func",
-        ((__patt.P((":")) )/( ("")))*
-        ((s* __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")")) + __patt.Cc(Array(("_"))))* s* __patt.P(("{"))* __patt.Cs( __patt.V("func_body")* s )* (__patt.P(("}"))
-        )/( make_short_func))* __patt.Cc((")"))
-    );
-    __rule(self,"package_decl",
-        __patt.P(("package"))* idsafe* s* ((__patt.V("qname") )/( quote))* s* __patt.P(("{"))*
-            __patt.Cs( (s* __patt.V("main_body_stmt"))^0* s )*
-        ((__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) ))
-        )/( ("__package(self,%1,function(self) %2 end);"))
-    );
-    __rule(self,"class_decl",
-        __patt.P(("class"))* idsafe* s* __patt.V("ident")* s*
-        (__patt.V("class_from") + __patt.Cc(("")))* s*
-        (__patt.V("class_with") + __patt.Cc(("")))* s*
-        __patt.P(("{"))* __patt.Cs( __patt.V("class_body")* s )* (__patt.P(("}"))
-        )/( ("__class(self,\"%1\",{%2},{%3},function(self,super) %4 end);"))
-    );
-    __rule(self,"trait_decl",
-        __patt.P(("trait"))* idsafe* s* __patt.V("ident")* s*
-        (__patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")")) + __patt.Cc(("..."))* __patt.Cc(("")))* s*
-        (__patt.V("class_with") + __patt.Cc(("")))* s*
-        __patt.P(("{"))* __patt.Cs( __patt.V("class_body")* s )* (__patt.P(("}"))
-        )/( make_trait_decl)
-    );
-    __rule(self,"object_decl",
-        __patt.P(("object"))* idsafe* s* __patt.V("ident")* s*
-        (__patt.V("class_from") + __patt.Cc(("")))* s*
-        (__patt.V("class_with") + __patt.Cc(("")))* s*
-        __patt.P(("{"))* __patt.Cs( __patt.V("class_body")* s )* (__patt.P(("}"))
-        )/( ("__object(self,\"%1\",{%2},{%3},function(self,super) %4 end);"))
-    );
-    __rule(self,"class_body",
-        __patt.Cg( __patt.Cc(("lexical")),"scope")*
-        (s* __patt.V("class_body_stmt"))^0
-    );
-    __rule(self,"class_from",
-        __patt.P(("from"))* idsafe* s* __patt.Cs( __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0 )
-    );
-    __rule(self,"class_with",
-        __patt.P(("with"))* idsafe* s* __patt.Cs( __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0 )
-    );
-    __rule(self,"class_body_stmt",
-         __patt.V("var_decl")
-        + __patt.V("slot_decl")
-        + __patt.V("func_decl")
-        + __patt.V("meth_decl")
-        + __patt.V("class_decl")
-        + __patt.V("trait_decl")
-        + __patt.V("object_decl")
-        + __patt.V("grammar_decl")
-        + __patt.V("statement")
-    );
-    __rule(self,"rest",
-        __patt.Cs( __patt.C(__patt.P(("...")))* __patt.V("ident") )
-    );
-    __rule(self,"param_list",
-        __patt.Ca( 
-         __patt.Cs( __patt.V("ident")* s )* (__patt.P((","))* __patt.Cs( s* __patt.V("ident")* s ))^0* (__patt.P((","))* __patt.Cs( s* __patt.V("rest")* s ))^-1
-        + __patt.V("rest")
-        + __patt.Cc((nil))
-        )
-    );
-    __rule(self,"ident",
-        __patt.C( -keyword* ((__patt.Def("alpha") + __patt.P(("_")))* (__patt.Def("alnum") + __patt.P(("_")))^0) )
-    );
-    __rule(self,"ident_list",
-        __patt.Cs( __patt.V("ident")* (s* __patt.P((","))* s* __patt.V("ident"))^0 )
-    );
-    __rule(self,"qname",
-        __patt.Cs( __patt.V("ident")* (__patt.P(("."))* __patt.V("ident"))^0 )
-    );
-    __rule(self,"hexadec",
-        __patt.P(("-"))^-1* __patt.P(("0x"))* __patt.Def("xdigit")^1
-    );
-    __rule(self,"decimal",
-        __patt.P(("-"))^-1* digits* (__patt.P(("."))* digits)^-1* ((__patt.P(("e"))+__patt.P(("E")))* __patt.P(("-"))^-1* digits)^-1
-    );
-    __rule(self,"number",
-        __patt.Cs( __patt.V("hexadec") + __patt.V("decimal") )
-    );
-    __rule(self,"string",
-        (__patt.Cs( (__patt.V("qstring") + __patt.V("astring")) ) )/( ("(%1)"))
-    );
-    __rule(self,"special",
-        __patt.Cs(
-         (__patt.P(("\n"))  )/( ("\\\n"))
-        + (__patt.P(("\\$")) )/( ("$"))
-        + __patt.P(("\\\\"))
-        + __patt.P(("\\"))* __patt.P(1)
-        )
-    );
-    __rule(self,"qstring",
-         (__patt.P(("\"\"\"")) )/( ("\""))* __patt.Cs( (
-             __patt.V("string_expr")
-            + __patt.Cs( (__patt.V("special") + -__patt.P(("\"\"\""))*((__patt.P(("\"")) )/( ("\\\""))) + -(__patt.V("string_expr") + __patt.P(("\"\"\"")))* __patt.P(1))^1 )
-        )^0 )* ((__patt.P(("\"\"\"")) )/( ("\"")) + __patt.P( syntax_error(("expected '\"\"\"'")) ))
-        + __patt.P(("\""))* __patt.Cs( (
-             __patt.V("string_expr")
-            + __patt.Cs( (__patt.V("special") + -(__patt.V("string_expr") + __patt.P(("\"")))* __patt.P(1))^1 )
-        )^0 )* (__patt.P(("\"")) + __patt.P( syntax_error(("expected '\"'")) ))
-    );
-    __rule(self,"astring",
-        (__patt.Cs(
-             ((__patt.P(("'''")) )/( ("")))* (__patt.P(("\\\\")) + __patt.P(("\\'")) + (-__patt.P(("'''"))* __patt.P(1)))^0* ((__patt.P(("'''")) )/( ("")))
-            + ((__patt.P(("'"))   )/( ("")))* (__patt.P(("\\\\")) + __patt.P(("\\'")) + (-__patt.P(("'"))*   __patt.P(1)))^0* ((__patt.P(("'"))   )/( ("")))
-        ) )/( quote)
-    );
-    __rule(self,"string_expr",
-        ((__patt.P(("${")) )/( ("\"..")))* __patt.Cs( s* ((__patt.V("expr") )/( ("tostring(%1)")))* s )* ((__patt.P(("}")) )/( ("..\"")))
-    );
-    __rule(self,"vnil",
-        __patt.Cs( __patt.C( __patt.P(("nil")) )* (idsafe )/( ("(nil)")) )
-    );
-    __rule(self,"vtrue",
-        __patt.Cs( __patt.C( __patt.P(("true")) )* (idsafe )/( ("(true)")) )
-    );
-    __rule(self,"vfalse",
-        __patt.Cs( __patt.C( __patt.P(("false")) )* (idsafe )/( ("(false)")) )
-    );
-    __rule(self,"range",
-        __patt.Cs( ((
-            __patt.P(("["))* s* __patt.V("expr")* s* __patt.P((":"))* s* __patt.V("expr")* ( s* __patt.P((":"))* s* __patt.V("expr") + __patt.Cc(("1")) )* s* __patt.P(("]"))
-        ) )/( ("Range(%1,%2,%3)")) )
-    );
-    __rule(self,"array",
-        __patt.Cs(
-            ((__patt.P(("[")) )/( ("Array(")))* s*
-            (__patt.V("array_elements") + __patt.Cc(("")))* s*
-            ((__patt.P(("]")) )/( (")")) + __patt.P(syntax_error(("expected ']'"))))
-        )
-    );
-    __rule(self,"array_elements",
-        __patt.V("expr")* ( s* __patt.P((","))* s* __patt.V("expr") )^0* (s* __patt.P((",")))^-1
-    );
-    __rule(self,"hash",
-        __patt.Cs(
-            ((__patt.P(("{")) )/( ("Hash({")))* s*
-            (__patt.V("hash_pairs") + __patt.Cc(("")))* s*
-            ((__patt.P(("}")) )/( ("})")) + __patt.P(syntax_error(("expected '}'"))))
-        )
-    );
-    __rule(self,"hash_pairs",
-        __patt.V("hash_pair")* (s* __patt.P((","))* s* __patt.V("hash_pair"))^0* (s* __patt.P((",")))^-1
-    );
-    __rule(self,"hash_pair",
-        (__patt.V("ident") + __patt.P(("["))* s* __patt.V("expr")* s* (__patt.P(("]")) + __patt.P(syntax_error(("expected ']'")))))* s*
-        __patt.P(("="))* s* __patt.V("expr")
-    );
-    __rule(self,"primary",
-         __patt.V("ident")
-        + __patt.V("range")
-        + __patt.V("number")
-        + __patt.V("string")
-        + __patt.V("vnil")
-        + __patt.V("vtrue")
-        + __patt.V("vfalse")
-        + __patt.V("array")
-        + __patt.V("hash")
-        + __patt.V("func")
-        + __patt.V("short_func")
-        + __patt.V("pattern")
-        + __patt.P(("("))* s* __patt.V("expr")* s* (__patt.P((")")) + __patt.P( syntax_error(("expected ')'")) ))
-    );
-    __rule(self,"paren_expr",
-        __patt.P(("("))* s* ( __patt.V("expr_list") + __patt.Cc(("")) )* s* (__patt.P((")")) + __patt.P( syntax_error(("expected ')'")) ))
-    );
-    __rule(self,"member_expr",
-        __patt.Cs(
-         __patt.P(("."))* s* __patt.V("ident")
-        + __patt.P(("["))* s* __patt.V("expr")* s* (__patt.P(("]")) + __patt.P( syntax_error(("expected ']'")) ))
-        )
-    );
-    __rule(self,"method_expr",
-        __patt.Cs(
-         ((__patt.P(("."))  )/( (":")) + (__patt.P(("::")) )/( (".")))* s* __patt.V("ident")* s* (__patt.V("short_expr") + __patt.V("paren_expr"))
-        )
-    );
-    __rule(self,"access_expr",
-        __patt.Cs(
-         __patt.V("invoke_expr")* s* __patt.V("access_expr")
-        + __patt.V("member_expr")
-        )
-    );
-    __rule(self,"invoke_expr",
-        __patt.Cs(
-         (
-             __patt.V("method_expr")
+            )/( ("__package(self,%1,function(self) %2 end);"))
+        );
+        __rule(self,"class_decl",
+            __patt.P(("class"))* idsafe* s* __patt.V("name")* s*
+            (__patt.V("class_from") + __patt.Cc(("")))* s*
+            (__patt.V("class_with") + __patt.Cc(("")))* s* __patt.P(("{"))*
+            __patt.Cs( __patt.V("class_body")* s )* (__patt.P(("}"))
+            )/( ("__class(self,\"%1\",{%2},{%3},function(self,super) %4 end);"))
+        );
+        __rule(self,"trait_decl",
+            __patt.P(("trait"))* idsafe* s* __patt.V("name")* s*
+            (__patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")")) + __patt.Cc(("..."))* __patt.Cc(("")))* s*
+            (__patt.V("class_with") + __patt.Cc(("")))* s*
+            __patt.P(("{"))* __patt.Cs( __patt.V("class_body")* s )* (__patt.P(("}"))
+            )/( make_trait_decl)
+        );
+        __rule(self,"object_decl",
+            __patt.P(("object"))* idsafe* s* __patt.V("name")* s*
+            (__patt.V("class_from") + __patt.Cc(("")))* s*
+            (__patt.V("class_with") + __patt.Cc(("")))* s*
+            __patt.P(("{"))* __patt.Cs( __patt.V("class_body")* s )* (__patt.P(("}"))
+            )/( ("__object(self,\"%1\",{%2},{%3},function(self,super) %4 end);"))
+        );
+        __rule(self,"class_body",
+            __patt.Cg( __patt.Cc(("lexical")),"scope")*
+            (s* __patt.V("class_body_stmt"))^0
+        );
+        __rule(self,"class_from",
+            __patt.P(("from"))* idsafe* s* __patt.Cs( __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0 )
+        );
+        __rule(self,"class_with",
+            __patt.P(("with"))* idsafe* s* __patt.Cs( __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0 )
+        );
+        __rule(self,"class_body_stmt",
+             __patt.V("var_decl")
+            + __patt.V("slot_decl")
+            + __patt.V("func_decl")
+            + __patt.V("meth_decl")
+            + __patt.V("class_decl")
+            + __patt.V("trait_decl")
+            + __patt.V("object_decl")
+            + __patt.V("grammar_decl")
+            + __patt.V("statement")
+        );
+        __rule(self,"rest",
+            __patt.Cs( __patt.C(__patt.P(("...")))* __patt.V("param") )
+        );
+        __rule(self,"param_list",
+            __patt.Ca(
+             __patt.Cs( __patt.V("param")* s )* (__patt.P((","))* __patt.Cs( s* __patt.V("param")* s ))^0* (__patt.P((","))* __patt.Cs( s* __patt.V("rest")* s ))^-1
+            + __patt.V("rest")
+            + __patt.Cc((nil))
+            )
+        );
+        __rule(self,"ident",
+            __patt.V("name")
+        );
+        __rule(self,"param",
+            __patt.V("name")
+        );
+        __rule(self,"name",
+            __patt.C( -keyword* ((__patt.Def("alpha") + __patt.P(("_")))* (__patt.Def("alnum") + __patt.P(("_")))^0) )
+        );
+        __rule(self,"name_list",
+            __patt.Cs( __patt.V("name")* (s* __patt.P((","))* s* __patt.V("name"))^0 )
+        );
+        __rule(self,"qname",
+            __patt.Cs( __patt.V("name")* (__patt.P(("."))* __patt.V("name"))^0 )
+        );
+        __rule(self,"hexadec",
+            __patt.P(("-"))^-1* __patt.P(("0x"))* __patt.Def("xdigit")^1
+        );
+        __rule(self,"decimal",
+            __patt.P(("-"))^-1* digits* (__patt.P(("."))* digits)^-1* ((__patt.P(("e"))+__patt.P(("E")))* __patt.P(("-"))^-1* digits)^-1
+        );
+        __rule(self,"number",
+            __patt.Cs( __patt.V("hexadec") + __patt.V("decimal") )
+        );
+        __rule(self,"string",
+            (__patt.Cs( (__patt.V("qstring") + __patt.V("astring")) ) )/( ("(%1)"))
+        );
+        __rule(self,"special",
+            __patt.Cs(
+             (__patt.P(("\n"))  )/( ("\\\n"))
+            + (__patt.P(("\\$")) )/( ("$"))
+            + __patt.P(("\\\\"))
+            + __patt.P(("\\"))* __patt.P(1)
+            )
+        );
+        __rule(self,"qstring",
+             (__patt.P(("\"\"\"")) )/( ("\""))* __patt.Cs( (
+                 __patt.V("string_expr")
+                + __patt.Cs( (__patt.V("special") + -__patt.P(("\"\"\""))*((__patt.P(("\"")) )/( ("\\\""))) + -(__patt.V("string_expr") + __patt.P(("\"\"\"")))* __patt.P(1))^1 )
+            )^0 )* ((__patt.P(("\"\"\"")) )/( ("\"")) + __patt.P( syntax_error(("expected '\"\"\"'")) ))
+            + __patt.P(("\""))* __patt.Cs( (
+                 __patt.V("string_expr")
+                + __patt.Cs( (__patt.V("special") + -(__patt.V("string_expr") + __patt.P(("\"")))* __patt.P(1))^1 )
+            )^0 )* (__patt.P(("\"")) + __patt.P( syntax_error(("expected '\"'")) ))
+        );
+        __rule(self,"astring",
+            (__patt.Cs(
+                 ((__patt.P(("'''")) )/( ("")))* (__patt.P(("\\\\")) + __patt.P(("\\'")) + (-__patt.P(("'''"))* __patt.P(1)))^0* ((__patt.P(("'''")) )/( ("")))
+                + ((__patt.P(("'"))   )/( ("")))* (__patt.P(("\\\\")) + __patt.P(("\\'")) + (-__patt.P(("'"))*   __patt.P(1)))^0* ((__patt.P(("'"))   )/( ("")))
+            ) )/( quote)
+        );
+        __rule(self,"string_expr",
+            ((__patt.P(("${")) )/( ("\"..")))* __patt.Cs( s* ((__patt.V("expr") )/( ("tostring(%1)")))* s )* ((__patt.P(("}")) )/( ("..\"")))
+        );
+        __rule(self,"vnil",
+            __patt.Cs( __patt.C( __patt.P(("nil")) )* (idsafe )/( ("(nil)")) )
+        );
+        __rule(self,"vtrue",
+            __patt.Cs( __patt.C( __patt.P(("true")) )* (idsafe )/( ("(true)")) )
+        );
+        __rule(self,"vfalse",
+            __patt.Cs( __patt.C( __patt.P(("false")) )* (idsafe )/( ("(false)")) )
+        );
+        __rule(self,"range",
+            __patt.Cs( ((
+                __patt.P(("["))* s* __patt.V("expr")* s* __patt.P((":"))* s* __patt.V("expr")* ( s* __patt.P((":"))* s* __patt.V("expr") + __patt.Cc(("1")) )* s* __patt.P(("]"))
+            ) )/( ("Range(%1,%2,%3)")) )
+        );
+        __rule(self,"array",
+            __patt.Cs(
+                ((__patt.P(("[")) )/( ("Array(")))* s*
+                (__patt.V("array_elements") + __patt.Cc(("")))* s*
+                ((__patt.P(("]")) )/( (")")) + __patt.P(syntax_error(("expected ']'"))))
+            )
+        );
+        __rule(self,"array_elements",
+            __patt.V("expr")* ( s* __patt.P((","))* s* __patt.V("expr") )^0* (s* __patt.P((",")))^-1
+        );
+        __rule(self,"hash",
+            __patt.Cs(
+                ((__patt.P(("{")) )/( ("Hash({")))* s*
+                (__patt.V("hash_pairs") + __patt.Cc(("")))* s*
+                ((__patt.P(("}")) )/( ("})")) + __patt.P(syntax_error(("expected '}'"))))
+            )
+        );
+        __rule(self,"hash_pairs",
+            __patt.V("hash_pair")* (s* __patt.P((","))* s* __patt.V("hash_pair"))^0* (s* __patt.P((",")))^-1
+        );
+        __rule(self,"hash_pair",
+            (__patt.V("name") + __patt.P(("["))* s* __patt.V("expr")* s* (__patt.P(("]")) + __patt.P(syntax_error(("expected ']'")))))* s*
+            __patt.P(("="))* s* __patt.V("expr")
+        );
+        __rule(self,"primary",
+             __patt.V("ident")
+            + __patt.V("range")
+            + __patt.V("number")
+            + __patt.V("string")
+            + __patt.V("vnil")
+            + __patt.V("vtrue")
+            + __patt.V("vfalse")
+            + __patt.V("array")
+            + __patt.V("hash")
+            + __patt.V("func")
+            + __patt.V("short_func")
+            + __patt.V("pattern")
+            + __patt.P(("("))* s* __patt.V("expr")* s* (__patt.P((")")) + __patt.P( syntax_error(("expected ')'")) ))
+        );
+        __rule(self,"paren_expr",
+            __patt.P(("("))* s* ( __patt.V("expr_list") + __patt.Cc(("")) )* s* (__patt.P((")")) + __patt.P( syntax_error(("expected ')'")) ))
+        );
+        __rule(self,"member_expr",
+            __patt.Cs(
+             __patt.P(("."))* s* __patt.V("name")
+            + __patt.P(("["))* s* __patt.V("expr")* s* (__patt.P(("]")) + __patt.P( syntax_error(("expected ']'")) ))
+            )
+        );
+        __rule(self,"method_expr",
+            __patt.Cs(
+             ((__patt.P(("."))  )/( (":")) + (__patt.P(("::")) )/( (".")))* s* __patt.V("name")* s* (__patt.V("short_expr") + __patt.V("paren_expr"))
+            )
+        );
+        __rule(self,"access_expr",
+            __patt.Cs(
+             __patt.V("invoke_expr")* s* __patt.V("access_expr")
             + __patt.V("member_expr")
+            )
+        );
+        __rule(self,"invoke_expr",
+            __patt.Cs(
+             (
+                 __patt.V("method_expr")
+                + __patt.V("member_expr")
+                + __patt.V("short_expr")
+                + __patt.V("paren_expr")
+            )* s* __patt.V("invoke_expr")
+            + __patt.V("method_expr")
             + __patt.V("short_expr")
             + __patt.V("paren_expr")
-        )* s* __patt.V("invoke_expr")
-        + __patt.V("method_expr")
-        + __patt.V("short_expr")
-        + __patt.V("paren_expr")
-        )
-    );
-    __rule(self,"short_expr",
-        ((__patt.P((":")) )/( ("(")))*
-        ((s* __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")")) + __patt.Cc(Array(("_"))))* s* __patt.P(("{"))* __patt.Cs( __patt.V("func_body")* s )* (__patt.P(("}"))
-        )/( make_short_func))* __patt.Cc((")"))
-    );
-    __rule(self,"suffix_expr",
-         __patt.V("invoke_expr")
-        + __patt.V("access_expr")
-    );
-    __rule(self,"term",
-        __patt.Cs( __patt.V("primary")* (s* __patt.V("suffix_expr"))^0 )
-    );
-    __rule(self,"expr_list",
-        __patt.Cs( __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0 )
-    );
-    __rule(self,"expr",
-        __patt.Cs( (__patt.V("infix_expr") + __patt.V("prefix_expr"))* (
-            s* ((__patt.P(("?")) )/( (" and ")))* s* __patt.V("expr")* s* ((__patt.P((":")) )/( (" or ")))* s* __patt.V("expr")
-        )^-1 )
-    );
+            )
+        );
+        __rule(self,"short_expr",
+            ((__patt.P((":")) )/( ("(")))*
+            ((s* __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")")) + __patt.Cc(Array(("_"))))* s* __patt.P(("{"))* __patt.Cs( __patt.V("func_body")* s )* (__patt.P(("}"))
+            )/( make_short_func))* __patt.Cc((")"))
+        );
+        __rule(self,"suffix_expr",
+             __patt.V("invoke_expr")
+            + __patt.V("access_expr")
+        );
+        __rule(self,"term",
+            __patt.Cs( __patt.V("primary")* (s* __patt.V("suffix_expr"))^0 )
+        );
+        __rule(self,"expr_list",
+            __patt.Cs( __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0 )
+        );
+        __rule(self,"expr",
+            __patt.Cs( (__patt.V("infix_expr") + __patt.V("prefix_expr"))* (
+                s* ((__patt.P(("?")) )/( (" and ")))* s* __patt.V("expr")* s* ((__patt.P((":")) )/( (" or ")))* s* __patt.V("expr")
+            )^-1 )
+        );
 
-    --/*
-    local binop_patt = __patt.P((
-        __patt.P(("+")) + __patt.P(("-")) + __patt.P(("~")) + __patt.P(("^^")) + __patt.P(("*")) + __patt.P(("/")) + __patt.P(("%")) + __patt.P(("^")) + __patt.P((">>>")) + __patt.P((">>")) + __patt.P(("<<"))
-        + __patt.P(("||")) + __patt.P(("&&")) + __patt.P(("|")) + __patt.P(("&")) + __patt.P(("==")) + __patt.P(("!=")) + __patt.P((">="))+ __patt.P(("<=")) + __patt.P(("<")) + __patt.P((">"))
-        + (__patt.P(("as")) + __patt.P(("in")))* idsafe
-    ));
+        --/*
+        local binop_patt = __patt.P((
+            __patt.P(("+")) + __patt.P(("-")) + __patt.P(("~")) + __patt.P(("^^")) + __patt.P(("*")) + __patt.P(("/")) + __patt.P(("%")) + __patt.P(("^")) + __patt.P((">>>")) + __patt.P((">>")) + __patt.P(("<<"))
+            + __patt.P(("||")) + __patt.P(("&&")) + __patt.P(("|")) + __patt.P(("&")) + __patt.P(("==")) + __patt.P(("!=")) + __patt.P((">="))+ __patt.P(("<=")) + __patt.P(("<")) + __patt.P((">"))
+            + (__patt.P(("as")) + __patt.P(("in")))* idsafe
+        ));
 
-    __rule(self,"infix_expr",
-        (__patt.Ca( __patt.Cs( __patt.V("prefix_expr")* s )* (
-            __patt.C( binop_patt )*
-            __patt.Cs( s* __patt.V("prefix_expr")* (#(s* binop_patt)* s)^-1 )
-        )^1 ) )/( fold_infix)
-    );
-    --*/
+        __rule(self,"infix_expr",
+            (__patt.Ca( __patt.Cs( __patt.V("prefix_expr")* s )* (
+                __patt.C( binop_patt )*
+                __patt.Cs( s* __patt.V("prefix_expr")* (#(s* binop_patt)* s)^-1 )
+            )^1 ) )/( fold_infix)
+        );
+        --*/
 
-    --[=[
-    // recursive descent is faster for stock Lua, but LJ2 is faster
-    // with shift-reduce, so right now I'm biased towards LJ2 ;)
-    rule infix_expr {
-        {~ <bool_or_expr> ~}
-    }
-    function make_infix_expr(oper, term) {
-        / (({~ term (&(s oper) s)? ~} {: {oper} {~ s term ~} :}*) ~> fold_infix) /
-    }
-    rule bool_or_expr {
-        <{ make_infix_expr(/"||"/, /<bool_and_expr>/ }>
-    }
-    rule bool_and_expr {
-        <{ make_infix_expr(/"&&"/, /<bit_or_expr>/ }>
-    }
-    rule bit_or_expr {
-        <{ make_infix_expr(/"|"/,  /<bit_xor_expr>/ }>
-    }
-    rule bit_xor_expr {
-        <{ make_infix_expr(/"^"/,  /<bit_and_expr>/ }>
-    }
-    rule bit_and_expr {
-        <{ make_infix_expr(/"&"/,  /<equals_expr>/ }>
-    }
-    rule equals_expr {
-        <{ make_infix_expr(/"=="|"!="/, /<cmp_expr>/ }>
-    }
-    rule cmp_expr {
-        <{ make_infix_expr(/"<="|">="|"<"|">"/, /<shift_expr>/ }>
-    }
-    rule shift_expr {
-        <{ make_infix_expr(/">>>"|">>"|"<<"|("as"|"in") idsafe/, /<add_expr>/ }>
-    }
-    rule add_expr {
-        <{ make_infix_expr(/"+"|"-"|"~"/, /<mul_expr>/ }>
-    }
-    rule mul_expr {
-        <{ make_infix_expr(/"*"|"/"|"%"/, /<pow_expr>/ }>
-    }
-    rule pow_expr {
-        <{ make_infix_expr(/"^^"/, /<prefix_expr>/ }>
-    }
-    //]=]
+        --[=[
+        // recursive descent is faster for stock Lua, but LJ2 is faster
+        // with shift-reduce, so right now I'm biased towards LJ2 ;)
+        rule infix_expr {
+            {~ <bool_or_expr> ~}
+        }
+        function make_infix_expr(oper, term) {
+            / (({~ term (&(s oper) s)? ~} {: {oper} {~ s term ~} :}*) ~> fold_infix) /
+        }
+        rule bool_or_expr {
+            <{ make_infix_expr(/"||"/, /<bool_and_expr>/ }>
+        }
+        rule bool_and_expr {
+            <{ make_infix_expr(/"&&"/, /<bit_or_expr>/ }>
+        }
+        rule bit_or_expr {
+            <{ make_infix_expr(/"|"/,  /<bit_xor_expr>/ }>
+        }
+        rule bit_xor_expr {
+            <{ make_infix_expr(/"^"/,  /<bit_and_expr>/ }>
+        }
+        rule bit_and_expr {
+            <{ make_infix_expr(/"&"/,  /<equals_expr>/ }>
+        }
+        rule equals_expr {
+            <{ make_infix_expr(/"=="|"!="/, /<cmp_expr>/ }>
+        }
+        rule cmp_expr {
+            <{ make_infix_expr(/"<="|">="|"<"|">"/, /<shift_expr>/ }>
+        }
+        rule shift_expr {
+            <{ make_infix_expr(/">>>"|">>"|"<<"|("as"|"in") idsafe/, /<add_expr>/ }>
+        }
+        rule add_expr {
+            <{ make_infix_expr(/"+"|"-"|"~"/, /<mul_expr>/ }>
+        }
+        rule mul_expr {
+            <{ make_infix_expr(/"*"|"/"|"%"/, /<pow_expr>/ }>
+        }
+        rule pow_expr {
+            <{ make_infix_expr(/"^^"/, /<prefix_expr>/ }>
+        }
+        //]=]
 
-    __rule(self,"prefix_expr",
-        (__patt.Cg( __patt.C( __patt.P(("...")) + __patt.P(("!")) + __patt.P(("#")) + __patt.P(("-")) + __patt.P(("~")) )* s* __patt.V("prefix_expr"),nil) )/( fold_prefix)
-        + __patt.Cs( s* __patt.V("term") )
-    );
+        __rule(self,"prefix_expr",
+            (__patt.Cg( __patt.C( __patt.P(("...")) + __patt.P(("!")) + __patt.P(("#")) + __patt.P(("-")) + __patt.P(("~")) )* s* __patt.V("prefix_expr"),nil) )/( fold_prefix)
+            + __patt.Cs( s* __patt.V("term") )
+        );
 
-    -- binding expression rules
-    __rule(self,"bind_stmt",
-        __patt.Cs( ((__patt.V("bind_expr") + __patt.V("bind_binop_expr")) )/( ("%1;"))* semicol )
-    );
-    __rule(self,"bind_expr",
-        __patt.Cs( __patt.V("bind_list")* s* __patt.P(("="))* s* (
-             __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0
-            + __patt.P(syntax_error(("bad right hand <expr>")))
-        ) )
-    );
-    __rule(self,"bind_binop",
-        __patt.C( __patt.P(("+")) + __patt.P(("-")) + __patt.P(("*")) + __patt.P(("/")) + __patt.P(("%")) + __patt.P(("||")) + __patt.P(("|"))+ __patt.P(("&&"))
-        + __patt.P(("&")) + __patt.P(("^^")) + __patt.P(("^")) + __patt.P(("~")) + __patt.P((">>>")) + __patt.P((">>")) + __patt.P(("<<"))
-        )* __patt.P(("="))
-    );
-    __rule(self,"bind_binop_expr",
-        __patt.Cs( __patt.V("bind_term")* s* __patt.V("bind_binop")* s* (__patt.V("expr") )/( make_binop_bind) )
-    );
-    __rule(self,"bind_list",
-        __patt.V("bind_term")* (s* __patt.P((","))* s* __patt.V("bind_term"))^0
-    );
-    __rule(self,"bind_term",
-        __patt.Cs(
-         __patt.V("primary")* (s* __patt.V("bind_member"))^1
-        + __patt.V("ident")
-        )
-    );
-    __rule(self,"bind_member",
-        __patt.Cs(
-         __patt.V("suffix_expr")* s* __patt.V("bind_member")
-        + __patt.V("bind_suffix")
-        )
-    );
-    __rule(self,"bind_suffix",
-        __patt.Cs(
-         __patt.P(("."))* s* __patt.V("ident")* s
-        + __patt.P(("["))* s* __patt.V("expr")*  s* __patt.P(("]"))
-        )
-    );
+        -- binding expression rules
+        __rule(self,"bind_stmt",
+            __patt.Cs( ((__patt.V("bind_expr") + __patt.V("bind_binop_expr")) )/( ("%1;"))* semicol )
+        );
+        __rule(self,"bind_expr",
+            __patt.Cs( __patt.V("bind_list")* s* __patt.P(("="))* s* (
+                 __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0
+                + __patt.P(syntax_error(("bad right hand <expr>")))
+            ) )
+        );
+        __rule(self,"bind_binop",
+            __patt.C( __patt.P(("+")) + __patt.P(("-")) + __patt.P(("*")) + __patt.P(("/")) + __patt.P(("%")) + __patt.P(("||")) + __patt.P(("|"))+ __patt.P(("&&"))
+            + __patt.P(("&")) + __patt.P(("^^")) + __patt.P(("^")) + __patt.P(("~")) + __patt.P((">>>")) + __patt.P((">>")) + __patt.P(("<<"))
+            )* __patt.P(("="))
+        );
+        __rule(self,"bind_binop_expr",
+            __patt.Cs( __patt.V("bind_term")* s* __patt.V("bind_binop")* s* (__patt.V("expr") )/( make_binop_bind) )
+        );
+        __rule(self,"bind_list",
+            __patt.V("bind_term")* (s* __patt.P((","))* s* __patt.V("bind_term"))^0
+        );
+        __rule(self,"bind_term",
+            __patt.Cs(
+             __patt.V("primary")* (s* __patt.V("bind_member"))^1
+            + __patt.V("name")
+            )
+        );
+        __rule(self,"bind_member",
+            __patt.Cs(
+             __patt.V("suffix_expr")* s* __patt.V("bind_member")
+            + __patt.V("bind_suffix")
+            )
+        );
+        __rule(self,"bind_suffix",
+            __patt.Cs(
+             __patt.P(("."))* s* __patt.V("name")* s
+            + __patt.P(("["))* s* __patt.V("expr")*  s* __patt.P(("]"))
+            )
+        );
 
-    -- PEG grammar and pattern rules
-    __rule(self,"pattern",
-        __patt.P(("/"))* __patt.Cs( s* __patt.V("rule_alt")* s )* (__patt.P(("/")) )/( ("__patt.P(%1)"))
-    );
-    __rule(self,"grammar_decl",
-        __patt.Cs( ((
-            __patt.P(("grammar"))* idsafe* s* __patt.V("ident")* s*
-            __patt.P(("{"))* __patt.Cs( __patt.V("grammar_body")* s )* __patt.P(("}"))
-        ) )/( ("__grammar(self,\"%1\",function(self) %2 end);")) )
-    );
-    __rule(self,"grammar_body",
-        __patt.Cg( __patt.Cc(("lexical")),"scope")*
-        (s* __patt.V("grammar_body_stmt"))^0
-    );
-    __rule(self,"grammar_body_stmt",
-         __patt.V("rule_decl")
-        + __patt.V("var_decl")
-        + __patt.V("func_decl")
-        + #__patt.V("return_stmt")* __patt.P(syntax_error(("return outside of function body")))
-        + __patt.V("statement")
-    );
-    __rule(self,"rule_decl",
-        __patt.P(("rule"))* idsafe* s* __patt.V("ident")* s* __patt.P(("{"))* __patt.Cs( s* __patt.V("rule_body")* s )* (__patt.P(("}"))
-        )/( ("__rule(self,\"%1\",%2);"))
-    );
-    __rule(self,"rule_body",
-        __patt.V("rule_alt") + __patt.Cc(("__patt.P(nil)"))
-    );
-    __rule(self,"rule_alt",
-        __patt.Cs( ((__patt.C(__patt.P(("|"))) )/( (""))* s)^-1* __patt.V("rule_seq")* (s* ((__patt.C(__patt.P(("|"))) )/( ("+")))* s* __patt.V("rule_seq"))^0 )
-    );
-    __rule(self,"rule_seq",
-        (__patt.Ca( __patt.Cs( s* __patt.V("rule_suffix") )^1 ) )/( function(a)  do return a:concat(("*")) end  end)
-    );
-    __rule(self,"rule_rep",
-        __patt.Cs( (__patt.C(__patt.P(("+"))))/(("^1"))+(__patt.C(__patt.P(("*"))))/(("^0"))+(__patt.C(__patt.P(("?"))))/(("^-1"))+__patt.C(__patt.P(("^"))*s*(__patt.P(("+"))+__patt.P(("-")))^-1*s*((__patt.R("09")))^1) )
-    );
-    __rule(self,"rule_prefix",
-        __patt.Cs( (((__patt.C(__patt.P(("&"))) )/( ("#"))) + ((__patt.C(__patt.P(("!"))) )/( ("-"))))* (__patt.Cs( s* __patt.V("rule_prefix") ) )/( ("%1%2"))
-        + __patt.V("rule_primary")
-        )
-    );
+        -- PEG grammar and pattern rules
+        __rule(self,"pattern",
+            __patt.P(("/"))* __patt.Cs( s* __patt.V("rule_alt")* s )* (__patt.P(("/")) )/( ("__patt.P(%1)"))
+        );
+        __rule(self,"grammar_decl",
+            __patt.Cs( ((
+                __patt.P(("grammar"))* idsafe* s* __patt.V("name")* s*
+                __patt.P(("{"))* __patt.Cs( __patt.V("grammar_body")* s )* __patt.P(("}"))
+            ) )/( ("__grammar(self,\"%1\",function(self) %2 end);")) )
+        );
+        __rule(self,"grammar_body",
+            __patt.Cg( __patt.Cc(("lexical")),"scope")*
+            (s* __patt.V("grammar_body_stmt"))^0
+        );
+        __rule(self,"grammar_body_stmt",
+             __patt.V("rule_decl")
+            + __patt.V("var_decl")
+            + __patt.V("func_decl")
+            + #__patt.V("return_stmt")* __patt.P(syntax_error(("return outside of function body")))
+            + __patt.V("statement")
+        );
+        __rule(self,"rule_decl",
+            __patt.P(("rule"))* idsafe* s* __patt.V("name")* s* __patt.P(("{"))* __patt.Cs( s* __patt.V("rule_body")* s )* (__patt.P(("}"))
+            )/( ("__rule(self,\"%1\",%2);"))
+        );
+        __rule(self,"rule_body",
+            __patt.V("rule_alt") + __patt.Cc(("__patt.P(nil)"))
+        );
+        __rule(self,"rule_alt",
+            __patt.Cs( ((__patt.C(__patt.P(("|"))) )/( (""))* s)^-1* __patt.V("rule_seq")* (s* ((__patt.C(__patt.P(("|"))) )/( ("+")))* s* __patt.V("rule_seq"))^0 )
+        );
+        __rule(self,"rule_seq",
+            (__patt.Ca( __patt.Cs( s* __patt.V("rule_suffix") )^1 ) )/( function(a)  do return a:concat(("*")) end  end)
+        );
+        __rule(self,"rule_rep",
+            __patt.Cs( (__patt.C(__patt.P(("+"))))/(("^1"))+(__patt.C(__patt.P(("*"))))/(("^0"))+(__patt.C(__patt.P(("?"))))/(("^-1"))+__patt.C(__patt.P(("^"))*s*(__patt.P(("+"))+__patt.P(("-")))^-1*s*((__patt.R("09")))^1) )
+        );
+        __rule(self,"rule_prefix",
+            __patt.Cs( (((__patt.C(__patt.P(("&"))) )/( ("#"))) + ((__patt.C(__patt.P(("!"))) )/( ("-"))))* (__patt.Cs( s* __patt.V("rule_prefix") ) )/( ("%1%2"))
+            + __patt.V("rule_primary")
+            )
+        );
 
-    local prod_oper = __patt.P( __patt.P(("->")) + __patt.P(("~>")) + __patt.P(("=>")) );
+        local prod_oper = __patt.P( __patt.P(("->")) + __patt.P(("~>")) + __patt.P(("=>")) );
 
-    __rule(self,"rule_suffix",
-        __patt.Cf((__patt.Cs( __patt.V("rule_prefix")* (#(s* prod_oper)* s)^-1 )*
-        __patt.Cg( __patt.C(prod_oper)* __patt.Cs( s* __patt.V("term") ),nil)^0) , function(a,o,b) 
-            if (o )==( ("=>")) then  
-                 do return ("__patt.Cmt(%s,%s)"):format(a,b) end
-            
-             elseif (o )==( ("~>")) then  
-                 do return ("__patt.Cf(%s,%s)"):format(a,b) end
-             end 
-             do return ("(%s)/(%s)"):format(a,b) end
-         end)
-    );
-    __rule(self,"rule_primary",
-        ( __patt.V("rule_group")
-        + __patt.V("rule_term")
-        + __patt.V("rule_class")
-        + __patt.V("rule_predef")
-        + __patt.V("rule_group_capt")
-        + __patt.V("rule_back_capt")
-        + __patt.V("rule_sub_capt")
-        + __patt.V("rule_const_capt")
-        + __patt.V("rule_hash_capt")
-        + __patt.V("rule_array_capt")
-        + __patt.V("rule_simple_capt")
-        + __patt.V("rule_any")
-        + __patt.V("rule_ref")
-        )* (s* __patt.V("rule_rep"))^0
-    );
-    __rule(self,"rule_group",
-        __patt.Cs( __patt.P(("("))* s* (__patt.V("rule_alt") + __patt.P( syntax_error(("expected <rule_alt>")) ))* s*
-            (__patt.P((")")) + __patt.P( syntax_error(("expected ')'")) ))
-        )
-    );
-    __rule(self,"rule_term",
-        __patt.Cs( (__patt.V("string") )/( ("__patt.P(%1)")) )
-    );
-    __rule(self,"rule_class",
-        __patt.Cs(
-            ((__patt.P(("[")) )/( ("(")))* ((__patt.P(("^")) )/( ("__patt.P(1)-")))^-1*
-            ((__patt.Ca( (-__patt.P(("]"))* __patt.V("rule_item"))^1 ) )/( function(a)  do return ((("("))..(a:concat(("+"))))..((")")) end  end))*
-            ((__patt.P(("]")) )/( (")")))
-        )
-    );
-    __rule(self,"rule_item",
-        __patt.Cs( __patt.V("rule_predef") + __patt.V("rule_range")
-        + (__patt.C(__patt.P(1)) )/( function(c)  do return ("__patt.P(%q)"):format(c) end  end)
-        )
-    );
-    __rule(self,"rule_predef",
-        __patt.Cs( __patt.P(("%"))* (__patt.V("ident") )/( ("__patt.Def(\"%1\")")) )
-    );
-    __rule(self,"rule_range",
-        (__patt.Cs( __patt.P(1)* ((__patt.P(("-")))/(("")))* -__patt.P(("]"))* __patt.P(1) ) )/( function(r)  do return ("__patt.R(%q)"):format(r) end  end)
-    );
-    __rule(self,"rule_any",
-        __patt.Cs( (__patt.P((".")) )/( ("__patt.P(1)")) )
-    );
-    __rule(self,"rule_ref",
-        __patt.Cs(
-        ((__patt.P(("<")) )/( ("")))* s*
-            ( (__patt.V("ident") )/( ("__patt.V(\"%1\")"))
-            + __patt.Cs( ((__patt.P(("{")) )/( ("__patt.P(")))* s* __patt.V("expr")* s* ((__patt.P(("}")) )/( (")"))) )
-            )* s*
-        ((__patt.P((">")) )/( ("")))
-        + __patt.V("qname")
-        )
-    );
-    __rule(self,"rule_group_capt",
-        __patt.Cs( __patt.P(("{:"))* (((__patt.V("ident") )/( quote)* __patt.P((":"))) + __patt.Cc(("nil")))* __patt.Cs( s* __patt.V("rule_alt") )* s* (__patt.P((":}"))
-        )/( ("__patt.Cg(%2,%1)"))
-        )
-    );
-    __rule(self,"rule_back_capt",
-        __patt.P(("="))* (((__patt.V("ident") )/( quote)) )/( ("__patt.Cb(%1)"))
-    );
-    __rule(self,"rule_sub_capt",
-        __patt.P(("{~"))* __patt.Cs( s* __patt.V("rule_alt")* s )* (__patt.P(("~}")) )/( ("__patt.Cs(%1)"))
-    );
-    __rule(self,"rule_const_capt",
-        __patt.P(("{`"))* __patt.Cs( s* __patt.V("expr")* s )* (__patt.P(("`}")) )/( ("__patt.Cc(%1)"))
-    );
-    __rule(self,"rule_hash_capt",
-        __patt.P(("{%"))* __patt.Cs( s* __patt.V("rule_alt")* s )* (__patt.P(("%}")) )/( ("__patt.Ch(%1)"))
-    );
-    __rule(self,"rule_array_capt",
-        __patt.P(("{@"))* __patt.Cs( s* __patt.V("rule_alt")* s )* (__patt.P(("@}")) )/( ("__patt.Ca(%1)"))
-    );
-    __rule(self,"rule_simple_capt",
-        __patt.P(("{"))* __patt.Cs( s* __patt.V("rule_alt")* s )* (__patt.P(("}")) )/( ("__patt.C(%1)"))
-    );
+        __rule(self,"rule_suffix",
+            __patt.Cf((__patt.Cs( __patt.V("rule_prefix")* (#(s* prod_oper)* s)^-1 )*
+            __patt.Cg( __patt.C(prod_oper)* __patt.Cs( s* __patt.V("term") ),nil)^0) , function(a,o,b) 
+                if (o )==( ("=>")) then  
+                     do return ("__patt.Cmt(%s,%s)"):format(a,b) end
+                
+                 elseif (o )==( ("~>")) then  
+                     do return ("__patt.Cf(%s,%s)"):format(a,b) end
+                 end 
+                 do return ("(%s)/(%s)"):format(a,b) end
+             end)
+        );
+        __rule(self,"rule_primary",
+            ( __patt.V("rule_group")
+            + __patt.V("rule_term")
+            + __patt.V("rule_class")
+            + __patt.V("rule_predef")
+            + __patt.V("rule_back_capt")
+            + __patt.V("rule_group_capt")
+            + __patt.V("rule_sub_capt")
+            + __patt.V("rule_const_capt")
+            + __patt.V("rule_hash_capt")
+            + __patt.V("rule_array_capt")
+            + __patt.V("rule_simple_capt")
+            + __patt.V("rule_any")
+            + __patt.V("rule_ref")
+            )* (s* __patt.V("rule_rep"))^0
+        );
+        __rule(self,"rule_group",
+            __patt.Cs( __patt.P(("("))* s* (__patt.V("rule_alt") + __patt.P( syntax_error(("expected <rule_alt>")) ))* s*
+                (__patt.P((")")) + __patt.P( syntax_error(("expected ')'")) ))
+            )
+        );
+        __rule(self,"rule_term",
+            __patt.Cs( (__patt.V("string") )/( ("__patt.P(%1)")) )
+        );
+        __rule(self,"rule_class",
+            __patt.Cs(
+                ((__patt.P(("[")) )/( ("(")))* ((__patt.P(("^")) )/( ("__patt.P(1)-")))^-1*
+                ((__patt.Ca( (-__patt.P(("]"))* __patt.V("rule_item"))^1 ) )/( function(a)  do return ((("("))..(a:concat(("+"))))..((")")) end  end))*
+                ((__patt.P(("]")) )/( (")")))
+            )
+        );
+        __rule(self,"rule_item",
+            __patt.Cs( __patt.V("rule_predef") + __patt.V("rule_range")
+            + (__patt.C(__patt.P(1)) )/( function(c)  do return ("__patt.P(%q)"):format(c) end  end)
+            )
+        );
+        __rule(self,"rule_predef",
+            __patt.Cs( ((__patt.P(("%")) )/( ("")))* (
+                 (__patt.C( ((__patt.R("09")))^1 ) )/( ("__patt.Carg(%1)"))
+                + (__patt.V("name") )/( ("__patt.Def(\"%1\")"))
+            ) )
+        );
+        __rule(self,"rule_range",
+            (__patt.Cs( __patt.P(1)* ((__patt.P(("-")))/(("")))* -__patt.P(("]"))* __patt.P(1) ) )/( function(r)  do return ("__patt.R(%q)"):format(r) end  end)
+        );
+        __rule(self,"rule_any",
+            __patt.Cs( (__patt.P((".")) )/( ("__patt.P(1)")) )
+        );
+        __rule(self,"rule_ref",
+            __patt.Cs(
+            ((__patt.P(("<")) )/( ("")))* s*
+                ( (__patt.V("name") )/( ("__patt.V(\"%1\")"))
+                + __patt.Cs( ((__patt.P(("{")) )/( ("__patt.P(")))* s* __patt.V("expr")* s* ((__patt.P(("}")) )/( (")"))) )
+                )* s*
+            ((__patt.P((">")) )/( ("")))
+            + __patt.V("qname")
+            )
+        );
+        __rule(self,"rule_group_capt",
+            __patt.Cs( __patt.P(("{:"))* (((__patt.V("name") )/( quote)* __patt.P((":"))) + __patt.Cc(("nil")))* __patt.Cs( s* __patt.V("rule_alt") )* s* (__patt.P((":}"))
+            )/( ("__patt.Cg(%2,%1)"))
+            )
+        );
+        __rule(self,"rule_back_capt",
+            __patt.P(("="))* (((__patt.V("name") )/( quote)) )/( ("__patt.Cb(%1)"))
+        );
+        __rule(self,"rule_sub_capt",
+            __patt.P(("{~"))* __patt.Cs( s* __patt.V("rule_alt")* s )* (__patt.P(("~}")) )/( ("__patt.Cs(%1)"))
+        );
+        __rule(self,"rule_const_capt",
+            __patt.P(("{`"))* __patt.Cs( s* __patt.V("expr")* s )* (__patt.P(("`}")) )/( ("__patt.Cc(%1)"))
+        );
+        __rule(self,"rule_hash_capt",
+            __patt.P(("{%"))* __patt.Cs( s* __patt.V("rule_alt")* s )* (__patt.P(("%}")) )/( ("__patt.Ch(%1)"))
+        );
+        __rule(self,"rule_array_capt",
+            __patt.P(("{@"))* __patt.Cs( s* __patt.V("rule_alt")* s )* (__patt.P(("@}")) )/( ("__patt.Ca(%1)"))
+        );
+        __rule(self,"rule_simple_capt",
+            __patt.P(("{"))* __patt.Cs( s* __patt.V("rule_alt")* s )* (__patt.P(("}")) )/( ("__patt.C(%1)"))
+        );
+     end);
+
+    __method(self,"compile",function(self,lupa, name) 
+        local ctx = Lupa:Context();
+        local lua = Lupa.Grammar:match(lupa, 1, ctx);
+         do return lua end
+     end);
  end);
 
 eval = function(src) 
-    local eval = assert(loadstring(Lupa:match(src),(("=eval:"))..(src)));
+    local eval = assert(loadstring(Lupa:compile(src),(("=eval:"))..(src)));
      do return eval() end
  end;
 
@@ -1609,7 +1680,7 @@ local run = function(...) local args=Array(...);
    local src = sfh:read(("*a"));
    sfh:close();
 
-   local lua = Lupa:match(src);
+   local lua = Lupa:compile(src);
    if opt[("l")] then  
       io.stdout:write(lua);
       os.exit(0);
@@ -1683,7 +1754,8 @@ do
             local file = io.open(filepath, ("r"));
             if file then  
                local src = file:read(("*a"));
-               local mod = make(src, filepath);
+               local lua = Lupa:compile(src);
+               local mod = assert(loadstring(lua, (("="))..(filepath)))();
                P.loaded[modname] = mod;
                 do return mod end
              end 
@@ -1694,3 +1766,4 @@ do
 
 if arg[1] then   run(unpack(arg));  end 
 
+-- vim: ft=lupa
