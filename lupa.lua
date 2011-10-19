@@ -246,16 +246,13 @@ do
     end;
  end
 
-_G.__main = _G;
-_G.__main.__env = _G;
-
 _G.__package = function(into, name, body, args) 
    local path = __env.newtable();
    for frag in __op_each(name:gmatch(("([^%.]+)")))  do local __break repeat 
       path[(#(path) )+( 1)] = frag;
     until true if __break then break end end 
 
-   local pckg = _G.__main;
+   local pckg = into;
    for i=1, #(path)  do local __break repeat 
       local name = path[i];
 
@@ -506,7 +503,7 @@ __env.Hash.__tostring = function(self)
          buf[(#(buf) )+( 1)] = ("["..tostring(k).."]="..tostring(_v).."");
        end 
     until true if __break then break end end 
-    do return ((("{"))..(table.concat(buf, (","))))..(("}")) end
+    do return ((("{"))..(__env.table.concat(buf, (","))))..(("}")) end
  end;
 __env.Hash.__getitem = rawget;
 __env.Hash.__setitem = rawset;
@@ -528,17 +525,17 @@ __env.Array.__tostring = function(self)
          buf[(#(buf) )+( 1)] = __env.tostring(self[i]);
        end 
     until true if __break then break end end 
-    do return ((("["))..(table.concat(buf,(","))))..(("]")) end
+    do return ((("["))..(__env.table.concat(buf,(","))))..(("]")) end
  end;
 __env.Array.__each = __env.ipairs;
 __env.Array.__spread = __env.unpack;
 __env.Array.__getitem = rawget;
 __env.Array.__setitem = rawset;
 __env.Array.unpack = __env.unpack;
-__env.Array.insert = table.insert;
-__env.Array.remove = table.remove;
-__env.Array.concat = table.concat;
-__env.Array.sort = table.sort;
+__env.Array.insert = __env.table.insert;
+__env.Array.remove = __env.table.remove;
+__env.Array.concat = __env.table.concat;
+__env.Array.sort = __env.table.sort;
 __env.Array.each = function(self, block) 
    for i=1, #(self)  do local __break repeat  block(self[i]);  until true if __break then break end end 
  end;
@@ -994,21 +991,16 @@ self.Lupa=__class(__env,"Lupa",{},{},function(__env,self,super)
          end
         local function define_const(name, ctx) 
             ctx:define(name);
-             do return ("") end
-         end
+            
+        do return  end end
         local function enter(ctx) 
             ctx:enter();
-             do return ("") end
-         end
+            
+        do return  end end
         local function leave(ctx) 
             ctx:leave();
-             do return ("") end
-         end
-        local function define_pname(pname, ctx) 
-            local name = pname[1];
-            ctx:define(name, ("__env"));
-             do return quote(pname:concat(("."))) end
-         end
+            
+        do return  end end
         local function lookup(name, ctx) 
             local info = ctx:lookup(name);
             if info then  
@@ -1101,15 +1093,18 @@ self.Lupa=__class(__env,"Lupa",{},{},function(__env,self,super)
         );
         __rule(self,"try_stmt",
             __patt.Cs(
-            __patt.P(("try"))* idsafe* s* __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s )*
-            (__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) ))*
-            ((s* __patt.P(("catch"))* idsafe* s* __patt.P(("("))* s* __patt.V("name")* s* __patt.P((")"))* s* __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s )* __patt.P(("}")))^-1
+            __patt.P(("try"))* idsafe* s*
+            __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s )* (__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) ))*
+            ((s* __patt.P(("catch"))* idsafe* s*
+                __patt.P(("("))* s* __patt.Cs( ((__patt.Carg(1) )/( enter))* __patt.V("param") )* s* __patt.P((")"))* s*
+                __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s* ((__patt.Carg(1) )/( leave)) )* __patt.P(("}"))
+            )^-1
             )/( make_try_stmt)
             )
         );
         __rule(self,"import_stmt",
             __patt.Cs( ((__patt.P(("import"))* idsafe* s*
-               __patt.Ca( __patt.V("param")* (s* __patt.P((","))* s* __patt.V("param"))^0 )* s* __patt.P(("from"))* s* __patt.V("qname")
+               __patt.Ca( __patt.V("param")* (s* __patt.P((","))* s* __patt.V("param"))^0 )* s* __patt.P(("from"))* s* __patt.C( __patt.V("name")* (__patt.P(("."))* __patt.V("name"))^0 )
             ) )/( make_import_stmt) )
         );
         __rule(self,"export_stmt",
@@ -1149,7 +1144,9 @@ self.Lupa=__class(__env,"Lupa",{},{},function(__env,self,super)
         );
         __rule(self,"block_body",
             __patt.Cg( __patt.Cc(("lexical")),"scope")*
-            (s* __patt.V("block_body_stmt"))^0
+            ((__patt.Carg(1) )/( enter))*
+            (s* __patt.V("block_body_stmt"))^0*
+            ((__patt.Carg(1) )/( leave))
         );
         __rule(self,"block_body_stmt",
              __patt.V("var_decl")
@@ -1177,20 +1174,21 @@ self.Lupa=__class(__env,"Lupa",{},{},function(__env,self,super)
             )
         );
         __rule(self,"meth_decl",
-            __patt.Cs( ((__patt.P(("method"))* idsafe* __patt.Carg(1)* s* __patt.V("param")* s*
-            __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")"))* s* __patt.P(("{"))*
-                __patt.Cs( __patt.V("func_body")* s )*
-            __patt.P(("}"))) )/( make_meth_decl) )
+            __patt.Cs( ((__patt.P(("method"))* idsafe* __patt.Carg(1)* s* __patt.V("name")* s*
+            __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")"))* s*
+            __patt.P(("{"))* __patt.Cs( __patt.V("func_body")* s )* __patt.P(("}"))
+            ) )/( make_meth_decl) )
         );
         __rule(self,"func_decl",
-            __patt.Cs( ((__patt.P(("function"))* idsafe* __patt.Carg(1)*
-            s* __patt.Ca( __patt.V("name")* (s* __patt.P(("."))* s* __patt.V("name"))^0 )* s* __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")"))* s* __patt.P(("{"))*
-                __patt.Cs( __patt.V("func_body")* s )*
-            __patt.P(("}"))* __patt.Cb("scope")) )/( make_func_decl) )
+            __patt.Cs( ((__patt.P(("function"))* idsafe* __patt.Carg(1)* s* __patt.Ca( __patt.V("name")* (s* __patt.P(("."))* s* __patt.V("name"))^0 )* s*
+            __patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")"))* s*
+            __patt.P(("{"))* __patt.Cs( __patt.V("func_body")* s )* __patt.P(("}"))*
+            __patt.Cb("scope")) )/( make_func_decl) )
         );
         __rule(self,"func_body",
             __patt.Cg( __patt.Cc(("lexical")),"scope")*
-            (s* __patt.V("func_body_stmt"))^0
+            (s* __patt.V("func_body_stmt"))^0*
+            ((__patt.Carg(1) )/( leave))
         );
         __rule(self,"func_body_stmt",
              __patt.V("var_decl")
@@ -1213,11 +1211,12 @@ self.Lupa=__class(__env,"Lupa",{},{},function(__env,self,super)
             )/( make_short_func))* __patt.Cc((")"))
         );
         __rule(self,"package_decl",
-            __patt.P(("package"))* idsafe* s* __patt.Cs( __patt.V("pname")* (__patt.Carg(1) )/( define_pname) )* s*
-            __patt.P(("{"))*
-                __patt.Cs( (s* __patt.V("main_body_stmt"))^0* s )*
+            __patt.P(("package"))* idsafe* s* __patt.Cs(
+               __patt.Cs( __patt.V("name")* __patt.Carg(1)* (__patt.Cc(("__env")) )/( define) )* (s* __patt.P(("."))* s* __patt.V("name"))^0
+            )* s*
+            __patt.P(("{"))* __patt.Cs( ((__patt.Carg(1) )/( enter))* (s* __patt.V("main_body_stmt"))^0* s* ((__patt.Carg(1) )/( leave)) )*
             ((__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) ))
-            )/( ("_G.package.loaded[%1]=__package(__env,%1,function(__env,self) %2 end);"))
+            )/( ("__package(__env,\"%1\",function(__env,self) %2 end);"))
         );
         __rule(self,"class_decl",
             __patt.P(("class"))* idsafe* s* __patt.Cs( __patt.V("name")* __patt.Carg(1)* (__patt.Cc(("__env")) )/( define) )* s*
@@ -1230,7 +1229,8 @@ self.Lupa=__class(__env,"Lupa",{},{},function(__env,self,super)
             __patt.P(("trait"))* idsafe* s* __patt.Cs( __patt.V("name")* __patt.Carg(1)* (__patt.Cc(("__env")) )/( define) )* s*
             (__patt.P(("("))* s* __patt.V("param_list")* s* __patt.P((")")) + __patt.Cc(("..."))* __patt.Cc(("")))* s*
             (__patt.V("class_with") + __patt.Cc(("")))* s*
-            __patt.P(("{"))* __patt.Cs( __patt.V("class_body")* s )* (__patt.P(("}"))
+            __patt.P(("{"))* __patt.Cs( __patt.V("class_body")* s )* __patt.P(("}"))*
+            (((__patt.Carg(1) )/( leave))
             )/( make_trait_decl)
         );
         __rule(self,"object_decl",
@@ -1274,6 +1274,7 @@ self.Lupa=__class(__env,"Lupa",{},{},function(__env,self,super)
             )
         );
         __rule(self,"param_list",
+            ((__patt.Carg(1) )/( enter))*
             __patt.Ca(
              __patt.Cs( __patt.V("param")* s )* (__patt.P((","))* __patt.Cs( s* __patt.V("param")* s ))^0* (__patt.P((","))* __patt.Cs( s* __patt.V("rest")* s ))^-1
             + __patt.V("rest")
@@ -1294,9 +1295,6 @@ self.Lupa=__class(__env,"Lupa",{},{},function(__env,self,super)
         );
         __rule(self,"qname",
             __patt.Cs( __patt.V("ident")* (__patt.P(("."))* __patt.V("name"))^0 )
-        );
-        __rule(self,"pname",
-            __patt.Ca( __patt.V("name")* (__patt.P(("."))* __patt.V("name"))^0 )
         );
         __rule(self,"hexadec",
             __patt.P(("-"))^-1* __patt.P(("0x"))* __patt.Def("xdigit")^1
@@ -1558,13 +1556,15 @@ self.Lupa=__class(__env,"Lupa",{},{},function(__env,self,super)
         );
         __rule(self,"grammar_decl",
             __patt.Cs( ((
-                __patt.P(("grammar"))* idsafe* s* __patt.Cs( __patt.V("name")* __patt.Carg(1)* (__patt.Cc(("__env")) )/( define) )* s*
-                __patt.P(("{"))* __patt.Cs( __patt.V("grammar_body")* s )* __patt.P(("}"))
+            __patt.P(("grammar"))* idsafe* s* __patt.Cs( __patt.V("name")* __patt.Carg(1)* (__patt.Cc(("__env")) )/( define) )* s*
+            __patt.P(("{"))* __patt.Cs( __patt.V("grammar_body")* s )* __patt.P(("}"))
             ) )/( ("self.%1=__grammar(__env,\"%1\",function(__env,self) %2 end);")) )
         );
         __rule(self,"grammar_body",
             __patt.Cg( __patt.Cc(("lexical")),"scope")*
-            (s* __patt.V("grammar_body_stmt"))^0
+            ((__patt.Carg(1) )/( enter))*
+            (s* __patt.V("grammar_body_stmt"))^0*
+            ((__patt.Carg(1) )/( leave))
         );
         __rule(self,"grammar_body_stmt",
              __patt.V("rule_decl")
@@ -1788,7 +1788,7 @@ local run = function(...)
     end 
  end;
 
-arg = arg  and  Array( __env.unpack(arg) )  or  Array( );
+__env.arg = __env.arg  and  Array( __env.unpack(__env.arg) )  or  Array( );
 do 
    -- from strict.lua
    local mt = getmetatable(_G);
@@ -1804,18 +1804,17 @@ do
        do return ((d )and( d.what ))or( ("C")) end
     end
 
-   --[=[
-   mt.__newindex = function(t, n, v) {
-      if !mt.__declared[n] {
-         var w = what()
-         if w != "main" && w != "C" {
-            error("assign to undeclared variable '${n}'", 2)
-         }
-         mt.__declared[n] = true
-      }
-      rawset(t, n, v)
-   }
-   ]=]
+   mt.__newindex = function(t, n, v) 
+      if not(mt.__declared[n]) then  
+         local w = what();
+         if ((w )~=( ("main") ))and(( w )~=( ("C"))) then  
+            __env.error(("assign to undeclared variable '"..tostring(n).."'"), 2);
+          end 
+         mt.__declared[n] = (true);
+       end 
+      do return rawset(t, n, v) end
+    end;
+
    mt.__index = function(t, n) 
       if (not(mt.__declared[n]) )and(( what() )~=( ("C"))) then  
          __env.error(("variable '"..tostring(n).."' is not declared"), 2);
@@ -1845,6 +1844,6 @@ do
     end;
  end
 
-if arg[1] then   run(__env.unpack(arg));  end 
+if __env.arg[1] then   run(__env.unpack(__env.arg));  end 
 -- vim: ft=lupa
 

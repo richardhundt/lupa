@@ -9,7 +9,7 @@ class Point {
         }
     }
     method __init() {
-        var i = Inner()
+        var i = Inner.new()
         i.greet("World")
     }
     method move(x, y) {

@@ -246,16 +246,13 @@ _G.__patt::setmaxstack(1024)
    }
 }
 
-_G.__main = _G
-_G.__main.__env = _G
-
 _G.__package = function(into, name, body, args) {
    var path = newtable()
    for frag in name.gmatch("([^%.]+)") {
       path[#path + 1] = frag
    }
 
-   var pckg = _G.__main
+   var pckg = into
    for i=1, #path {
       var name = path[i]
 
@@ -994,20 +991,15 @@ class Lupa {
         }
         function define_const(name, ctx) {
             ctx.define(name)
-            return ''
+            return
         }
         function enter(ctx) {
             ctx.enter()
-            return ''
+            return
         }
         function leave(ctx) {
             ctx.leave()
-            return ''
-        }
-        function define_pname(pname, ctx) {
-            var name = pname[1]
-            ctx.define(name, '__env')
-            return quote(pname.concat('.'))
+            return
         }
         function lookup(name, ctx) {
             var info = ctx.lookup(name)
@@ -1101,15 +1093,18 @@ class Lupa {
         }
         rule try_stmt {
             {~
-            "try" idsafe s "{" {~ <lambda_body> s ~}
-            ("}" | <{ syntax_error("expected '}'") }>)
-            (s "catch" idsafe s "(" s <name> s ")" s "{" {~ <lambda_body> s ~} "}")?
+            "try" idsafe s
+            "{" {~ <lambda_body> s ~} ("}" | <{ syntax_error("expected '}'") }>)
+            (s "catch" idsafe s
+                "(" s {~ (%1 -> enter) <param> ~} s ")" s
+                "{" {~ <lambda_body> s (%1 -> leave) ~} "}"
+            )?
             -> make_try_stmt
             ~}
         }
         rule import_stmt {
             {~ ("import" idsafe s
-               {@ <param> (s "," s <param>)* @} s "from" s <qname>
+               {@ <param> (s "," s <param>)* @} s "from" s { <name> ("." <name>)* }
             ) -> make_import_stmt ~}
         }
         rule export_stmt {
@@ -1149,7 +1144,9 @@ class Lupa {
         }
         rule block_body {
             {:scope: {`'lexical'`} :}
+            (%1 -> enter)
             (s <block_body_stmt>)*
+            (%1 -> leave)
         }
         rule block_body_stmt {
             | <var_decl>
@@ -1177,20 +1174,21 @@ class Lupa {
             ~}
         }
         rule meth_decl {
-            {~ ("method" idsafe %1 s <param> s
-            "(" s <param_list> s ")" s "{"
-                {~ <func_body> s ~}
-            "}") -> make_meth_decl ~}
+            {~ ("method" idsafe %1 s <name> s
+            "(" s <param_list> s ")" s
+            "{" {~ <func_body> s ~} "}"
+            ) -> make_meth_decl ~}
         }
         rule func_decl {
-            {~ ("function" idsafe %1
-            s {@ <name> (s "." s <name>)* @} s "(" s <param_list> s ")" s "{"
-                {~ <func_body> s ~}
-            "}" =scope) -> make_func_decl ~}
+            {~ ("function" idsafe %1 s {@ <name> (s "." s <name>)* @} s
+            "(" s <param_list> s ")" s
+            "{" {~ <func_body> s ~} "}"
+            =scope) -> make_func_decl ~}
         }
         rule func_body {
             {:scope: {`'lexical'`} :}
             (s <func_body_stmt>)*
+            (%1 -> leave)
         }
         rule func_body_stmt {
             | <var_decl>
@@ -1213,11 +1211,12 @@ class Lupa {
             -> make_short_func) {`')'`}
         }
         rule package_decl {
-            "package" idsafe s {~ <pname> %1 -> define_pname ~} s
-            "{"
-                {~ (s <main_body_stmt>)* s ~}
+            "package" idsafe s {~
+               {~ <name> %1 {`'__env'`} -> define ~} (s '.' s <name>)*
+            ~} s
+            "{" {~ (%1 -> enter) (s <main_body_stmt>)* s (%1 -> leave) ~}
             ("}" | <{ syntax_error("expected '}'") }>)
-            -> '_G.package.loaded[%1]=__package(__env,%1,function(__env,self) %2 end);'
+            -> '__package(__env,"%1",function(__env,self) %2 end);'
         }
         rule class_decl {
             "class" idsafe s {~ <name> %1 {`'__env'`} -> define ~} s
@@ -1231,6 +1230,7 @@ class Lupa {
             ("(" s <param_list> s ")" | {`'...'`} {`''`}) s
             (<class_with> | {`""`}) s
             "{" {~ <class_body> s ~} "}"
+            (%1 -> leave)
             -> make_trait_decl
         }
         rule object_decl {
@@ -1274,6 +1274,7 @@ class Lupa {
             ~}
         }
         rule param_list {
+            (%1 -> enter)
             {@
             | {~ <param> s ~} ("," {~ s <param> s ~})* ("," {~ s <rest> s ~})?
             | <rest>
@@ -1294,9 +1295,6 @@ class Lupa {
         }
         rule qname {
             {~ <ident> ("." <name>)* ~}
-        }
-        rule pname {
-            {@ <name> ("." <name>)* @}
         }
         rule hexadec {
             "-"? "0x" %xdigit+
@@ -1558,13 +1556,15 @@ class Lupa {
         }
         rule grammar_decl {
             {~ (
-                "grammar" idsafe s {~ <name> %1 {`'__env'`} -> define ~} s
-                "{" {~ <grammar_body> s ~} "}"
+            "grammar" idsafe s {~ <name> %1 {`'__env'`} -> define ~} s
+            "{" {~ <grammar_body> s ~} "}"
             ) -> 'self.%1=__grammar(__env,"%1",function(__env,self) %2 end);' ~}
         }
         rule grammar_body {
             {:scope: {`'lexical'`} :}
+            (%1 -> enter)
             (s <grammar_body_stmt>)*
+            (%1 -> leave)
         }
         rule grammar_body_stmt {
             | <rule_decl>
@@ -1804,7 +1804,6 @@ arg = arg ? [ unpack(arg) ] : [ ]
       return d && d.what || "C"
    }
 
-   /*
    mt.__newindex = function(t, n, v) {
       if !mt.__declared[n] {
          var w = what()
@@ -1815,7 +1814,7 @@ arg = arg ? [ unpack(arg) ] : [ ]
       }
       rawset(t, n, v)
    }
-   */
+
    mt.__index = function(t, n) {
       if !mt.__declared[n] && what() != "C" {
          error("variable '${n}' is not declared", 2)
