@@ -3,6 +3,11 @@ package My.Shapes {
     DEBUG = true
 
     package Inner {
+        class Ping {
+            method pong() {
+                print(self, "pong", DEBUG, ANSWER)
+            }
+        }
         function deep(mesg) {
             print("this is deep: ", DEBUG, mesg, ANSWER)
         }
@@ -36,15 +41,22 @@ package My.Shapes {
     }
 
     function greet(whom) {
-        print("Hello %{whom}!")
+        print("Hello ${whom}!")
     }
 }
 
 import Point, Point3D from My.Shapes
+import Ping from My.Shapes.Inner
 
 Point3D.new()
 My.Shapes.Point.new()
 My.Shapes.Inner::deep()
+
+var ping = My.Shapes.Inner.Ping.new()
+ping.pong()
+
+var ping = Ping.new()
+ping.pong()
 
 var p = Point3D.new()
 p.move(1,2,3)
@@ -52,4 +64,5 @@ p.move(1,2,3)
 var q = Point.new()
 print(q)
 
+10.times ->{ print(_) }
 

@@ -246,50 +246,58 @@ _G.__patt::setmaxstack(1024)
    }
 }
 
+_G.__env = _G
+_G.__pkg = _G
+
 _G.__package = function(into, name, body, args) {
-   var path = newtable()
+   var path = [ ]
+   var base = into.__pkg
+
+   var full_path = [ ]
+   if base && rawget(base, '__path') {
+      var base_path = base.__path
+      for i=1, #base_path {
+         full_path[#full_path + 1] = base_path[i]
+      }
+   }
+
    for frag in name.gmatch("([^%.]+)") {
       path[#path + 1] = frag
+      full_path[#full_path + 1] = frag
    }
 
-   var pckg = into
+   var pkg = base
    for i=1, #path {
       var name = path[i]
-
-      if rawget(pckg, name) == nil {
-         var pkg = newtable()
-         var env = newtable()
-         var env_meta = newtable()
-         var pkg_meta = newtable()
-
-         function env_meta.__index(env, key) {
-            var val = pkg[key]
-            if val != nil { return val }
-            return into.__env[key]
-         }
-         function env_meta.__newindex(env, key, val) {
-            rawset(env, key, val)
-            rawset(pkg, key, val)
-         }
-
-         function pkg_meta.__newindex(pkg, key, val) {
-            env[key] = val
-         }
-
-         setmetatable(env, env_meta)
-         setmetatable(pkg, pkg_meta)
-
-         pkg.__env = env
-         pckg[name] = pkg
+      if rawget(pkg, name) == nil {
+         rawset(pkg, name, newtable())
       }
-      pckg = pckg[name]
+      pkg = pkg[name]
    }
-   into[name] = pckg
-   _G['package'].loaded[name] = pckg
+
+   var full_path_name = full_path.concat('.')
+   _G['package'].loaded[full_path_name] = pkg
+
+   pkg.__path = path
+   pkg.__name = name
+   pkg.__base = base
+
    if body {
-      body(pckg.__env, pckg)
+      if !rawget(pkg, '__env') {
+         var env = setmetatable(newtable(), {
+            __index    = into,
+            __newindex = function(env, key, val) {
+               rawset(env, key, val)
+               rawset(pkg, key, val)
+            }
+         })
+         rawset(pkg, '__env', env)
+         rawset(env, '__pkg', pkg)
+      }
+      body(pkg.__env, pkg)
    }
-   return pckg
+
+   return pkg
 }
 
 _G.__import = function(_from, what) {
@@ -971,7 +979,12 @@ class Lupa {
                 ' end'
             ).format(try_body, catch_args || '', catch_body || '')
         }
-
+        function make_package_decl(p, b) {
+            var n = p[1]
+            return 'self.%s=__package(__env,%q,function(__env,self) %s end);'.format(
+                n, p.concat('.'), b
+            )
+        }
         function make_import_stmt(n,f) {
             var q = [ ]
             for i=1, #n { q[i] = quote(n[i]) }
@@ -1029,9 +1042,12 @@ class Lupa {
             {:scope: {`'global'`} :}
             { %s* '#!' (!nl .)* %s* }? s
             {`'local __env=setmetatable({},{__index=_G});local self={};'`}
-            (%1 -> enter)
+            <enter>
+            ({`'_G'   `} %1 -> define_const)
+            ({`'__env'`} %1 -> define_const)
+            ({`'self' `} %1 -> define_const)
             {~ (s <main_body_stmt>)* s ~}
-            (%1 -> leave)
+            <leave>
         }
         rule main_body_stmt {
             | <var_decl>
@@ -1057,9 +1073,11 @@ class Lupa {
             | <block_stmt>
             | <bind_stmt>
             | <call_stmt>
+            | !(s ("}" | !.)) <{ syntax_error("invalid statement") }>
         }
         rule call_stmt {
-            {~ {~ <primary> s (
+            {~ {~
+                <primary> s (
                 <invoke_expr> | <{syntax_error("expected <invoke_expr>") }>
             ) ~} -> '%1;' semicol ~}
         }
@@ -1096,8 +1114,8 @@ class Lupa {
             "try" idsafe s
             "{" {~ <lambda_body> s ~} ("}" | <{ syntax_error("expected '}'") }>)
             (s "catch" idsafe s
-                "(" s {~ (%1 -> enter) <param> ~} s ")" s
-                "{" {~ <lambda_body> s (%1 -> leave) ~} "}"
+                "(" s {~ <enter> <param> ~} s ")" s
+                "{" {~ <lambda_body> s <leave> ~} "}"
             )?
             -> make_try_stmt
             ~}
@@ -1136,6 +1154,11 @@ class Lupa {
                 -> " until true if __break then break end end "
             )
         }
+
+        rule ctx   { %1 }
+        rule enter { %1 -> enter }
+        rule leave { %1 -> leave }
+
         rule block {
             {~ ("{" -> "") <block_body> s (("}" | <{ syntax_error("expected '}'") }>) -> "") ~}
         }
@@ -1144,9 +1167,9 @@ class Lupa {
         }
         rule block_body {
             {:scope: {`'lexical'`} :}
-            (%1 -> enter)
+            <enter>
             (s <block_body_stmt>)*
-            (%1 -> leave)
+            <leave>
         }
         rule block_body_stmt {
             | <var_decl>
@@ -1175,20 +1198,21 @@ class Lupa {
         }
         rule meth_decl {
             {~ ("method" idsafe %1 s <name> s
+            <enter>
             "(" s <param_list> s ")" s
-            "{" {~ <func_body> s ~} "}"
+            "{" {~ <func_body> s <leave> ~} "}"
             ) -> make_meth_decl ~}
         }
         rule func_decl {
             {~ ("function" idsafe %1 s {@ <name> (s "." s <name>)* @} s
+            <enter>
             "(" s <param_list> s ")" s
-            "{" {~ <func_body> s ~} "}"
+            "{" {~ <func_body> s <leave> ~} "}"
             =scope) -> make_func_decl ~}
         }
         rule func_body {
             {:scope: {`'lexical'`} :}
             (s <func_body_stmt>)*
-            (%1 -> leave)
         }
         rule func_body_stmt {
             | <var_decl>
@@ -1199,24 +1223,25 @@ class Lupa {
             | <statement>
         }
         rule func {
-            {~ ("function" idsafe s
+            {~ ("function" idsafe s <enter>
             "(" s <param_list> s (")" | <{ syntax_error("expected ')'") }>) s "{"
-                {~ <func_body> s ~}
+                {~ <func_body> s <leave> ~}
             ("}" | <{ syntax_error("expected '}'") }>))
             -> make_func ~}
         }
         rule short_func {
-            (":" -> '')
-            ((s "(" s <param_list> s ")" | {`['_']`}) s "{" {~ <func_body> s ~} "}"
-            -> make_short_func) {`')'`}
+            ("->" -> '') <enter>
+            ((s "(" s <param_list> s ")" | {@ {`'_'`} %1 -> define_const @}) s
+            "{" {~ <func_body> s <leave> ~} "}"
+            -> make_short_func)
         }
         rule package_decl {
-            "package" idsafe s {~
+            "package" idsafe s {@
                {~ <name> %1 {`'__env'`} -> define ~} (s '.' s <name>)*
-            ~} s
-            "{" {~ (%1 -> enter) (s <main_body_stmt>)* s (%1 -> leave) ~}
+            @} s
+            "{" {~ <enter> (s <main_body_stmt>)* s <leave> ~}
             ("}" | <{ syntax_error("expected '}'") }>)
-            -> '__package(__env,"%1",function(__env,self) %2 end);'
+            -> make_package_decl
         }
         rule class_decl {
             "class" idsafe s {~ <name> %1 {`'__env'`} -> define ~} s
@@ -1227,10 +1252,9 @@ class Lupa {
         }
         rule trait_decl {
             "trait" idsafe s {~ <name> %1 {`'__env'`} -> define ~} s
-            ("(" s <param_list> s ")" | {`'...'`} {`''`}) s
+            ("(" s <enter> <param_list> s ")" | {`'...'`} {`''`}) s
             (<class_with> | {`""`}) s
-            "{" {~ <class_body> s ~} "}"
-            (%1 -> leave)
+            "{" {~ <class_body> s <leave> ~} "}"
             -> make_trait_decl
         }
         rule object_decl {
@@ -1242,10 +1266,10 @@ class Lupa {
         }
         rule class_body {
             {:scope: {`'lexical'`} :}
-            (%1 -> enter)
+            <enter>
             ({`'super'`} %1 -> define_const)
             {~ (s <class_body_stmt>)* ~}
-            (%1 -> leave)
+            <leave>
         }
         rule class_from {
             "from" idsafe s {~ <expr> (s "," s <expr>)* ~}
@@ -1265,16 +1289,15 @@ class Lupa {
             | <statement>
         }
         rule rest {
-            {~ {"..."} <param>? ~}
+            {~ {'...'} <param>? ~}
         }
         rule stack {
             {~
-            | ("..." s "[" s <expr> s ("]" | <{ syntax_error("expected ']'") }>)) -> 'select(%1,...)'
-            | {"..."}
+            | ('...' s "[" s <expr> s ("]" | <{ syntax_error("expected ']'") }>)) -> 'select(%1,...)'
+            | {'...'}
             ~}
         }
         rule param_list {
-            (%1 -> enter)
             {@
             | {~ <param> s ~} ("," {~ s <param> s ~})* ("," {~ s <rest> s ~})?
             | <rest>
@@ -1303,7 +1326,7 @@ class Lupa {
             "-"? digits ("." digits)? (("e"|"E") "-"? digits)?
         }
         rule number {
-            {~ <hexadec> | <decimal> ~}
+            {~ <hexadec> | <decimal> ~} -> '(%1)'
         }
         rule string {
             {~ (<qstring> | <astring>) ~} -> '(%1)'
@@ -1423,8 +1446,10 @@ class Lupa {
             ~}
         }
         rule short_expr {
-            (":" -> "(")
-            ((s "(" s <param_list> s ")" | {`['_']`}) s "{" {~ <func_body> s ~} "}"
+            ("->" -> "(")
+            <enter>
+            ((s "(" s <param_list> s ")" | {@ {`'_'`} %1 -> define_const @}) s
+            "{" {~ <func_body> s <leave> ~} "}"
             -> make_short_func) {`')'`}
         }
         rule suffix_expr {
@@ -1562,9 +1587,7 @@ class Lupa {
         }
         rule grammar_body {
             {:scope: {`'lexical'`} :}
-            (%1 -> enter)
-            (s <grammar_body_stmt>)*
-            (%1 -> leave)
+            <enter> (s <grammar_body_stmt>)* <leave>
         }
         rule grammar_body_stmt {
             | <rule_decl>
@@ -1696,7 +1719,7 @@ class Lupa {
             "{~" {~ s <rule_alt> s ~} "~}" -> '__patt.Cs(%1)'
         }
         rule rule_const_capt {
-            "{`" {~ s <expr> s ~} "`}" -> '__patt.Cc(%1)'
+            "{`" {~ s <expr_list> s ~} "`}" -> '__patt.Cc(%1)'
         }
         rule rule_hash_capt {
             "{%" {~ s <rule_alt> s ~} "%}" -> '__patt.Ch(%1)'
@@ -1710,11 +1733,7 @@ class Lupa {
     }
     method compile(lupa, name) {
         var ctx = Lupa.Context.new()
-        ctx.enter()
-        ctx.define('_G')
-        ctx.define('self')
         var lua = Lupa.Grammar.match(lupa, 1, ctx)
-        ctx.leave()
         return lua
     }
 }
