@@ -1733,7 +1733,12 @@ class Lupa {
     }
     method compile(lupa, name) {
         var ctx = Lupa.Context.new()
+        ctx.enter()
+        for k,v in pairs(_G) {
+            ctx.define(k)
+        }
         var lua = Lupa.Grammar.match(lupa, 1, ctx)
+        ctx.leave()
         return lua
     }
 }
