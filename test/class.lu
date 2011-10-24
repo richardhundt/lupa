@@ -9,7 +9,7 @@ class Point {
         }
     }
     method __init() {
-        var i = Inner.new()
+        var i = Inner()
         i.greet("World")
     }
     method move(x, y) {
@@ -27,8 +27,8 @@ class Point3D from Point {
     }
 }
 
-var p = Point3D.new()
-assert(Point.Inner)
+var p = Point3D()
+print(Point::Inner())
 p.move(11,22,33)
 print(p.x, p.y, p.z)
 
