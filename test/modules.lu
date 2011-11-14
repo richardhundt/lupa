@@ -1,0 +1,16 @@
+import test::util
+print(test::util::Point())
+
+import Point from test::util
+print(Point())
+var p = test::util::Point()
+try {
+    print(p::answer)
+    print(p.answer)
+}
+catch (e) {
+    print("caught: ${e}")
+}
+p::answer = 42
+print(p::answer)
+

@@ -1,5 +1,5 @@
-trait Guide(M) {
-    method walk() { print(M) }
+trait Guide {
+    method walk() { print("walking") }
 }
 
 trait Pet(N) {
@@ -14,8 +14,8 @@ class Mammal {
     has blood = "warm"
 }
 
-class Dog from Mammal with Guide("guiding"), Pet(42) {
-    self.DEBUG = true
+class Dog from Mammal with Guide, Pet(42) {
+    self::DEBUG = true
 
     method greet() {
         print("woof!")

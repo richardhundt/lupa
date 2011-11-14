@@ -33,7 +33,7 @@ syn keyword lupaBranch		break continue
 syn keyword lupaOperator	in is typeof like
 syn keyword lupaType		Array Boolean Date Function Number Object String RegExp int8 int16 int32 int64 uint8 uint16 uint32 uint64
 syn keyword lupaStatement	return with
-syn keyword lupaSpecial	        return with new bless isa does can gen __init __index __newindex __setitem __getitem __match __add __sub __mul __unm __pow __mod __call __missing __tostring __eq __le __lt __ge __gt __concat __each __make __size __len __gc __mode
+syn keyword lupaSpecial	        return with new bless isa does can gen __init __index __newindex __setitem __getitem __match __add __sub __mul __unm __pow __mod __call __missing __tostring __eq __le __lt __ge __gt __concat __each __make __size __len __gc __mode __apply
 syn keyword lupaBoolean		true false nil
 syn keyword lupaNull		null undefined
 syn keyword lupaIdentifier	var self
