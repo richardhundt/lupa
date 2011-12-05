@@ -163,7 +163,7 @@ __rule = function(into, name, patt) {
       var _rule = rawget(self, rule_name)
       if _rule == nil {
          var grmr = newtable()
-         for k,v in pairs(self) {
+         for k,v in pairs(into) {
             if __patt::type(v) == 'pattern' {
                grmr::[k] = v
             }
@@ -392,17 +392,6 @@ Class::__tostring = function(self) {
 Class::__index = function(self, key) {
    error("AccessError: no such member '${key}' in ${self::__name}", 2)
 }
-Class::__newindex = function(self, key, val) {
-   if key.match('^__get_') {
-      var _k = key.match('^__get_(.-)$')
-      self::__readers::[_k] = val
-   }
-   else if key.match('^__set_') {
-      var _k = key.match('^__set_(.-)$')
-      self::__writers::[_k] = val
-   }
-   rawset(self, key, val)
-}
 Class::__call = function(self, ...) {
    return self.__apply(...)
 }
@@ -411,8 +400,6 @@ Object = setmetatable(newtable(), Class)
 Object::__name = 'Object'
 Object::__from = newtable()
 Object::__with = newtable()
-Object::__readers = newtable()
-Object::__writers = newtable()
 Object::__tostring = function(self) {
    return "object ${getmetatable(self)}"
 }

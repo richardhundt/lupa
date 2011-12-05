@@ -18,14 +18,14 @@ class Macro {
         | ('mul'   <args>) -> '%1 * %2'
     }
     method parse(str) {
-        return str ~~ self.text
+        return self.text.match(str)
     }
 }
 
 var a = / '42' /
-print("42" ~~ / { 'answer' | <{a}> } /)
+print(/ { 'answer' | <{a}> } /.match("42"))
 
-var m = Macro.new()
+var m = Macro()
 var s = "add(mul(a,b),apply(f,x))"
 //print(m.text)
 print("MATCH:", s, "=>", m.parse(s))

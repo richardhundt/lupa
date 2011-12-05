@@ -163,7 +163,7 @@ __rule=function(into, name, patt)
       local _rule = rawget(self, rule_name);
       if (_rule )==( (nil)) then  
          local grmr = newtable();
-         for k,v in __op_each(pairs(self))  do local __break repeat 
+         for k,v in __op_each(pairs(into))  do local __break repeat 
             if (__patt.type(v) )==( ("pattern")) then  
                grmr[k]=v;
              end 
@@ -392,17 +392,6 @@ Class.__tostring=function(self)
 Class.__index=function(self, key) 
    do return error(("AccessError: no such member '"..tostring(key).."' in "..tostring(self.__name)..""), (2)) end
  end;
-Class.__newindex=function(self, key, val) 
-   if key:match(("^__get_")) then  
-      local _k = key:match(("^__get_(.-)$"));
-      self.__readers[_k]=val;
-   
-    elseif key:match(("^__set_")) then  
-      local _k = key:match(("^__set_(.-)$"));
-      self.__writers[_k]=val;
-    end 
-   do return rawset(self, key, val) end
- end;
 Class.__call=function(self,...) 
     do return self:__apply(...) end
  end;
@@ -411,8 +400,6 @@ Object=setmetatable(newtable(), Class);
 Object.__name=("Object");
 Object.__from=newtable();
 Object.__with=newtable();
-Object.__readers=newtable();
-Object.__writers=newtable();
 Object.__tostring=function(self) 
     do return ("object "..tostring(getmetatable(self)).."") end
  end;
