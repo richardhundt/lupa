@@ -106,7 +106,7 @@ _G.__object = function(into, name, _from, _with, body) {
       }
    }
    var anon = __class(into, '#'~name, _from, _with, body)
-   var inst = anon()
+   var inst = setmetatable(newtable(), anon)
    into[name] = inst
    return inst
 }
@@ -128,28 +128,6 @@ _G.__has = function(into, name, def) {
       return val
    }
 }
-_G.__grammar = function(into, name, body) {
-   var gram = newtable()
-   var patt
-   function gram.match(self, ...) {
-      return patt.match(...)
-   }
-   var _env = setmetatable({ }, { __index = into })
-   body(_env, gram)
-   {
-      var grmr = newtable()
-      for k,v in pairs(gram) {
-         if __patt::type(v) == 'pattern' {
-            grmr[k] = v
-         }
-      }
-      grmr[1] = rawget(gram, 1) || '__init'
-      patt = __patt::P(grmr)
-   }
-
-   into[name] = gram
-   return gram
-}
 _G.__rule = function(into, name, patt) {
    if name == '__init' || rawget(into,1) == nil {
       into[1] = name
@@ -160,7 +138,7 @@ _G.__rule = function(into, name, patt) {
       var _rule = rawget(self, rule_name)
       if _rule == nil {
          var grmr = newtable()
-         for k,v in pairs(self) {
+         for k,v in pairs(into) {
             if __patt::type(v) == 'pattern' {
                grmr[k] = v
             }
@@ -437,13 +415,15 @@ Class.__index = function(self, key) {
    error("AccessError: no such member '${key}' in ${self.__name}", 2)
 }
 Class.__newindex = function(self, key, val) {
-   if key.match('^__get_') {
-      var _k = key.match('^__get_(.-)$')
-      self.__readers[_k] = val
-   }
-   else if key.match('^__set_') {
-      var _k = key.match('^__set_(.-)$')
-      self.__writers[_k] = val
+   if type(key) == 'string' {
+      if key.match('^__get_') {
+         var _k = key.match('^__get_(.-)$')
+         self.__readers[_k] = val
+      }
+      else if key.match('^__set_') {
+         var _k = key.match('^__set_(.-)$')
+         self.__writers[_k] = val
+      }
    }
    rawset(self, key, val)
 }
@@ -724,8 +704,8 @@ for k,v in pairs(coroutine) {
 debug::setmetatable(coroutine::create(function() { }), Coroutine)
 
 _G.Pattern = setmetatable(getmetatable(__patt::P(1)), Type)
-Pattern.__call = function(patt, subj) {
-   return patt.match(subj)
+Pattern.__call = function(patt, subj, ...) {
+   return patt.match(subj, ...)
 }
 Pattern.__match = function(patt, subj) {
    return patt.match(subj)
@@ -773,7 +753,7 @@ class Lupa {
       }
    }
 
-   grammar Grammar {
+   object Grammar {
 
       function error_line(src, pos) {
          var line = 1
@@ -823,7 +803,7 @@ class Lupa {
          | "nil" | "true" | "false" | "typeof" | "return" | "as"
          | "for" | "throw" | "method" | "has" | "from" | "break"
          | "continue" | "package" | "import" | "try" | "catch"
-         | "finally" | "if" | "else" | "yield" | "grammar" | "rule"
+         | "finally" | "if" | "else" | "yield" | "rule"
       ) idsafe /
 
       var prec = {
@@ -925,12 +905,13 @@ class Lupa {
       }
       //*/
 
-      function make_binop_bind(a, o, b) {
-         return a~"="~binops[o].format(a,b)
+      function make_binop_bind(ctx, a1, a2, o, b) {
+         a1 = Lupa.Grammar.expr.match(a1, nil, ctx)
+         return a2.format(binops[o].format(a1,b))
       }
-      function make_bind_expr(l, r) {
+      function make_bind_expr(l, s1, s2, r) {
          if #l == 1 {
-            return l[1].format(r.concat(','))
+            return l[1].format(s2 ~ r.concat(','))
          }
          var t = [ ]
          for i=1, #l {
@@ -938,7 +919,7 @@ class Lupa {
             l[i] = l[i].format(t[i])
          }
          var b = [ ]
-         b.push('local %s=%s;'.format(t.concat(','),r.concat(',')))
+         b.push('local %s%s=%s%s;'.format(t.concat(','), s1, s2, r.concat(',')))
          b.push(l.concat(';'))
          return b.concat()
       } 
@@ -1055,6 +1036,10 @@ class Lupa {
          return name
       }
 
+      method match(...) {
+         self.__init.match(...)
+      }
+
       rule __init {
          {~ <unit> ~} (!. | <{syntax_error("expected <EOF>")}>)
       }
@@ -1081,7 +1066,6 @@ class Lupa {
          | <class_decl>
          | <trait_decl>
          | <object_decl>
-         | <grammar_decl>
          | <package_decl>
          | <import_stmt>
          | <statement>
@@ -1148,7 +1132,7 @@ class Lupa {
       }
       rule import_stmt {
          {~ ("import" idsafe s
-            {@ <param> (s "," s <param>)* @} s "from" s {~ <name> (("::" -> ".") <name>)* ~}
+            {@ <param> (s "," s <param>)* @} s "from" s {~ <name> (("." -> ".") <name>)* ~}
          ) -> make_import_stmt ~}
       }
       rule export_stmt {
@@ -1259,10 +1243,15 @@ class Lupa {
       }
       rule package_decl {
          "package" idsafe s
-         {@ {~ <name> %1 {`'__env'`} -> define ~} (s '::' s <name>)* @} s
-         "{" {~ <enter> (s <main_body_stmt>)* s <leave> ~}
+         {@ {~ <name> %1 {`'__env'`} -> define ~} (s '.' s <name>)* @} s
+         "{" {~ <enter> (s <package_body_stmt>)* s <leave> ~}
          ("}" | <{ syntax_error("expected '}'") }>)
          -> make_package_decl
+      }
+      rule package_body_stmt {
+        | <meth_decl>
+        | <slot_decl>
+        | <main_body_stmt>
       }
       rule class_decl {
          "class" idsafe s {~ <name> %1 {`'__env'`} -> define ~} s
@@ -1302,11 +1291,11 @@ class Lupa {
          | <var_decl>
          | <slot_decl>
          | <func_decl>
+         | <rule_decl>
          | <meth_decl>
          | <class_decl>
          | <trait_decl>
          | <object_decl>
-         | <grammar_decl>
          | <statement>
       }
       rule rest {
@@ -1438,14 +1427,13 @@ class Lupa {
       }
       rule member_expr {
          {~
-         | "." s <name> -> ':__get_%1()'
-         | "::" -> '.' s <name>
+         | "." s <name> -> '.%1'
          | "[" s <expr> s ("]" | <{ syntax_error("expected ']'") }>)
          ~}
       }
       rule method_expr {
          {~
-         | ("."  -> ":" | "::" -> ".") s <name> s (<short_expr> | <paren_expr>)
+         | ("." -> ":" | "::" -> ".") s <name> s (<short_expr> | <paren_expr>)
          ~}
       }
       rule access_expr {
@@ -1562,7 +1550,7 @@ class Lupa {
          {~ (<bind_expr> | <bind_binop_expr>) -> '%1;' semicol ~}
       }
       rule bind_expr {
-         {~ {@ <bind_list> @} s "=" s (
+         {~ {@ <bind_list> @} {s} "=" {s} (
             | {@ <expr> (s "," s <expr>)* @}
             | <{syntax_error("bad right hand <expr>")}>
          ) -> make_bind_expr ~}
@@ -1573,7 +1561,7 @@ class Lupa {
          } "="
       }
       rule bind_binop_expr {
-         {~ <bind_term> s <bind_binop> s <expr> -> make_binop_bind ~}
+         {~ %1 { <bind_term> s } <bind_binop> s <expr> -> make_binop_bind ~}
       }
       rule bind_list {
          <bind_term> (s "," s <bind_term>)*
@@ -1592,32 +1580,14 @@ class Lupa {
       }
       rule bind_suffix {
          {~
-         | "."  s <name> s     -> ':__set_%1(%%s)'
-         | "::" s <name> s     -> '.%1=%%s'
-         | "[" s <expr>  s "]" -> '[%1]=%%s'
+         | "." {~ s <name> s ~} -> '.%1=%%s'
+         | "[" {~ s <expr> s ~} "]" {s} -> '[%1]%2=%%s'
          ~}
       }
 
       // PEG grammar and pattern rules
       rule pattern {
          "/" {~ s <rule_alt> s ~} "/" -> '__patt.P(%1)'
-      }
-      rule grammar_decl {
-         {~ (
-         "grammar" idsafe s {~ <name> %1 {`'__env'`} -> define ~} s
-         "{" {~ <grammar_body> s ~} "}"
-         ) -> 'self.%1=__grammar(__env,"%1",function(__env,self) %2 end);' ~}
-      }
-      rule grammar_body {
-         {:scope: {`'lexical'`} :}
-         <enter> (s <grammar_body_stmt>)* <leave>
-      }
-      rule grammar_body_stmt {
-         | <rule_decl>
-         | <var_decl>
-         | <func_decl>
-         | &<return_stmt> <{syntax_error("return outside of function body")}>
-         | <statement>
       }
       rule rule_decl {
          "rule" idsafe s <name> s "{" {~ s <rule_body> s ~} "}"
