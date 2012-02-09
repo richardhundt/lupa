@@ -1,7 +1,7 @@
 #!/usr/bin/env luajit
 
-_G['package'].path  = ";;./src/?.lua;./lib/?.lua;${_G['package'].path}"
-_G['package'].cpath = ";;./lib/?.so;${_G['package'].cpath}"
+package.path  = ";;./src/?.lua;./lib/?.lua;${package.path}"
+package.cpath = ";;./lib/?.so;${package.cpath}"
 
 _G.newtable = loadstring("return {...}")
 _G.bit = require("bit")
@@ -63,7 +63,7 @@ _G.__class = function(into, name, _from, _with, body) {
          rawset(obj, key, val)
       }
    }
-   _class.new = function(self, ...) {
+   _class.__apply = function(self, ...) {
       var obj = setmetatable(newtable(), self)
       if rawget(self, '__init') != nil {
          var ret = obj.__init(...)
@@ -226,67 +226,13 @@ _G.__patt::setmaxstack(1024)
 }
 
 _G.__env = _G
-_G.__pkg = _G
 
-_G.__package = function(into, name, body, args) {
-   var path = [ ]
-   var base = into.__pkg
-
-   var full_path = [ ]
-   if base && rawget(base, '__path') {
-      var base_path = base.__path
-      for i=1, #base_path {
-         full_path[#full_path + 1] = base_path[i]
-      }
-   }
-
-   for frag in name.gmatch("([^%.]+)") {
-      path[#path + 1] = frag
-      full_path[#full_path + 1] = frag
-   }
-
-   var pkg = base
-   for i=1, #path {
-      var name = path[i]
-      if rawget(pkg, name) == nil {
-         rawset(pkg, name, newtable())
-      }
-      pkg = pkg[name]
-   }
-
-   var full_path_name = full_path.concat('.')
-   _G['package'].loaded[full_path_name] = pkg
-
-   pkg.__path = path
-   pkg.__name = name
-   pkg.__base = base
-
-   if body {
-      if !rawget(pkg, '__env') {
-         var env = setmetatable(newtable(), {
-            __index    = into,
-            __newindex = function(env, key, val) {
-               rawset(env, key, val)
-               rawset(pkg, key, val)
-            }
-         })
-         rawset(pkg, '__env', env)
-         rawset(env, '__pkg', pkg)
-      }
-      body(pkg.__env, pkg)
-   }
-
-   return pkg
-}
-
-_G.__import = function(_from, what) {
+_G.__import = function(into, _from, what) {
    var mod = __load(_from)
-   var out = [ ]
    if what {
       for i=1, #what {
-         out[i] = mod[what[i]]
+         into[what[i]] = mod[what[i]]
       }
-      return @out
    }
    else {
       return mod
@@ -686,7 +632,7 @@ _G.Function = setmetatable(newtable(), Type)
 Function.__name = 'Function'
 Function.__index = Function
 Function.__apply = function(self, code, fenv) {
-   code = Lupa.compile(code)
+   code = compile(code)
    var func = assert(loadstring(code, '=eval'))
    if fenv {
       setfenv(func, fenv)
@@ -711,1033 +657,1013 @@ Pattern.__match = function(patt, subj) {
    return patt.match(subj)
 }
 
-class Lupa {
-
-   class Scope {
-      has entries = { }
-      has outer   = _G
-      method __init(outer) {
-         self.outer = outer
+class Scope {
+   has entries = { }
+   has outer   = _G
+   method __init(outer) {
+      self.outer = outer
+   }
+   method lookup(name) {
+      if name in self.entries {
+         return self.entries[name]
       }
-      method lookup(name) {
-         if name in self.entries {
-            return self.entries[name]
-         }
-         else if 'outer' in self {
-            return self.outer.lookup(name)
-         }
-      }
-      method define(name, info) {
-         self.entries[name] = info
+      else if 'outer' in self {
+         return self.outer.lookup(name)
       }
    }
-
-   class Context {
-      has scope = Lupa.Scope.new()
-      method enter() {
-         self.scope = Lupa.Scope.new(self.scope)
-      }
-      method leave() {
-         if 'outer' in self.scope {
-            var outer = self.scope.outer
-            self.scope = outer
-            return outer
-         }
-         error("no outer scope")
-      }
-      method define(name, info) {
-         self.scope.define(name, info || { })
-      }
-      method lookup(name) {
-         self.scope.lookup(name)
-      }
-   }
-
-   object Grammar {
-
-      function error_line(src, pos) {
-         var line = 1
-         var index, limit = 1, pos
-         while index <= limit {
-            var s, e = src.find("\n", index, true)
-            if s == nil || e > limit { break }
-            index = e + 1
-            line  = line + 1
-         }
-         return line
-      }
-      function error_near(src, pos) {
-         if (#src < pos + 20) {
-            return src.sub(pos)
-         }
-         else {
-            return src.sub(pos, pos + 20)~"..."
-         }
-      }
-      function syntax_error(m) {
-         return function(src, pos) {
-            var line, near = error_line(src, pos), error_near(src, pos)
-            error("SyntaxError: ${m||''} on line ${line} near '${near}'")
-         }
-      }
-
-      var id_counter = 9
-      function genid() {
-         id_counter += 1
-         return '_'~id_counter
-      }
-
-      function quote(c) { "%q".format(c) }
-
-      var nl      = / "\n" /
-      var comment = / {~
-         | ((!nl %s)* ("//" -> '--') (!nl .)* nl)
-         | ("/*" -> '--[=[') (']=]' -> ']\=]' | !"*/" .)* ("*/" -> ']=]')
-      ~} /
-      var idsafe  = / !(%alnum | "_") /
-      var s       = / (comment | %s)* /
-      var semicol = / (";" -> '')? /
-      var digits  = / (%digit {~ "_" -> '' ~}?)+ /
-      var keyword = / (
-         "var" | "function" | "class" | "with" | "like" | "in"
-         | "nil" | "true" | "false" | "typeof" | "return" | "as"
-         | "for" | "throw" | "method" | "has" | "from" | "break"
-         | "continue" | "package" | "import" | "try" | "catch"
-         | "finally" | "if" | "else" | "yield" | "rule"
-      ) idsafe /
-
-      var prec = {
-         ["^^"]  = 4,
-         ["*"]   = 5,
-         ["/"]   = 5,
-         ["%"]   = 5,
-         ["+"]   = 6,
-         ["-"]   = 6,
-         ["~"]   = 6,
-         [">>"]  = 7,
-         ["<<"]  = 7,
-         [">>>"] = 7,
-         ["&"]   = 8,
-         ["^"]   = 9,
-         ["|"]   = 10,
-         ["<="]  = 11,
-         [">="]  = 11,
-         ["<"]   = 11,
-         [">"]   = 11,
-         ["in"]  = 11,
-         ["as"]  = 11,
-         ["=="]  = 12,
-         ["!="]  = 12,
-         ["&&"]  = 13,
-         ["||"]  = 14,
-      }
-
-      var unrops = {
-         ["!"] = "not(%s)",
-         ["#"] = "#(%s)",
-         ["-"] = "-(%s)",
-         ["~"] = "__op_bnot(%s)",
-         ["@"] = "__op_spread(%s)",
-         ["throw"] = "__op_throw(%s)",
-         ["typeof"] = "__op_typeof(%s)",
-      }
-
-      var binops = {
-         ["^^"] = "(%s)^(%s)",
-         ["*"] = "(%s)*(%s)",
-         ["/"] = "(%s)/(%s)",
-         ["%"] = "(%s)%%(%s)",
-         ["+"] = "(%s)+(%s)",
-         ["-"] = "(%s)-(%s)",
-         ["~"] = "(%s)..(%s)",
-         [">>"] = "__op_rshift(%s,%s)",
-         ["<<"] = "__op_lshift(%s,%s)",
-         [">>>"] = "__op_arshift(%s,%s)",
-         ["<="] = "(%s)<=(%s)",
-         [">="] = "(%s)>=(%s)",
-         ["<"] = "(%s)<(%s)",
-         [">"] = "(%s)>(%s)",
-         ["in"] = "__op_in(%s,%s)",
-         ["as"] = "__op_as(%s,%s)",
-         ["=="] = "(%s)==(%s)",
-         ["!="] = "(%s)~=(%s)",
-         ["&"] = "__op_band(%s,%s)",
-         ["^"] = "__op_bxor(%s,%s)",
-         ["|"] = "__op_bor(%s,%s)",
-         ["&&"] = "(%s)and(%s)",
-         ["||"] = "(%s)or(%s)",
-      }
-
-      function fold_prefix(o,e) {
-         if o == '#' && e.match('^%s*%.%.%.%s*$') {
-            return 'select("#",...)'
-         }
-         return unrops[o].format(e)
-      }
-
-      ///*
-      function fold_infix(e) {
-         var s = [ e[1] ]
-         for i=2, #e {
-            s[#s + 1] = e[i]
-            while !binops[s[#s]] && s[#s - 1] {
-               var p = s[#s - 1]
-               var n = e[i + 1]
-               if n == nil || prec[p] <= prec[n] {
-                  var b, o, a = s.pop(), s.pop(), s.pop()
-                  if !binops[o] {
-                     error("bad expression: ${e}, stack: ${s}")
-                  }
-                  s.push(binops[o].format(a, b))
-               }
-               else {
-                  break
-               }
-            }
-         }
-         return s[1]
-      }
-      //*/
-
-      /* enable for recursive descent expr parsing
-      function fold_infix(a,o,b) {
-         return binops[o].format(a,b)
-      }
-      //*/
-
-      function make_binop_bind(ctx, a1, a2, o, b) {
-         a1 = Lupa.Grammar.expr.match(a1, nil, ctx)
-         return a2.format(binops[o].format(a1,b))
-      }
-      function make_bind_expr(l, s1, s2, r) {
-         if #l == 1 {
-            return l[1].format(s2 ~ r.concat(','))
-         }
-         var t = [ ]
-         for i=1, #l {
-            t.push(genid())
-            l[i] = l[i].format(t[i])
-         }
-         var b = [ ]
-         b.push('local %s%s=%s%s;'.format(t.concat(','), s1, s2, r.concat(',')))
-         b.push(l.concat(';'))
-         return b.concat()
-      } 
-      function make_params(p) {
-         var h = ''
-         if #p > 0 && p[#p].find('...', 1, true) {
-            var r = p[#p]
-            var n = r.match('%.%.%.([%w_0-9]+)')
-            p[#p] = "..."
-            if n {
-               h = "local %s=Array(...);".format(n)
-            }
-         }
-         return p.concat(","), h
-      }
-
-      function make_func(p,b) {
-         var p, h = make_params(p)
-         return "function(%s) %s%s end".format(p,h,b)
-      }
-
-      function make_short_func(p,b) {
-         if #p == 0 { p.push('_') }
-         var p, h = make_params(p)
-         return "function(%s) %s%s end".format(p,h,b)
-      }
-
-      function make_func_decl(c,n,p,b,s) {
-         var p, h = make_params(p)
-         if s == 'lexical' && #n == 1 {
-            c.define(n[1])
-            return "local function %s(%s) %s%s end".format(n[1],p,h,b)
-         }
-         else if #n == 1 {
-            return "function __env.%s(%s) %s%s end".format(n[1],p,h,b)
-         }
-         return "function %s(%s) %s%s end".format(n.concat('.'),p,h,b)
-      }
-
-      function make_meth_decl(ctx,n,p,b) {
-         p.unshift('self')
-         var p, h = make_params(p)
-         return "__method(self,%q,function(%s) %s%s end);".format(n,p,h,b)
-      }
-
-      function make_trait_decl(n,p,w,b) {
-         var p, h = make_params(p)
-         return
-         'self.%s=__trait(__env,%q,{%s},function(__env,self,%s) %s%s end);'
-            .format(n,n,w,p,h,b)
-      }
-
-      function make_try_stmt(try_body, catch_args, catch_body) {
-         return (
-            'do local __return;'~
-            '__try(function() %s end,function(%s) %s end);' ~
-            'if __return then return __op_spread(__return) end'~
-            ' end'
-         ).format(try_body, catch_args || '', catch_body || '')
-      }
-      function make_package_decl(p, b) {
-         var n = p[1]
-         return 'self.%s=__package(__env,%q,function(__env,self) %s end);'.format(
-            n, p.concat('.'), b
-         )
-      }
-      function make_import_stmt(n,f) {
-         var q = [ ]
-         for i=1, #n { q[i] = quote(n[i]) }
-         return "local %s=__import(%q,{%s});".format(n.concat(','), f, q.concat(','))
-      }
-      function make_export_stmt(n) {
-         var b = [ ]
-         for i=1, #n {
-            var q = quote(n[i])
-            b[i] = '__export[%s]=true;'.format(q)
-         }
-         return b.concat('')
-      }
-      function define(name, ctx, base, type) {
-         ctx.define(name, { base = base, type = type })
-         return name
-      }
-      function define_const(name, ctx, ...) {
-         ctx.define(name, ...)
-         return
-      }
-      function enter(ctx) {
-         ctx.enter()
-         return
-      }
-      function leave(ctx) {
-         ctx.leave()
-         return
-      }
-
-      function lookup(name, ctx) {
-         var info = ctx.lookup(name)
-         if info {
-            if info.base { return info.base~'.'~name }
-            return name
-         }
-         return '__env.'~name
-      }
-      function lookup_or_define(name, ctx) {
-         var info = ctx.lookup(name)
-         if !info {
-            define(name, ctx, '__env')
-            return '__env.'~name
-         }
-         if info.base {
-            return info.base~'.'~name
-         }
-         return name
-      }
-
-      method match(...) {
-         self.__init.match(...)
-      }
-
-      rule __init {
-         {~ <unit> ~} (!. | <{syntax_error("expected <EOF>")}>)
-      }
-      rule unit {
-         {:set_return: {`false`} :}
-         {:scope: {`'global'`} :}
-         { %s* '#!' (!nl .)* %s* }? s
-         {`'local __env=setmetatable({},{__index=_G});local self={};'`}
-         <enter>
-         ({`'_G'   `} <ctx> -> define_const)
-         ({`'__env'`} <ctx> -> define_const)
-         ({`'self' `} <ctx> -> define_const)
-         {~ (s <main_body_stmt>)* s ~}
-         <leave>
-      }
-
-      rule ctx   { %1 }
-      rule enter { <ctx> -> enter }
-      rule leave { <ctx> -> leave }
-
-      rule main_body_stmt {
-         | <var_decl>
-         | <func_decl>
-         | <class_decl>
-         | <trait_decl>
-         | <object_decl>
-         | <package_decl>
-         | <import_stmt>
-         | <statement>
-      }
-      rule statement {
-         | <if_stmt>
-         | <try_stmt>
-         | <for_stmt>
-         | <for_in_stmt>
-         | <do_while_stmt>
-         | <while_stmt>
-         | <break_stmt>
-         | <continue_stmt>
-         | <yield_stmt>
-         | <block_stmt>
-         | <bind_stmt>
-         | <call_stmt>
-         | !(s ("}" | !.)) <{ syntax_error("invalid statement") }>
-      }
-      rule call_stmt {
-         {~ {~
-            <primary> s (
-            <invoke_expr> | <{syntax_error("expected <invoke_expr>") }>
-         ) ~} -> '%1;' semicol ~}
-      }
-      rule return_stmt {
-         {~ "return" -> '' idsafe s (
-         =set_return (<expr_list> | {`''`}) -> function(l,e) {
-            if l {
-               return "do __return = {%s}; return end".format(e)
-            }
-            return "do return %s end".format(e)
-         }) ~}
-      }
-      rule yield_stmt {
-         'yield' idsafe {~ s <expr_list> ~} -> '__op_yield(%1);' semicol
-      }
-      rule break_stmt {
-         {~ { "break" idsafe } -> "do __break = true; break end" ~}
-      }
-      rule continue_stmt {
-         {~ { "continue" idsafe } -> "do break end" ~}
-      }
-      rule if_stmt {
-         {~
-         "if" idsafe s <expr> {`" then "`} s <block> (
-            (s ({"else" idsafe s "if" idsafe} -> " elseif") s
-               <expr> {`" then "`} s <block>
-            )*
-            (s "else" idsafe s <block> {`" end "`} | {`" end "`})
-         )
-         ~}
-      }
-      rule try_stmt {
-         {~
-         "try" idsafe s
-         "{" {~ <lambda_body> s ~} ("}" | <{ syntax_error("expected '}'") }>)
-         (s "catch" idsafe s
-            "(" s {~ <enter> <param> ~} s ")" s
-            "{" {~ <lambda_body> s <leave> ~} "}"
-         )?
-         -> make_try_stmt
-         ~}
-      }
-      rule import_stmt {
-         {~ ("import" idsafe s
-            {@ <param> (s "," s <param>)* @} s "from" s {~ <name> (("." -> ".") <name>)* ~}
-         ) -> make_import_stmt ~}
-      }
-      rule export_stmt {
-         {~ "export" idsafe s {@ <name_list> @} -> make_export_stmt ~}
-      }
-      rule for_stmt {
-         {~ "for" idsafe s <param> s "=" s <expr> s "," s <expr>
-            (s "," s <expr>)? s <loop_body>
-         ~}
-      }
-      rule for_in_stmt {
-         {~ "for" idsafe s <param> (s "," s <param>)* s "in" idsafe s
-            (<expr> -> "__op_each(%1)") s <loop_body>
-         ~}
-      }
-      rule while_stmt {
-         {~ "while" idsafe s <expr> s <loop_body> ~}
-      }
-      rule do_while_stmt {
-         {~
-            "do" idsafe {~ s <loop_body> s ~}
-            "while" idsafe {~ s <expr> ~} -> 'repeat %1 until not(%2)'
-         ~}
-      }
-      rule loop_body {
-         ("{" -> " do local __break repeat ") <block_body> s
-         (
-            ("}" | <{ syntax_error("expected '}'") }>)
-            -> " until true if __break then break end end "
-         )
-      }
-
-      rule block {
-         {~ ("{" -> "") <block_body> s (("}" | <{ syntax_error("expected '}'") }>) -> "") ~}
-      }
-      rule block_stmt {
-         {~ ("{" -> "do ") <block_body> s (("}" | <{ syntax_error("expected '}'") }>) -> " end") ~}
-      }
-      rule block_body {
-         {:scope: {`'lexical'`} :}
-         <enter>
-         (s <block_body_stmt>)*
-         <leave>
-      }
-      rule block_body_stmt {
-         | <var_decl>
-         | <func_decl>
-         | <return_stmt>
-         | <statement>
-      }
-      rule lambda_body {
-         {:set_return: {`true`} :}
-         <block_body> s
-      }
-
-      rule var_decl {
-         {~ "var" idsafe -> "local" s
-            <var_list> (s "=" s <expr> (s "," s <expr>)*)?
-         ~} -> '%1;' semicol
-      }
-      rule var_list {
-         (<name> %1 -> define) (s "," s (<name> %1 -> define))*
-         //<name> (s "," s <name>)*
-      }
-      rule slot_decl {
-         {~ ("has" idsafe s <name> (s "=" s <expr> | {`""`}) semicol)
-            -> '__has(self,"%1",function(self) return %2 end);'
-         ~}
-      }
-      rule meth_decl {
-         {~ ("method" idsafe %1 s <name> s
-         <enter>
-         "(" s <param_list> s ")" s
-         "{" {~ <func_body> s <leave> ~} "}"
-         ) -> make_meth_decl ~}
-      }
-      rule func_decl {
-         {~ ("function" idsafe %1 s {@ <name> (s "." s <name>)* @} s
-         <enter>
-         "(" s <param_list> s ")" s
-         "{" {~ <func_body> s <leave> ~} "}"
-         =scope) -> make_func_decl ~}
-      }
-      rule func_body {
-         {:scope: {`'lexical'`} :}
-         (s <func_body_stmt>)*
-      }
-      rule func_body_stmt {
-         | <var_decl>
-         | <func_decl>
-         | <return_stmt>
-         | <block_stmt>
-         | (<expr> &(s "}") -> "do return %1 end")
-         | <statement>
-      }
-      rule func {
-         {~ ("function" idsafe s <enter>
-         "(" s <param_list> s (")" | <{ syntax_error("expected ')'") }>) s "{"
-            {~ <func_body> s <leave> ~}
-         ("}" | <{ syntax_error("expected '}'") }>))
-         -> make_func ~}
-      }
-      rule short_func {
-         ("->" -> '') <enter>
-         ((s "(" s <param_list> s ")" | {@ {`'_'`} %1 -> define_const @}) s
-         "{" {~ <func_body> s <leave> ~} "}"
-         -> make_short_func)
-      }
-      rule package_decl {
-         "package" idsafe s
-         {@ {~ <name> %1 {`'__env'`} -> define ~} (s '.' s <name>)* @} s
-         "{" {~ <enter> (s <package_body_stmt>)* s <leave> ~}
-         ("}" | <{ syntax_error("expected '}'") }>)
-         -> make_package_decl
-      }
-      rule package_body_stmt {
-        | <meth_decl>
-        | <slot_decl>
-        | <main_body_stmt>
-      }
-      rule class_decl {
-         "class" idsafe s {~ <name> %1 {`'__env'`} -> define ~} s
-         (<class_from> | {`""`}) s
-         (<class_with> | {`""`}) s
-         "{" {~ <class_body> s ~} "}"
-         -> 'self.%1=__class(__env,"%1",{%2},{%3},function(__env,self,super) %4 end);'
-      }
-      rule trait_decl {
-         "trait" idsafe s {~ <name> %1 {`'__env'`} -> define ~} s
-         ("(" s <enter> <param_list> s ")" | {`'...'`} {`''`}) s
-         (<class_with> | {`""`}) s
-         "{" {~ <class_body> s <leave> ~} "}"
-         -> make_trait_decl
-      }
-      rule object_decl {
-         "object" idsafe s {~ <name> %1 {`'__env'`} -> define ~} s
-         (<class_from> | {`""`}) s
-         (<class_with> | {`""`}) s
-         "{" {~ <class_body> s ~} "}"
-         -> 'self.%1=__object(__env,"%1",{%2},{%3},function(__env,self,super) %4 end);'
-      }
-      rule class_body {
-         {:scope: {`'lexical'`} :}
-         <enter>
-         ({`'super'`} %1 -> define_const)
-         {~ (s <class_body_stmt>)* ~}
-         <leave>
-      }
-      rule class_from {
-         "from" idsafe s {~ <expr> (s "," s <expr>)* ~}
-      }
-      rule class_with {
-         "with" idsafe s {~ <expr> (s "," s <expr>)* ~}
-      }
-      rule class_body_stmt {
-         | <var_decl>
-         | <slot_decl>
-         | <func_decl>
-         | <rule_decl>
-         | <meth_decl>
-         | <class_decl>
-         | <trait_decl>
-         | <object_decl>
-         | <statement>
-      }
-      rule rest {
-         {~ {'...'} <param>? ~}
-      }
-      rule stack {
-         {~
-         | ('...' s "[" s <expr> s ("]" | <{ syntax_error("expected ']'") }>)) -> 'select(%1,...)'
-         | {'...'}
-         ~}
-      }
-      rule param_list {
-         {@
-         | {~ <param> s ~} ("," {~ s <param> s ~})* ("," {~ s <rest> s ~})?
-         | <rest>
-         | {`nil`}
-         @}
-      }
-      rule ident {
-         {~ <name> %1 -> lookup ~}
-      }
-      rule param {
-         <name> %1 -> define
-      }
-      rule name {
-         { !keyword ((%alpha | "_") (%alnum | "_")*) }
-      }
-      rule name_list {
-         {~ <name> (s "," s <name>)* ~}
-      }
-      rule qname {
-         {~ <ident> (("::" -> ".") <name>)* ~}
-      }
-      rule hexadec {
-         "-"? "0x" %xdigit+
-      }
-      rule decimal {
-         "-"? digits ("." digits)? (("e"|"E") "-"? digits)?
-      }
-      rule number {
-         {~ <hexadec> | <decimal> ~} -> '(%1)'
-      }
-      rule string {
-         {~ (<qstring> | <astring>) ~} -> '(%1)'
-      }
-      rule special {
-         {~
-         | "\n"  -> "\\\n"
-         | "\\$" -> "$"
-         | "\\\\"
-         | "\\" .
-         ~}
-      }
-      rule qstring {
-         | '"""' -> '"' {~ (
-            | <string_expr>
-            | {~ (<special> | !'"""'('"' -> '\"') | !(<string_expr> | "\"\"\"") .)+ ~}
-         )* ~} ('"""' -> '"' | <{ syntax_error("expected '\"\"\"'") }>)
-         | '"' {~ (
-            | <string_expr>
-            | {~ (<special> | !(<string_expr> | "\"") .)+ ~}
-         )* ~} ('"' | <{ syntax_error("expected '\"'") }>)
-      }
-      rule astring {
-         {~
-            | ("'''" -> "") ('\\' | '\'' | (!"'''" .))* ("'''" -> "")
-            | ("'"   -> "") ('\\' | '\'' | (!"'"   .))* ("'"   -> "")
-         ~} -> quote
-      }
-      rule string_expr {
-         ('${' -> '"..') {~ s (<expr> -> 'tostring(%1)') s ~} ("}" -> '.."')
-      }
-      rule vnil {
-         {~ { "nil" } idsafe -> '(nil)' ~}
-      }
-      rule vtrue {
-         {~ { "true" } idsafe -> '(true)' ~}
-      }
-      rule vfalse {
-         {~ { "false" } idsafe -> '(false)' ~}
-      }
-      rule range {
-         {~ (
-            "[" s <expr> s ":" s <expr> ( s ":" s <expr> | {`"1"`} ) s "]"
-         ) -> "Range(%1,%2,%3)" ~}
-      }
-      rule array {
-         {~
-            ("[" -> "Array(") s
-            (<array_elements> | {`""`}) s
-            ("]" -> ")" | <{syntax_error("expected ']'")}>)
-         ~}
-      }
-      rule array_elements {
-         <expr> ( s "," s <expr> )* (s ("," -> ''))?
-      }
-      rule hash {
-         {~
-            ("{" -> "Hash({") s
-            (<hash_pairs> | {`""`}) s
-            ("}" -> "})" | <{syntax_error("expected '}'")}>)
-         ~}
-      }
-      rule hash_pairs {
-         <hash_pair> (s "," s <hash_pair>)* (s ",")?
-      }
-      rule hash_pair {
-         (<name> | "[" s <expr> s ("]" | <{syntax_error("expected ']'")}>)) s
-         "=" s <expr>
-      }
-      rule primary {
-         | <ident>
-         | <range>
-         | <number>
-         | <string>
-         | <vnil>
-         | <vtrue>
-         | <vfalse>
-         | <stack>
-         | <array>
-         | <hash>
-         | <func>
-         | <short_func>
-         | <pattern>
-         | "(" s <expr> s (")" | <{ syntax_error("expected ')'") }>)
-      }
-      rule paren_expr {
-         "(" s ( <expr_list> | {`""`} ) s (")" | <{ syntax_error("expected ')'") }>)
-      }
-      rule member_expr {
-         {~
-         | "." s <name> -> '.%1'
-         | "[" s <expr> s ("]" | <{ syntax_error("expected ']'") }>)
-         ~}
-      }
-      rule method_expr {
-         {~
-         | ("." -> ":" | "::" -> ".") s <name> s (<short_expr> | <paren_expr>)
-         ~}
-      }
-      rule access_expr {
-         {~
-         | <invoke_expr> s <access_expr>
-         | <member_expr>
-         ~}
-      }
-      rule invoke_expr {
-         {~
-         | (
-            | <method_expr>
-            | <member_expr>
-            | <short_expr>
-            | <paren_expr>
-         ) s <invoke_expr>
-         | <method_expr>
-         | <short_expr>
-         | <paren_expr>
-         ~}
-      }
-      rule short_expr {
-         ("->" -> "(")
-         <enter>
-         ((s "(" s <param_list> s ")" | {@ {`'_'`} %1 -> define_const @}) s
-         "{" {~ <func_body> s <leave> ~} "}"
-         -> make_short_func) {`')'`}
-      }
-      rule suffix_expr {
-         | <invoke_expr>
-         | <access_expr>
-      }
-      rule term {
-         {~ <primary> (s <suffix_expr>)* ~}
-      }
-      rule expr_list {
-         {~ <expr> (s "," s <expr>)* ~}
-      }
-      rule expr {
-         {~ (<infix_expr> | <prefix_expr>) (
-            s ("?" -> ' and ') s <expr> s (":" -> ' or ') s <expr>
-         )? ~}
-      }
-
-      ///*
-      var binop_patt = /(
-         "+" | "-" | "~" | "^^" | "*" | "/" | "%" | "^" | ">>>" | ">>" | "<<"
-         | "||" | "&&" | "|" | "&" | "==" | "!=" | ">="| "<=" | "<" | ">"
-         | ("as" | "in") idsafe
-      )/
-
-      rule infix_expr {
-         {@ {~ <prefix_expr> s ~} (
-            { binop_patt }
-            {~ s <prefix_expr> (&(s binop_patt) s)? ~}
-         )+ @} -> fold_infix
-      }
-      //*/
-
-      /*
-      // recursive descent is faster for stock Lua, but LJ2 is faster
-      // with shift-reduce, so right now I'm biased towards LJ2 ;)
-      rule infix_expr {
-         {~ <bool_or_expr> ~}
-      }
-      function make_infix_expr(oper, term) {
-         / (({~ term (&(s oper) s)? ~} {: {oper} {~ s term ~} :}*) ~> fold_infix) /
-      }
-      rule bool_or_expr {
-         <{ make_infix_expr(/"||"/, /<bool_and_expr>/ }>
-      }
-      rule bool_and_expr {
-         <{ make_infix_expr(/"&&"/, /<bit_or_expr>/ }>
-      }
-      rule bit_or_expr {
-         <{ make_infix_expr(/"|"/,  /<bit_xor_expr>/ }>
-      }
-      rule bit_xor_expr {
-         <{ make_infix_expr(/"^"/,  /<bit_and_expr>/ }>
-      }
-      rule bit_and_expr {
-         <{ make_infix_expr(/"&"/,  /<equals_expr>/ }>
-      }
-      rule equals_expr {
-         <{ make_infix_expr(/"=="|"!="/, /<cmp_expr>/ }>
-      }
-      rule cmp_expr {
-         <{ make_infix_expr(/"<="|">="|"<"|">"/, /<shift_expr>/ }>
-      }
-      rule shift_expr {
-         <{ make_infix_expr(/">>>"|">>"|"<<"|("as"|"in") idsafe/, /<add_expr>/ }>
-      }
-      rule add_expr {
-         <{ make_infix_expr(/"+"|"-"|"~"/, /<mul_expr>/ }>
-      }
-      rule mul_expr {
-         <{ make_infix_expr(/"*"|"/"|"%"/, /<pow_expr>/ }>
-      }
-      rule pow_expr {
-         <{ make_infix_expr(/"^^"/, /<prefix_expr>/ }>
-      }
-      //*/
-
-      rule prefix_expr {
-         {: {
-            | "@" | "!" | "#" | "-" | "~"
-            | ("throw" | "typeof") idsafe
-         } s <prefix_expr> :} -> fold_prefix
-         | {~ s <term> ~}
-      }
-
-      // binding expression rules
-      rule bind_stmt {
-         {~ (<bind_expr> | <bind_binop_expr>) -> '%1;' semicol ~}
-      }
-      rule bind_expr {
-         {~ {@ <bind_list> @} {s} "=" {s} (
-            | {@ <expr> (s "," s <expr>)* @}
-            | <{syntax_error("bad right hand <expr>")}>
-         ) -> make_bind_expr ~}
-      }
-      rule bind_binop {
-         { "+" | "-" | "*" | "/" | "%" | "||" | "|"| "&&"
-         | "&" | "^^" | "^" | "~" | ">>>" | ">>" | "<<"
-         } "="
-      }
-      rule bind_binop_expr {
-         {~ %1 { <bind_term> s } <bind_binop> s <expr> -> make_binop_bind ~}
-      }
-      rule bind_list {
-         <bind_term> (s "," s <bind_term>)*
-      }
-      rule bind_term {
-         {~
-         | <primary> (s <bind_member>)+
-         | {~ <name> %1 -> lookup_or_define ~} -> '%1=%%s'
-         ~}
-      }
-      rule bind_member {
-         {~
-         | <suffix_expr> s <bind_member>
-         | <bind_suffix>
-         ~}
-      }
-      rule bind_suffix {
-         {~
-         | "." {~ s <name> s ~} -> '.%1=%%s'
-         | "[" {~ s <expr> s ~} "]" {s} -> '[%1]%2=%%s'
-         ~}
-      }
-
-      // PEG grammar and pattern rules
-      rule pattern {
-         "/" {~ s <rule_alt> s ~} "/" -> '__patt.P(%1)'
-      }
-      rule rule_decl {
-         "rule" idsafe s <name> s "{" {~ s <rule_body> s ~} "}"
-         -> '__rule(self,"%1",%2);'
-      }
-      rule rule_body {
-         <rule_alt> | {`'__patt.P(nil)'`}
-      }
-      rule rule_alt {
-         {~ ("|" -> '' s)? <rule_seq> (s ("|" -> "+") s <rule_seq>)* ~}
-      }
-      rule rule_seq {
-         {@ {~ s <rule_suffix> ~}+ @} -> function(a) { a.concat('*') }
-      }
-      rule rule_rep {
-         {~ "+" -> "^1" | "*" -> "^0" | "?" -> "^-1" | "^"s("+"|"-")?s[0-9]+ ~}
-      }
-      rule rule_prefix {
-         {~ (("&" -> "#") | ("!" -> "-")) {~ s <rule_prefix> ~} -> '%1%2'
-         | <rule_primary>
-         ~}
-      }
-
-      var prod_oper = / "->" | "~>" | "=>" /
-
-      rule rule_suffix {
-         ({~ <rule_prefix> (&(s prod_oper) s)? ~}
-         {: {prod_oper} {~ s <rule_prod> ~} :}*) ~> function(a,o,b,t) {
-            if o == "=>" {
-               return '__patt.Cmt(%s,%s)'.format(a,b)
-            }
-            else if o == "~>" {
-               return '__patt.Cf(%s,%s)'.format(a,b)
-            }
-            else {
-               if t == 'array' {
-                  return '__patt.Ca(%s,%s)'.format(a,b)
-               }
-               else if t == 'hash' {
-                  return '__patt.Ch(%s,%s)'.format(a,b)
-               }
-               else {
-                  return '(%s)/(%s)'.format(a,b)
-               }
-            }
-         }
-      }
-      rule rule_prod {
-         {~
-         | <array> {`'array'`}
-         | <hash>  {`'hash'`}
-         | <term>
-         ~}
-      }
-      rule rule_primary {
-         ( <rule_group>
-         | <rule_term>
-         | <rule_class>
-         | <rule_predef>
-         | <rule_back_capt>
-         | <rule_group_capt>
-         | <rule_sub_capt>
-         | <rule_const_capt>
-         | <rule_hash_capt>
-         | <rule_array_capt>
-         | <rule_simple_capt>
-         | <rule_any>
-         | <rule_ref>
-         ) (s <rule_rep>)*
-      }
-      rule rule_group {
-         {~ "(" s (<rule_alt> | <{ syntax_error("expected <rule_alt>") }>) s
-            (")" | <{ syntax_error("expected ')'") }>)
-         ~}
-      }
-      rule rule_term {
-         {~ <string> -> '__patt.P(%1)' ~}
-      }
-      rule rule_class {
-         {~
-            ("[" -> '(') ("^" -> '__patt.P(1)-')?
-            ({@ (!"]" <rule_item>)+ @} -> function(a) { "("~a.concat("+")~")" })
-            ("]" -> ')')
-         ~}
-      }
-      rule rule_item {
-         {~ <rule_predef> | <rule_range>
-         | {.} -> function(c) { '__patt.P(%q)'.format(c) }
-         ~}
-      }
-      rule rule_predef {
-         {~ ('%' -> '') (
-            | { [0-9]+ } -> '__patt.Carg(%1)'
-            | <name> -> '__patt.Def("%1")'
-         ) ~}
-      }
-      rule rule_range {
-         {~ . ("-"->'') !"]" . ~} -> function(r) { '__patt.R(%q)'.format(r) }
-      }
-      rule rule_any {
-         {~ "." -> '__patt.P(1)' ~}
-      }
-      rule rule_ref {
-         {~
-         ("<" -> '') s
-            ( <name> -> '__patt.V("%1")'
-            | {~ ("{" -> '__patt.P(') s <expr> s ("}" -> ")") ~}
-            ) s
-         (">" -> '')
-         | <qname>
-         ~}
-      }
-      rule rule_group_capt {
-         {~ "{:" ((<name> -> quote ":") | {`'nil'`}) {~ s <rule_alt> ~} s ":}"
-         -> '__patt.Cg(%2,%1)'
-         ~}
-      }
-      rule rule_back_capt {
-         "=" (<name> -> quote) -> '__patt.Cb(%1)'
-      }
-      rule rule_sub_capt {
-         "{~" {~ s <rule_alt> s ~} "~}" -> '__patt.Cs(%1)'
-      }
-      rule rule_const_capt {
-         "{`" {~ s <expr_list> s ~} "`}" -> '__patt.Cc(%1)'
-      }
-      rule rule_hash_capt {
-         "{%" {~ s <rule_alt> s ~} "%}" -> '__patt.Ch(%1)'
-      }
-      rule rule_array_capt {
-         "{@" {~ s <rule_alt> s ~} "@}" -> '__patt.Ca(%1)'
-      }
-      rule rule_simple_capt {
-         "{" {~ s <rule_alt> s ~} "}" -> '__patt.C(%1)'
-      }
-   }
-   method compile(lupa, name) {
-      var ctx = Lupa.Context.new()
-      ctx.enter()
-      for k,v in pairs(_G) {
-         ctx.define(k)
-      }
-      var lua = Lupa.Grammar.match(lupa, 1, ctx)
-      ctx.leave()
-      return lua
+   method define(name, info) {
+      self.entries[name] = info
    }
 }
 
+class Context {
+   has scope = Scope()
+   method enter() {
+      self.scope = Scope(self.scope)
+   }
+   method leave() {
+      if 'outer' in self.scope {
+         var outer = self.scope.outer
+         self.scope = outer
+         return outer
+      }
+      error("no outer scope")
+   }
+   method define(name, info) {
+      self.scope.define(name, info || { })
+   }
+   method lookup(name) {
+      self.scope.lookup(name)
+   }
+}
+
+object Grammar {
+
+   function error_line(src, pos) {
+      var line = 1
+      var index, limit = 1, pos
+      while index <= limit {
+         var s, e = src.find("\n", index, true)
+         if s == nil || e > limit { break }
+         index = e + 1
+         line  = line + 1
+      }
+      return line
+   }
+   function error_near(src, pos) {
+      if (#src < pos + 20) {
+         return src.sub(pos)
+      }
+      else {
+         return src.sub(pos, pos + 20)~"..."
+      }
+   }
+   function syntax_error(m) {
+      return function(src, pos) {
+         var line, near = error_line(src, pos), error_near(src, pos)
+         error("SyntaxError: ${m||''} on line ${line} near '${near}'")
+      }
+   }
+
+   var id_counter = 9
+   function genid() {
+      id_counter += 1
+      return '_'~id_counter
+   }
+
+   function quote(c) { "%q".format(c) }
+
+   var nl      = / "\n" /
+   var comment = / {~
+      | ((!nl %s)* ("//" -> '--') (!nl .)* nl)
+      | ("/*" -> '--[=[') (']=]' -> ']\=]' | !"*/" .)* ("*/" -> ']=]')
+   ~} /
+   var idsafe  = / !(%alnum | "_") /
+   var s       = / (comment | %s)* /
+   var semicol = / (";" -> '')? /
+   var digits  = / (%digit {~ "_" -> '' ~}?)+ /
+   var keyword = / (
+      "var" | "function" | "class" | "with" | "like" | "in"
+      | "nil" | "true" | "false" | "typeof" | "return" | "as"
+      | "for" | "throw" | "method" | "has" | "from" | "break"
+      | "continue" | "import" | "try" | "catch"
+      | "finally" | "if" | "else" | "yield" | "rule"
+   ) idsafe /
+
+   var prec = {
+      ["^^"]  = 4,
+      ["*"]   = 5,
+      ["/"]   = 5,
+      ["%"]   = 5,
+      ["+"]   = 6,
+      ["-"]   = 6,
+      ["~"]   = 6,
+      [">>"]  = 7,
+      ["<<"]  = 7,
+      [">>>"] = 7,
+      ["&"]   = 8,
+      ["^"]   = 9,
+      ["|"]   = 10,
+      ["<="]  = 11,
+      [">="]  = 11,
+      ["<"]   = 11,
+      [">"]   = 11,
+      ["in"]  = 11,
+      ["as"]  = 11,
+      ["=="]  = 12,
+      ["!="]  = 12,
+      ["&&"]  = 13,
+      ["||"]  = 14,
+   }
+
+   var unrops = {
+      ["!"] = "not(%s)",
+      ["#"] = "#(%s)",
+      ["-"] = "-(%s)",
+      ["~"] = "__op_bnot(%s)",
+      ["@"] = "__op_spread(%s)",
+      ["throw"] = "__op_throw(%s)",
+      ["typeof"] = "__op_typeof(%s)",
+   }
+
+   var binops = {
+      ["^^"] = "(%s)^(%s)",
+      ["*"] = "(%s)*(%s)",
+      ["/"] = "(%s)/(%s)",
+      ["%"] = "(%s)%%(%s)",
+      ["+"] = "(%s)+(%s)",
+      ["-"] = "(%s)-(%s)",
+      ["~"] = "(%s)..(%s)",
+      [">>"] = "__op_rshift(%s,%s)",
+      ["<<"] = "__op_lshift(%s,%s)",
+      [">>>"] = "__op_arshift(%s,%s)",
+      ["<="] = "(%s)<=(%s)",
+      [">="] = "(%s)>=(%s)",
+      ["<"] = "(%s)<(%s)",
+      [">"] = "(%s)>(%s)",
+      ["in"] = "__op_in(%s,%s)",
+      ["as"] = "__op_as(%s,%s)",
+      ["=="] = "(%s)==(%s)",
+      ["!="] = "(%s)~=(%s)",
+      ["&"] = "__op_band(%s,%s)",
+      ["^"] = "__op_bxor(%s,%s)",
+      ["|"] = "__op_bor(%s,%s)",
+      ["&&"] = "(%s)and(%s)",
+      ["||"] = "(%s)or(%s)",
+   }
+
+   function fold_prefix(o,e) {
+      if o == '#' && e.match('^%s*%.%.%.%s*$') {
+         return 'select("#",...)'
+      }
+      return unrops[o].format(e)
+   }
+
+   ///*
+   function fold_infix(e) {
+      var s = [ e[1] ]
+      for i=2, #e {
+         s[#s + 1] = e[i]
+         while !binops[s[#s]] && s[#s - 1] {
+            var p = s[#s - 1]
+            var n = e[i + 1]
+            if n == nil || prec[p] <= prec[n] {
+               var b, o, a = s.pop(), s.pop(), s.pop()
+               if !binops[o] {
+                  error("bad expression: ${e}, stack: ${s}")
+               }
+               s.push(binops[o].format(a, b))
+            }
+            else {
+               break
+            }
+         }
+      }
+      return s[1]
+   }
+   //*/
+
+   /* enable for recursive descent expr parsing
+   function fold_infix(a,o,b) {
+      return binops[o].format(a,b)
+   }
+   //*/
+
+   function make_binop_bind(ctx, a1, a2, o, b) {
+      a1 = Grammar.expr.match(a1, nil, ctx)
+      return a2.format(binops[o].format(a1,b))
+   }
+   function make_bind_expr(l, s1, s2, r) {
+      if #l == 1 {
+         return l[1].format(s2 ~ r.concat(','))
+      }
+      var t = [ ]
+      for i=1, #l {
+         t.push(genid())
+         l[i] = l[i].format(t[i])
+      }
+      var b = [ ]
+      b.push('local %s%s=%s%s;'.format(t.concat(','), s1, s2, r.concat(',')))
+      b.push(l.concat(';'))
+      return b.concat()
+   } 
+   function make_params(p) {
+      var h = ''
+      if #p > 0 && p[#p].find('...', 1, true) {
+         var r = p[#p]
+         var n = r.match('%.%.%.([%w_0-9]+)')
+         p[#p] = "..."
+         if n {
+            h = "local %s=Array(...);".format(n)
+         }
+      }
+      return p.concat(","), h
+   }
+
+   function make_func(p,b) {
+      var p, h = make_params(p)
+      return "function(%s) %s%s end".format(p,h,b)
+   }
+
+   function make_short_func(p,b) {
+      if #p == 0 { p.push('_') }
+      var p, h = make_params(p)
+      return "function(%s) %s%s end".format(p,h,b)
+   }
+
+   function make_func_decl(c,n,p,b,s) {
+      var p, h = make_params(p)
+      if s == 'lexical' && #n == 1 {
+         c.define(n[1])
+         return "local function %s(%s) %s%s end".format(n[1],p,h,b)
+      }
+      else if #n == 1 {
+         return "function __env.%s(%s) %s%s end".format(n[1],p,h,b)
+      }
+      return "function %s(%s) %s%s end".format(n.concat('.'),p,h,b)
+   }
+
+   function make_meth_decl(ctx,n,p,b) {
+      p.unshift('self')
+      var p, h = make_params(p)
+      return "__method(self,%q,function(%s) %s%s end);".format(n,p,h,b)
+   }
+
+   function make_trait_decl(n,p,w,b) {
+      var p, h = make_params(p)
+      return
+      '__trait(__env,%q,{%s},function(__env,self,%s) %s%s end);'
+         .format(n,w,p,h,b)
+   }
+
+   function make_try_stmt(try_body, catch_args, catch_body) {
+      return (
+         'do local __return;'~
+         '__try(function() %s end,function(%s) %s end);' ~
+         'if __return then return __op_spread(__return) end'~
+         ' end'
+      ).format(try_body, catch_args || '', catch_body || '')
+   }
+   function make_import_stmt(c, n,f) {
+      var q = [ ]
+      for i=1, #n {
+         c.define(n[i], { base = '__env' })
+         q[i] = quote(n[i])
+      }
+      return "__import(__env,%q,{%s});".format(f, q.concat(','))
+   }
+   function make_export_stmt(n) {
+      var b = [ ]
+      for i=1, #n {
+         var q = quote(n[i])
+         b[i] = '__export[%s]=true;'.format(q)
+      }
+      return b.concat('')
+   }
+   function define(name, ctx, base, type) {
+      ctx.define(name, { base = base, type = type })
+      return name
+   }
+   function define_const(name, ctx, ...) {
+      ctx.define(name, ...)
+      return
+   }
+   function enter(ctx) {
+      ctx.enter()
+      return
+   }
+   function leave(ctx) {
+      ctx.leave()
+      return
+   }
+
+   function lookup(name, ctx) {
+      var info = ctx.lookup(name)
+      if info {
+         if info.base { return info.base~'.'~name }
+         return name
+      }
+      return '__env.'~name
+   }
+   function lookup_or_define(name, ctx) {
+      var info = ctx.lookup(name)
+      if !info {
+         define(name, ctx, '__env')
+         return '__env.'~name
+      }
+      if info.base {
+         return info.base~'.'~name
+      }
+      return name
+   }
+
+   method match(...) {
+      self.__init.match(...)
+   }
+
+   rule __init {
+      {~ <unit> ~} (!. | <{syntax_error("expected <EOF>")}>)
+   }
+   rule unit {
+      {:set_return: {`false`} :}
+      {:scope: {`'global'`} :}
+      { %s* '#!' (!nl .)* %s* }? s
+      {`'local __env=setmetatable({},{__index=_G});'`}
+      <enter>
+      ({`'_G'   `} <ctx> -> define_const)
+      ({`'__env'`} <ctx> -> define_const)
+      {~ (s <main_body_stmt>)* s ~}
+      <leave>
+      {`'return __env;'`}
+   }
+
+   rule ctx   { %1 }
+   rule enter { <ctx> -> enter }
+   rule leave { <ctx> -> leave }
+
+   rule main_body_stmt {
+      | <var_decl>
+      | <func_decl>
+      | <class_decl>
+      | <trait_decl>
+      | <object_decl>
+      | <import_stmt>
+      | <statement>
+   }
+   rule statement {
+      | <if_stmt>
+      | <try_stmt>
+      | <for_stmt>
+      | <for_in_stmt>
+      | <do_while_stmt>
+      | <while_stmt>
+      | <break_stmt>
+      | <continue_stmt>
+      | <yield_stmt>
+      | <block_stmt>
+      | <bind_stmt>
+      | <call_stmt>
+      | !(s ("}" | !.)) <{ syntax_error("invalid statement") }>
+   }
+   rule call_stmt {
+      {~ {~
+         <primary> s (
+         <invoke_expr> | <{syntax_error("expected <invoke_expr>") }>
+      ) ~} -> '%1;' semicol ~}
+   }
+   rule return_stmt {
+      {~ "return" -> '' idsafe s (
+      =set_return (<expr_list> | {`''`}) -> function(l,e) {
+         if l {
+            return "do __return = {%s}; return end".format(e)
+         }
+         return "do return %s end".format(e)
+      }) ~}
+   }
+   rule yield_stmt {
+      'yield' idsafe {~ s <expr_list> ~} -> '__op_yield(%1);' semicol
+   }
+   rule break_stmt {
+      {~ { "break" idsafe } -> "do __break = true; break end" ~}
+   }
+   rule continue_stmt {
+      {~ { "continue" idsafe } -> "do break end" ~}
+   }
+   rule if_stmt {
+      {~
+      "if" idsafe s <expr> {`" then "`} s <block> (
+         (s ({"else" idsafe s "if" idsafe} -> " elseif") s
+            <expr> {`" then "`} s <block>
+         )*
+         (s "else" idsafe s <block> {`" end "`} | {`" end "`})
+      )
+      ~}
+   }
+   rule try_stmt {
+      {~
+      "try" idsafe s
+      "{" {~ <lambda_body> s ~} ("}" | <{ syntax_error("expected '}'") }>)
+      (s "catch" idsafe s
+         "(" s {~ <enter> <param> ~} s ")" s
+         "{" {~ <lambda_body> s <leave> ~} "}"
+      )?
+      -> make_try_stmt
+      ~}
+   }
+   rule import_stmt {
+      {~ ("import" idsafe s
+         <ctx> {@ <name> (s "," s <name>)* @} s "from" s {~ <name> ("." <name>)* ~}
+      ) -> make_import_stmt ~}
+   }
+   rule export_stmt {
+      {~ "export" idsafe s {@ <name_list> @} -> make_export_stmt ~}
+   }
+   rule for_stmt {
+      {~ "for" idsafe s <param> s "=" s <expr> s "," s <expr>
+         (s "," s <expr>)? s <loop_body>
+      ~}
+   }
+   rule for_in_stmt {
+      {~ "for" idsafe s <param> (s "," s <param>)* s "in" idsafe s
+         (<expr> -> "__op_each(%1)") s <loop_body>
+      ~}
+   }
+   rule while_stmt {
+      {~ "while" idsafe s <expr> s <loop_body> ~}
+   }
+   rule do_while_stmt {
+      {~
+         "do" idsafe {~ s <loop_body> s ~}
+         "while" idsafe {~ s <expr> ~} -> 'repeat %1 until not(%2)'
+      ~}
+   }
+   rule loop_body {
+      ("{" -> " do local __break repeat ") <block_body> s
+      (
+         ("}" | <{ syntax_error("expected '}'") }>)
+         -> " until true if __break then break end end "
+      )
+   }
+
+   rule block {
+      {~ ("{" -> "") <block_body> s (("}" | <{ syntax_error("expected '}'") }>) -> "") ~}
+   }
+   rule block_stmt {
+      {~ ("{" -> "do ") <block_body> s (("}" | <{ syntax_error("expected '}'") }>) -> " end") ~}
+   }
+   rule block_body {
+      {:scope: {`'lexical'`} :}
+      <enter>
+      (s <block_body_stmt>)*
+      <leave>
+   }
+   rule block_body_stmt {
+      | <var_decl>
+      | <func_decl>
+      | <return_stmt>
+      | <statement>
+   }
+   rule lambda_body {
+      {:set_return: {`true`} :}
+      <block_body> s
+   }
+
+   rule var_decl {
+      {~ "var" idsafe -> "local" s
+         <var_list> (s "=" s <expr> (s "," s <expr>)*)?
+      ~} -> '%1;' semicol
+   }
+   rule var_list {
+      (<name> %1 -> define) (s "," s (<name> %1 -> define))*
+      //<name> (s "," s <name>)*
+   }
+   rule slot_decl {
+      {~ ("has" idsafe s <name> (s "=" s <expr> | {`""`}) semicol)
+         -> '__has(self,"%1",function(self) return %2 end);'
+      ~}
+   }
+   rule meth_decl {
+      {~ ("method" idsafe %1 s <name> s
+      <enter>
+      ({`'self'`} %1 -> define_const)
+      "(" s <param_list> s ")" s
+      "{" {~ <func_body> s <leave> ~} "}"
+      ) -> make_meth_decl ~}
+   }
+   rule func_decl {
+      {~ ("function" idsafe %1 s {@ <name> (s "." s <name>)* @} s
+      <enter>
+      "(" s <param_list> s ")" s
+      "{" {~ <func_body> s <leave> ~} "}"
+      =scope) -> make_func_decl ~}
+   }
+   rule func_body {
+      {:scope: {`'lexical'`} :}
+      (s <func_body_stmt>)*
+   }
+   rule func_body_stmt {
+      | <var_decl>
+      | <func_decl>
+      | <return_stmt>
+      | <block_stmt>
+      | (<expr> &(s "}") -> "do return %1 end")
+      | <statement>
+   }
+   rule func {
+      {~ ("function" idsafe s <enter>
+      "(" s <param_list> s (")" | <{ syntax_error("expected ')'") }>) s "{"
+         {~ <func_body> s <leave> ~}
+      ("}" | <{ syntax_error("expected '}'") }>))
+      -> make_func ~}
+   }
+   rule short_func {
+      ("->" -> '') <enter>
+      ((s "(" s <param_list> s ")" | {@ {`'_'`} %1 -> define_const @}) s
+      "{" {~ <func_body> s <leave> ~} "}"
+      -> make_short_func)
+   }
+   rule class_decl {
+      "class" idsafe s {~ <name> %1 {`'__env'`} -> define ~} s
+      (<class_from> | {`""`}) s
+      (<class_with> | {`""`}) s
+      "{" {~ <class_body> s ~} "}"
+      -> '__class(__env,"%1",{%2},{%3},function(__env,self,super) %4 end);'
+   }
+   rule trait_decl {
+      "trait" idsafe s {~ <name> %1 {`'__env'`} -> define ~} s
+      ("(" s <enter> <param_list> s ")" | {`'...'`} {`''`}) s
+      (<class_with> | {`""`}) s
+      "{" {~ <class_body> s <leave> ~} "}"
+      -> make_trait_decl
+   }
+   rule object_decl {
+      "object" idsafe s {~ <name> %1 {`'__env'`} -> define ~} s
+      (<class_from> | {`""`}) s
+      (<class_with> | {`""`}) s
+      "{" {~ <class_body> s ~} "}"
+      -> '__object(__env,"%1",{%2},{%3},function(__env,self,super) %4 end);'
+   }
+   rule class_body {
+      {:scope: {`'lexical'`} :}
+      <enter>
+      ({`'super'`} %1 -> define_const)
+      {~ (s <class_body_stmt>)* ~}
+      <leave>
+   }
+   rule class_from {
+      "from" idsafe s {~ <expr> (s "," s <expr>)* ~}
+   }
+   rule class_with {
+      "with" idsafe s {~ <expr> (s "," s <expr>)* ~}
+   }
+   rule class_body_stmt {
+      | <var_decl>
+      | <slot_decl>
+      | <func_decl>
+      | <rule_decl>
+      | <meth_decl>
+      | <statement>
+   }
+   rule rest {
+      {~ {'...'} <param>? ~}
+   }
+   rule stack {
+      {~
+      | ('...' s "[" s <expr> s ("]" | <{ syntax_error("expected ']'") }>)) -> 'select(%1,...)'
+      | {'...'}
+      ~}
+   }
+   rule param_list {
+      {@
+      | {~ <param> s ~} ("," {~ s <param> s ~})* ("," {~ s <rest> s ~})?
+      | <rest>
+      | {`nil`}
+      @}
+   }
+   rule ident {
+      {~ <name> %1 -> lookup ~}
+   }
+   rule param {
+      <name> %1 -> define
+   }
+   rule name {
+      { !keyword ((%alpha | "_") (%alnum | "_")*) }
+   }
+   rule name_list {
+      {~ <name> (s "," s <name>)* ~}
+   }
+   rule qname {
+      {~ <ident> (("::" -> ".") <name>)* ~}
+   }
+   rule hexadec {
+      "-"? "0x" %xdigit+
+   }
+   rule decimal {
+      "-"? digits ("." digits)? (("e"|"E") "-"? digits)?
+   }
+   rule number {
+      {~ <hexadec> | <decimal> ~} -> '(%1)'
+   }
+   rule string {
+      {~ (<qstring> | <astring>) ~} -> '(%1)'
+   }
+   rule special {
+      {~
+      | "\n"  -> "\\\n"
+      | "\\$" -> "$"
+      | "\\\\"
+      | "\\" .
+      ~}
+   }
+   rule qstring {
+      | '"""' -> '"' {~ (
+         | <string_expr>
+         | {~ (<special> | !'"""'('"' -> '\"') | !(<string_expr> | "\"\"\"") .)+ ~}
+      )* ~} ('"""' -> '"' | <{ syntax_error("expected '\"\"\"'") }>)
+      | '"' {~ (
+         | <string_expr>
+         | {~ (<special> | !(<string_expr> | "\"") .)+ ~}
+      )* ~} ('"' | <{ syntax_error("expected '\"'") }>)
+   }
+   rule astring {
+      {~
+         | ("'''" -> "") ('\\' | '\'' | (!"'''" .))* ("'''" -> "")
+         | ("'"   -> "") ('\\' | '\'' | (!"'"   .))* ("'"   -> "")
+      ~} -> quote
+   }
+   rule string_expr {
+      ('${' -> '"..') {~ s (<expr> -> 'tostring(%1)') s ~} ("}" -> '.."')
+   }
+   rule vnil {
+      {~ { "nil" } idsafe -> '(nil)' ~}
+   }
+   rule vtrue {
+      {~ { "true" } idsafe -> '(true)' ~}
+   }
+   rule vfalse {
+      {~ { "false" } idsafe -> '(false)' ~}
+   }
+   rule range {
+      {~ (
+         "[" s <expr> s ":" s <expr> ( s ":" s <expr> | {`"1"`} ) s "]"
+      ) -> "Range(%1,%2,%3)" ~}
+   }
+   rule array {
+      {~
+         ("[" -> "Array(") s
+         (<array_elements> | {`""`}) s
+         ("]" -> ")" | <{syntax_error("expected ']'")}>)
+      ~}
+   }
+   rule array_elements {
+      <expr> ( s "," s <expr> )* (s ("," -> ''))?
+   }
+   rule hash {
+      {~
+         ("{" -> "Hash({") s
+         (<hash_pairs> | {`""`}) s
+         ("}" -> "})" | <{syntax_error("expected '}'")}>)
+      ~}
+   }
+   rule hash_pairs {
+      <hash_pair> (s "," s <hash_pair>)* (s ",")?
+   }
+   rule hash_pair {
+      (<name> | "[" s <expr> s ("]" | <{syntax_error("expected ']'")}>)) s
+      "=" s <expr>
+   }
+   rule primary {
+      | <ident>
+      | <range>
+      | <number>
+      | <string>
+      | <vnil>
+      | <vtrue>
+      | <vfalse>
+      | <stack>
+      | <array>
+      | <hash>
+      | <func>
+      | <short_func>
+      | <pattern>
+      | "(" s <expr> s (")" | <{ syntax_error("expected ')'") }>)
+   }
+   rule paren_expr {
+      "(" s ( <expr_list> | {`""`} ) s (")" | <{ syntax_error("expected ')'") }>)
+   }
+   rule member_expr {
+      {~
+      | "." s <name> -> '.%1'
+      | "[" s <expr> s ("]" | <{ syntax_error("expected ']'") }>)
+      ~}
+   }
+   rule method_expr {
+      {~
+      | ("." -> ":" | "::" -> ".") s <name> s (<short_expr> | <paren_expr>)
+      ~}
+   }
+   rule access_expr {
+      {~
+      | <invoke_expr> s <access_expr>
+      | <member_expr>
+      ~}
+   }
+   rule invoke_expr {
+      {~
+      | (
+         | <method_expr>
+         | <member_expr>
+         | <short_expr>
+         | <paren_expr>
+      ) s <invoke_expr>
+      | <method_expr>
+      | <short_expr>
+      | <paren_expr>
+      ~}
+   }
+   rule short_expr {
+      ("->" -> "(")
+      <enter>
+      ((s "(" s <param_list> s ")" | {@ {`'_'`} %1 -> define_const @}) s
+      "{" {~ <func_body> s <leave> ~} "}"
+      -> make_short_func) {`')'`}
+   }
+   rule suffix_expr {
+      | <invoke_expr>
+      | <access_expr>
+   }
+   rule term {
+      {~ <primary> (s <suffix_expr>)* ~}
+   }
+   rule expr_list {
+      {~ <expr> (s "," s <expr>)* ~}
+   }
+   rule expr {
+      {~ (<infix_expr> | <prefix_expr>) (
+         s ("?" -> ' and ') s <expr> s (":" -> ' or ') s <expr>
+      )? ~}
+   }
+
+   ///*
+   var binop_patt = /(
+      "+" | "-" | "~" | "^^" | "*" | "/" | "%" | "^" | ">>>" | ">>" | "<<"
+      | "||" | "&&" | "|" | "&" | "==" | "!=" | ">="| "<=" | "<" | ">"
+      | ("as" | "in") idsafe
+   )/
+
+   rule infix_expr {
+      {@ {~ <prefix_expr> s ~} (
+         { binop_patt }
+         {~ s <prefix_expr> (&(s binop_patt) s)? ~}
+      )+ @} -> fold_infix
+   }
+   //*/
+
+   /*
+   // recursive descent is faster for stock Lua, but LJ2 is faster
+   // with shift-reduce, so right now I'm biased towards LJ2 ;)
+   rule infix_expr {
+      {~ <bool_or_expr> ~}
+   }
+   function make_infix_expr(oper, term) {
+      / (({~ term (&(s oper) s)? ~} {: {oper} {~ s term ~} :}*) ~> fold_infix) /
+   }
+   rule bool_or_expr {
+      <{ make_infix_expr(/"||"/, /<bool_and_expr>/ }>
+   }
+   rule bool_and_expr {
+      <{ make_infix_expr(/"&&"/, /<bit_or_expr>/ }>
+   }
+   rule bit_or_expr {
+      <{ make_infix_expr(/"|"/,  /<bit_xor_expr>/ }>
+   }
+   rule bit_xor_expr {
+      <{ make_infix_expr(/"^"/,  /<bit_and_expr>/ }>
+   }
+   rule bit_and_expr {
+      <{ make_infix_expr(/"&"/,  /<equals_expr>/ }>
+   }
+   rule equals_expr {
+      <{ make_infix_expr(/"=="|"!="/, /<cmp_expr>/ }>
+   }
+   rule cmp_expr {
+      <{ make_infix_expr(/"<="|">="|"<"|">"/, /<shift_expr>/ }>
+   }
+   rule shift_expr {
+      <{ make_infix_expr(/">>>"|">>"|"<<"|("as"|"in") idsafe/, /<add_expr>/ }>
+   }
+   rule add_expr {
+      <{ make_infix_expr(/"+"|"-"|"~"/, /<mul_expr>/ }>
+   }
+   rule mul_expr {
+      <{ make_infix_expr(/"*"|"/"|"%"/, /<pow_expr>/ }>
+   }
+   rule pow_expr {
+      <{ make_infix_expr(/"^^"/, /<prefix_expr>/ }>
+   }
+   //*/
+
+   rule prefix_expr {
+      {: {
+         | "@" | "!" | "#" | "-" | "~"
+         | ("throw" | "typeof") idsafe
+      } s <prefix_expr> :} -> fold_prefix
+      | {~ s <term> ~}
+   }
+
+   // binding expression rules
+   rule bind_stmt {
+      {~ (<bind_expr> | <bind_binop_expr>) -> '%1;' semicol ~}
+   }
+   rule bind_expr {
+      {~ {@ <bind_list> @} {s} "=" {s} (
+         | {@ <expr> (s "," s <expr>)* @}
+         | <{syntax_error("bad right hand <expr>")}>
+      ) -> make_bind_expr ~}
+   }
+   rule bind_binop {
+      { "+" | "-" | "*" | "/" | "%" | "||" | "|"| "&&"
+      | "&" | "^^" | "^" | "~" | ">>>" | ">>" | "<<"
+      } "="
+   }
+   rule bind_binop_expr {
+      {~ %1 { <bind_term> s } <bind_binop> s <expr> -> make_binop_bind ~}
+   }
+   rule bind_list {
+      <bind_term> (s "," s <bind_term>)*
+   }
+   rule bind_term {
+      {~
+      | <primary> (s <bind_member>)+
+      | {~ <name> %1 -> lookup_or_define ~} -> '%1=%%s'
+      ~}
+   }
+   rule bind_member {
+      {~
+      | <suffix_expr> s <bind_member>
+      | <bind_suffix>
+      ~}
+   }
+   rule bind_suffix {
+      {~
+      | "." {~ s <name> s ~} -> '.%1=%%s'
+      | "[" {~ s <expr> s ~} "]" {s} -> '[%1]%2=%%s'
+      ~}
+   }
+
+   // PEG grammar and pattern rules
+   rule pattern {
+      "/" {~ s <rule_alt> s ~} "/" -> '__patt.P(%1)'
+   }
+   rule rule_decl {
+      "rule" idsafe s <name> s "{" {~ s <rule_body> s ~} "}"
+      -> '__rule(self,"%1",%2);'
+   }
+   rule rule_body {
+      <rule_alt> | {`'__patt.P(nil)'`}
+   }
+   rule rule_alt {
+      {~ ("|" -> '' s)? <rule_seq> (s ("|" -> "+") s <rule_seq>)* ~}
+   }
+   rule rule_seq {
+      {@ {~ s <rule_suffix> ~}+ @} -> function(a) { a.concat('*') }
+   }
+   rule rule_rep {
+      {~ "+" -> "^1" | "*" -> "^0" | "?" -> "^-1" | "^"s("+"|"-")?s[0-9]+ ~}
+   }
+   rule rule_prefix {
+      {~ (("&" -> "#") | ("!" -> "-")) {~ s <rule_prefix> ~} -> '%1%2'
+      | <rule_primary>
+      ~}
+   }
+
+   var prod_oper = / "->" | "~>" | "=>" /
+
+   rule rule_suffix {
+      ({~ <rule_prefix> (&(s prod_oper) s)? ~}
+      {: {prod_oper} {~ s <rule_prod> ~} :}*) ~> function(a,o,b,t) {
+         if o == "=>" {
+            return '__patt.Cmt(%s,%s)'.format(a,b)
+         }
+         else if o == "~>" {
+            return '__patt.Cf(%s,%s)'.format(a,b)
+         }
+         else {
+            if t == 'array' {
+               return '__patt.Ca(%s,%s)'.format(a,b)
+            }
+            else if t == 'hash' {
+               return '__patt.Ch(%s,%s)'.format(a,b)
+            }
+            else {
+               return '(%s)/(%s)'.format(a,b)
+            }
+         }
+      }
+   }
+   rule rule_prod {
+      {~
+      | <array> {`'array'`}
+      | <hash>  {`'hash'`}
+      | <term>
+      ~}
+   }
+   rule rule_primary {
+      ( <rule_group>
+      | <rule_term>
+      | <rule_class>
+      | <rule_predef>
+      | <rule_back_capt>
+      | <rule_group_capt>
+      | <rule_sub_capt>
+      | <rule_const_capt>
+      | <rule_hash_capt>
+      | <rule_array_capt>
+      | <rule_simple_capt>
+      | <rule_any>
+      | <rule_ref>
+      ) (s <rule_rep>)*
+   }
+   rule rule_group {
+      {~ "(" s (<rule_alt> | <{ syntax_error("expected <rule_alt>") }>) s
+         (")" | <{ syntax_error("expected ')'") }>)
+      ~}
+   }
+   rule rule_term {
+      {~ <string> -> '__patt.P(%1)' ~}
+   }
+   rule rule_class {
+      {~
+         ("[" -> '(') ("^" -> '__patt.P(1)-')?
+         ({@ (!"]" <rule_item>)+ @} -> function(a) { "("~a.concat("+")~")" })
+         ("]" -> ')')
+      ~}
+   }
+   rule rule_item {
+      {~ <rule_predef> | <rule_range>
+      | {.} -> function(c) { '__patt.P(%q)'.format(c) }
+      ~}
+   }
+   rule rule_predef {
+      {~ ('%' -> '') (
+         | { [0-9]+ } -> '__patt.Carg(%1)'
+         | <name> -> '__patt.Def("%1")'
+      ) ~}
+   }
+   rule rule_range {
+      {~ . ("-"->'') !"]" . ~} -> function(r) { '__patt.R(%q)'.format(r) }
+   }
+   rule rule_any {
+      {~ "." -> '__patt.P(1)' ~}
+   }
+   rule rule_ref {
+      {~
+      ("<" -> '') s
+         ( <name> -> '__patt.V("%1")'
+         | {~ ("{" -> '__patt.P(') s <expr> s ("}" -> ")") ~}
+         ) s
+      (">" -> '')
+      | <qname>
+      ~}
+   }
+   rule rule_group_capt {
+      {~ "{:" ((<name> -> quote ":") | {`'nil'`}) {~ s <rule_alt> ~} s ":}"
+      -> '__patt.Cg(%2,%1)'
+      ~}
+   }
+   rule rule_back_capt {
+      "=" (<name> -> quote) -> '__patt.Cb(%1)'
+   }
+   rule rule_sub_capt {
+      "{~" {~ s <rule_alt> s ~} "~}" -> '__patt.Cs(%1)'
+   }
+   rule rule_const_capt {
+      "{`" {~ s <expr_list> s ~} "`}" -> '__patt.Cc(%1)'
+   }
+   rule rule_hash_capt {
+      "{%" {~ s <rule_alt> s ~} "%}" -> '__patt.Ch(%1)'
+   }
+   rule rule_array_capt {
+      "{@" {~ s <rule_alt> s ~} "@}" -> '__patt.Ca(%1)'
+   }
+   rule rule_simple_capt {
+      "{" {~ s <rule_alt> s ~} "}" -> '__patt.C(%1)'
+   }
+}
+
+function compile(lupa, name) {
+   var ctx = Context()
+   ctx.enter()
+   for k,v in pairs(_G) {
+      ctx.define(k)
+   }
+   var lua = Grammar.match(lupa, 1, ctx)
+   ctx.leave()
+   return lua
+}
+
 _G.eval = function(src) {
-   var eval = assert(loadstring(Lupa.compile(src),'=eval:'~src))
+   var eval = assert(loadstring(compile(src),'=eval:'~src))
    return eval()
 }
 
@@ -1778,7 +1704,7 @@ var run = function(...) {
    var src = sfh.read('*a')
    sfh.close()
 
-   var lua = Lupa.compile(src)
+   var lua = compile(src)
    if opt['l'] {
       io.stdout.write(lua)
       os::exit(0)
@@ -1840,21 +1766,18 @@ arg = arg ? [ unpack(arg) ] : [ ]
    }
 }
 
-Lupa.PATH = "./?.lu;./lib/?.lu;./src/?.lu"
+_G.LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu"
 {
-   var P = _G['package']
-   P.loaders[#P.loaders + 1] = function(modname) {
+   package.loaders[#package.loaders + 1] = function(modname) {
       var filename = modname.gsub("%.", "/")
-      for path in Lupa.PATH.gmatch("([^;]+)") {
+      for path in LUPA_PATH.gmatch("([^;]+)") {
          if path != "" {
             var filepath = path.gsub("?", filename)
             var file = io::open(filepath, "r")
             if file {
                var src = file.read("*a")
-               var lua = Lupa.compile(src)
-               var mod = assert(loadstring(lua, '='~filepath))()
-               P.loaded[modname] = mod
-               return mod
+               var lua = compile(src)
+               return assert(loadstring(lua, '='~filepath))
             }
          }
       }

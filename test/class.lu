@@ -3,14 +3,8 @@ class Point {
     has x = 0
     has y = 0
 
-    class Inner {
-        method greet(whom) {
-            print("Hello ${whom}!")
-        }
-    }
     method __init() {
-        var i = Inner.new()
-        i.greet("World")
+        print("class => ", Point)
     }
     method move(x, y) {
         self.x = x
@@ -27,8 +21,7 @@ class Point3D from Point {
     }
 }
 
-var p = Point3D.new()
-assert(Point.Inner)
+var p = Point3D()
 for i=1, 1_000 {
    p.move(i+1, i+2, i+3)
 }
