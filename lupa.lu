@@ -631,12 +631,11 @@ debug::setmetatable(true, Boolean)
 _G.Function = setmetatable(newtable(), Type)
 Function.__name = 'Function'
 Function.__index = Function
-Function.__apply = function(self, code, fenv) {
-   code = compile(code)
+Function.__apply = function(self, code, ...) {
+   var args = [ ... ]
+   code = compile(code, '=eval', args)
+   print(code)
    var func = assert(loadstring(code, '=eval'))
-   if fenv {
-      setfenv(func, fenv)
-   }
    return func
 }
 debug::setmetatable(function() { }, Function)
@@ -650,7 +649,7 @@ for k,v in pairs(coroutine) {
 debug::setmetatable(coroutine::create(function() { }), Coroutine)
 
 _G.Pattern = setmetatable(getmetatable(__patt::P(1)), Type)
-Pattern.__call = function(patt, subj, ...) {
+Pattern.__call = function(patt, self, subj, ...) {
    return patt.match(subj, ...)
 }
 Pattern.__match = function(patt, subj) {
@@ -1651,14 +1650,22 @@ object Grammar {
    }
 }
 
-function compile(lupa, name) {
+_G.compile = function(lupa, name, args) {
    var ctx = Context()
    ctx.enter()
    for k,v in pairs(_G) {
       ctx.define(k)
    }
+   if args {
+      for i=1, #args {
+         ctx.define(args[i], { })
+      }
+   }
    var lua = Grammar.match(lupa, 1, ctx)
    ctx.leave()
+   if args {
+      return "local ${args.concat(',')}=...;${lua}"
+   }
    return lua
 }
 

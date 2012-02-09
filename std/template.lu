@@ -1,0 +1,105 @@
+class Context {
+    has out = [ ]
+    method put(str) {
+        self.out.push(str)
+    }
+}
+
+object Markup {
+    rule match {
+        {@ <const> (<code> <const>)* @} -> function(a) { a.concat() }
+    }
+    rule code {
+        <intrp> | <logic>
+    }
+    rule intrp {
+        "<%=" %s* {~ { (!(%s* "%>") .)+ } -> function(s) {
+            return "__ctx.put(%s);".format(s)
+        } ~} %s* "%>"
+    }
+    rule logic {
+        "<%" %s* { (!"%>" .)+ } "%>" %s*
+    }
+    rule const {
+        {~ { (!<code> .)* } -> function(s) {
+            if s != "" {
+                return "__ctx.put(%q);".format(s)
+            }
+        } ~}
+    }
+}
+
+class Parser {
+    method parse(source) {
+        return Markup.match(source)
+    }
+}
+
+object Compiler {
+
+    var CACHE = { }
+
+    has _parser = Parser()
+
+    method compile(source) {
+        if CACHE[source] {
+            return CACHE[source]
+        }
+        var code = self._parser.parse(source)
+        var luac = Function(code, '__ctx')
+        CACHE[source] = luac
+        return luac
+    }
+
+    method clear_cache() {
+        CACHE = { }
+    }
+}
+
+class Template {
+    has _base = "."
+
+    method __init(base) {
+        self._base = base
+    }
+    method process_file(path, vars) {
+        var path = self._base ~ '/' ~ path
+        var file = assert(io::open(path, "r"))
+        var data = file.read("*a")
+        file.close()
+        return self.process(data, vars, path)
+    }
+    method process(src, vars, name) {
+        var ctx = Context()
+        if vars {
+            for k,v in vars {
+                env[k] = v
+            }
+        }
+        var code = Compiler.compile(src)
+        code(ctx)
+
+        return ctx.out.concat()
+    }
+}
+
+///*
+var s = """
+<html>
+<body>
+  <ul>
+<% var a = ['a','b','c','d','e'] %>
+<% for i, v in a { %>
+    <li> <%= i %> => <%= v %> </li>
+<% } %>
+  </ul>
+</body>
+</html>
+"""
+var t = Template()
+print(t.process(s))
+for i=1, 100000 {
+    t.process(s)
+}
+//*/
+
