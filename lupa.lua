@@ -633,8 +633,7 @@ Function.__name = ("Function");
 Function.__index = Function;
 Function.__apply = function(self, code,...) 
    local args = Array( ... );
-   code= __env.compile(code, ("=eval"), args);
-   print(code);
+   code= compile(code, ("=eval"), args);
    local func = assert(loadstring(code, ("=eval")));
     do return func end
  end;
@@ -1540,7 +1539,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
 
    __rule(self,"rule_suffix",
       __patt.Cf((__patt.Cs( __patt.V("rule_prefix")* (#(s* prod_oper)* s)^-1 )*
-      __patt.Cg( __patt.C(prod_oper)* __patt.Cs( s* __patt.V("rule_prod") ),nil)^0) , function(a,o,b,t) 
+      __patt.Cg( __patt.C(prod_oper)* __patt.Cs( s* __patt.V("term") ),nil)^0) , function(a,o,b) 
          if (o )==( ("=>")) then  
              do return ("__patt.Cmt(%s,%s)"):format(a,b) end
          
@@ -1548,25 +1547,11 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
              do return ("__patt.Cf(%s,%s)"):format(a,b) end
          
          else 
-            if (t )==( ("array")) then  
-                do return ("__patt.Ca(%s,%s)"):format(a,b) end
-            
-             elseif (t )==( ("hash")) then  
-                do return ("__patt.Ch(%s,%s)"):format(a,b) end
-            
-            else 
-                do return ("(%s)/(%s)"):format(a,b) end
-             end 
+             do return ("(%s)/(%s)"):format(a,b) end
           end 
        end)
    );
-   __rule(self,"rule_prod",
-      __patt.Cs(
-       __patt.V("array")* __patt.Cc(("array"))
-      + __patt.V("hash")*  __patt.Cc(("hash"))
-      + __patt.V("term")
-      )
-   );
+
    __rule(self,"rule_primary",
       ( __patt.V("rule_group")
       + __patt.V("rule_term")
@@ -1670,7 +1655,7 @@ _G.compile = function(lupa, name, args)
  end;
 
 _G.eval = function(src) 
-   local eval = assert(loadstring(__env.compile(src),(("=eval:"))..(src)));
+   local eval = assert(loadstring(compile(src),(("=eval:"))..(src)));
     do return eval() end
  end;
 
@@ -1711,7 +1696,7 @@ local run = function(...)
    local src = sfh:read(("*a"));
    sfh:close();
 
-   local lua = __env.compile(src);
+   local lua = compile(src);
    if opt[("l")] then  
       io.stdout:write(lua);
       os.exit((0));
@@ -1783,7 +1768,7 @@ do
             local file = io.open(filepath, ("r"));
             if file then  
                local src = file:read(("*a"));
-               local lua = __env.compile(src);
+               local lua = compile(src);
                 do return assert(loadstring(lua, (("="))..(filepath))) end
              end 
           end 

@@ -634,7 +634,6 @@ Function.__index = Function
 Function.__apply = function(self, code, ...) {
    var args = [ ... ]
    code = compile(code, '=eval', args)
-   print(code)
    var func = assert(loadstring(code, '=eval'))
    return func
 }
@@ -1540,7 +1539,7 @@ object Grammar {
 
    rule rule_suffix {
       ({~ <rule_prefix> (&(s prod_oper) s)? ~}
-      {: {prod_oper} s <rule_prod> :}*) ~> function(a,o,b,t) {
+      {: {prod_oper} {~ s <term> ~} :}*) ~> function(a,o,b) {
          if o == "=>" {
             return '__patt.Cmt(%s,%s)'.format(a,b)
          }
@@ -1548,23 +1547,11 @@ object Grammar {
             return '__patt.Cf(%s,%s)'.format(a,b)
          }
          else {
-            if t == 'array' {
-               return '__patt.Ca(%s,%s)'.format(a,b)
-            }
-            else if t == 'hash' {
-               return '__patt.Ch(%s,%s)'.format(a,b)
-            }
-            else {
-               return '(%s)/(%s)'.format(a,b)
-            }
+            return '(%s)/(%s)'.format(a,b)
          }
       }
    }
-   rule rule_prod {
-      | <array> {`'array'`}
-      | <hash>  {`'hash'`}
-      | <term>  {`'term'`}
-   }
+
    rule rule_primary {
       ( <rule_group>
       | <rule_term>

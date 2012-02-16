@@ -7,7 +7,7 @@ class Context {
 
 object Markup {
    rule match {
-      ((<const> (<code> <const>)*) -> [ ]) -> function(a) { a.concat() }
+      {@ (<const> (<code> <const>)*) @} -> function(a) { a.concat() }
    }
    rule code {
       <intrp> | <logic>
