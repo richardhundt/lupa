@@ -32,7 +32,7 @@ class Point {
       self.x = x
       self.y = y
       print(r)
-      return 1
+      1
    }
 }
 

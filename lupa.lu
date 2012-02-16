@@ -495,6 +495,12 @@ Array.map = function(self, block) {
    }
    return out
 }
+Array.inject = function(self, block) {
+   for i=1, #self {
+      self[i] = block(self[i])
+   }
+   return self
+}
 Array.grep = function(self, block) {
    var out = Array()
    for i=1, #self {
@@ -992,7 +998,7 @@ object Grammar {
                var info = ctx.lookup(name) 
                if info.type {
                   var type = lookup(info.type, ctx)
-                  head.push(('local %s=_G.Array(...):map(%s)').format(name,type))
+                  head.push(('local %s=_G.Array(...):inject(%s)').format(name,type))
                }
                else {
                   head.push("local %s=_G.Array(...)".format(name))
@@ -1004,10 +1010,11 @@ object Grammar {
    }
 
    function make_return_stmt(ctx, is_lex, expr_list, ret_guard) {
+      expr_list = expr_list || [ ]
       if ret_guard {
          for i=1, #ret_guard {
             var type = lookup(ret_guard[i], ctx)
-            var expr = expr_list[i]
+            var expr = expr_list[i] || 'nil'
             expr_list[i] = (type~"(%s)".format(expr))
          }
       }
@@ -1138,7 +1145,7 @@ object Grammar {
    rule return_stmt {
       {~ "return" -> '' idsafe s (
          <ctx>
-         =set_return ({@ <expr> (s "," s <expr>)* @} | {`''`})
+         =set_return {@ (<expr> (s "," s <expr>)*)? @}
          =ret_guard
          -> make_return_stmt)
       ~}
@@ -1277,7 +1284,9 @@ object Grammar {
       | <func_decl>
       | <return_stmt>
       | <block_stmt>
-      | (<expr> &(s "}") -> "do return %1 end") // TODO: ret_guard
+      | ((&(<expr> s "}") <ctx> // last expr implies return
+        =set_return {@ <expr> @}
+        =ret_guard) -> make_return_stmt)
       | <statement>
    }
    rule func {
