@@ -1540,7 +1540,7 @@ object Grammar {
 
    rule rule_suffix {
       ({~ <rule_prefix> (&(s prod_oper) s)? ~}
-      {: {prod_oper} {~ s <rule_prod> ~} :}*) ~> function(a,o,b,t) {
+      {: {prod_oper} s <rule_prod> :}*) ~> function(a,o,b,t) {
          if o == "=>" {
             return '__patt.Cmt(%s,%s)'.format(a,b)
          }
@@ -1561,11 +1561,9 @@ object Grammar {
       }
    }
    rule rule_prod {
-      {~
       | <array> {`'array'`}
       | <hash>  {`'hash'`}
-      | <term>
-      ~}
+      | <term>  {`'term'`}
    }
    rule rule_primary {
       ( <rule_group>

@@ -6,27 +6,27 @@ class Context {
 }
 
 object Markup {
-    rule match {
-        {@ <const> (<code> <const>)* @} -> function(a) { a.concat() }
-    }
-    rule code {
-        <intrp> | <logic>
-    }
-    rule intrp {
-        "<%=" %s* {~ { (!(%s* "%>") .)+ } -> function(s) {
-            return "__ctx.put(%s);".format(s)
-        } ~} %s* "%>"
-    }
-    rule logic {
-        "<%" %s* { (!"%>" .)+ } "%>" %s*
-    }
-    rule const {
-        {~ { (!<code> .)* } -> function(s) {
-            if s != "" {
-                return "__ctx.put(%q);".format(s)
-            }
-        } ~}
-    }
+   rule match {
+      ((<const> (<code> <const>)*) -> [ ]) -> function(a) { a.concat() }
+   }
+   rule code {
+      <intrp> | <logic>
+   }
+   rule intrp {
+      "<%=" %s* {~ { (!(%s* "%>") .)+ } -> function(s) {
+         return "__ctx.put(%s);".format(s)
+      } ~} %s* "%>"
+   }
+   rule logic {
+      "<%" %s* { (!"%>" .)+ } "%>" %s*
+   }
+   rule const {
+      {~ { (!<code> .)* } -> function(s) {
+         if s != "" {
+            return "__ctx.put(%q);".format(s)
+         }
+      } ~}
+   }
 }
 
 class Parser {
