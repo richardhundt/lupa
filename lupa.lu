@@ -989,11 +989,33 @@ object Grammar {
             var name = last.match('%.%.%.([%w_]+)')
             list[#list] = "..."
             if name {
-               head.push("local %s=Array(...)".format(name))
+               var info = ctx.lookup(name) 
+               if info.type {
+                  var type = lookup(info.type, ctx)
+                  head.push(('local %s=_G.Array(...):map(%s)').format(name,type))
+               }
+               else {
+                  head.push("local %s=_G.Array(...)".format(name))
+               }
             }
          }
       }
       return list.concat(","), head.concat(';')
+   }
+
+   function make_return_stmt(ctx, is_lex, expr_list, ret_guard) {
+      if ret_guard {
+         for i=1, #ret_guard {
+            var type = lookup(ret_guard[i], ctx)
+            var expr = expr_list[i]
+            expr_list[i] = (type~"(%s)".format(expr))
+         }
+      }
+      var e = expr_list.concat(',')
+      if is_lex {
+         return "do __return = {%s}; return end".format(e)
+      }
+      return "do return %s end".format(e)
    }
 
    function make_func(c,p,b) {
@@ -1026,8 +1048,8 @@ object Grammar {
       return "__method(self,%q,function(%s) %s%s end);".format(n,p,h,b)
    }
 
-   function make_trait_decl(n,p,w,b) {
-      var p, h = make_params(p)
+   function make_trait_decl(c,n,p,w,b) {
+      var p, h = make_params(c, p)
       return
       '__trait(__env,%q,{%s},function(__env,self,%s) %s%s end);'
          .format(n,w,p,h,b)
@@ -1067,6 +1089,7 @@ object Grammar {
    }
    rule unit {
       {:set_return: {`false`} :}
+      {:ret_guard: {`nil`} :}
       {:scope: {`'global'`} :}
       { %s* '#!' (!nl .)* %s* }? s
       {`'local __env=setmetatable({},{__index=_G});'`}
@@ -1114,12 +1137,11 @@ object Grammar {
    }
    rule return_stmt {
       {~ "return" -> '' idsafe s (
-      =set_return (<expr_list> | {`''`}) -> function(l,e) {
-         if l {
-            return "do __return = {%s}; return end".format(e)
-         }
-         return "do return %s end".format(e)
-      }) ~}
+         <ctx>
+         =set_return ({@ <expr> (s "," s <expr>)* @} | {`''`})
+         =ret_guard
+         -> make_return_stmt)
+      ~}
    }
    rule yield_stmt {
       'yield' idsafe {~ s <expr_list> ~} -> '__op_yield(%1);' semicol
@@ -1221,6 +1243,9 @@ object Grammar {
    rule guard_expr {
       ":" s <name>
    }
+   rule guard_list {
+      ":" s {:ret_guard: {@ <name> (s "," s <name>)* @} :}
+   }
    rule slot_decl {
       {~ ("has" idsafe s <ctx> <name> (s <guard_expr> | {`'nil'`}) (s "=" s <expr> | {`""`}) semicol)
          -> make_slot_decl
@@ -1231,6 +1256,7 @@ object Grammar {
       <enter>
       ({`'self'`} <ctx> -> define_const)
       "(" s <param_list> s ")" s
+      <guard_list>? s
       "{" {~ <func_body> s ~} "}"
       ) -> make_meth_decl ~} <leave>
    }
@@ -1238,6 +1264,7 @@ object Grammar {
       {~ ("function" idsafe <ctx> s {@ <name> (s "." s <name>)* @} s
       <enter>
       "(" s <param_list> s ")" s
+      <guard_list>? s
       "{" {~ <func_body> s ~} "}"
       =scope) -> make_func_decl ~} <leave>
    }
@@ -1250,21 +1277,22 @@ object Grammar {
       | <func_decl>
       | <return_stmt>
       | <block_stmt>
-      | (<expr> &(s "}") -> "do return %1 end")
+      | (<expr> &(s "}") -> "do return %1 end") // TODO: ret_guard
       | <statement>
    }
    rule func {
       {~ ("function" idsafe s <enter>
-      "(" s <ctx> <param_list> s (")" | <{ syntax_error("expected ')'") }>) s "{"
+      "(" s <ctx> <param_list> s (")" | <{ syntax_error("expected ')'") }>) s
+      <guard_list>? s "{"
          {~ <func_body> s ~}
       ("}" | <{ syntax_error("expected '}'") }>))
       -> make_func ~} <leave>
    }
    rule short_func {
       ("->" -> '') <enter>
-      ((s "(" s <param_list> s ")" | {@ {`'_'`} <ctx> -> define_const @}) s
-      "{" {~ <func_body> s <leave> ~} "}"
-      -> make_short_func)
+      ((s "(" s <ctx> <param_list> s ")" | <ctx> {@ {`'_'`} <ctx> -> define_const @}) s
+      "{" {~ <func_body> s ~} "}"
+      -> make_short_func) <leave>
    }
    rule class_decl {
       "class" idsafe s {~ <name> <ctx> {`'__env'`} -> define ~} s
@@ -1274,11 +1302,11 @@ object Grammar {
       -> '__class(__env,"%1",{%2},{%3},function(__env,self,super) %4 end);'
    }
    rule trait_decl {
-      "trait" idsafe s {~ <name> <ctx> {`'__env'`} -> define ~} s
+      "trait" idsafe s <ctx> {~ <name> <ctx> {`'__env'`} -> define ~} s
       ("(" s <enter> <param_list> s ")" | {`'...'`} {`''`}) s
       (<class_with> | {`""`}) s
-      "{" {~ <class_body> s <leave> ~} "}"
-      -> make_trait_decl
+      "{" {~ <class_body> s ~} "}"
+      -> make_trait_decl <leave>
    }
    rule object_decl {
       "object" idsafe s {~ <name> <ctx> {`'__env'`} -> define ~} s
@@ -1291,6 +1319,7 @@ object Grammar {
       {:scope: {`'lexical'`} :}
       <enter>
       ({`'super'`} <ctx> -> define_const)
+      ({`'self'`}  <ctx> -> define_const)
       {~ (s <class_body_stmt>)* ~}
       <leave>
    }
@@ -1394,7 +1423,7 @@ object Grammar {
    }
    rule array {
       {~
-         ("[" -> "Array(") s
+         ("[" -> "_G.Array(") s
          (<array_elements> | {`""`}) s
          ("]" -> ")" | <{syntax_error("expected ']'")}>)
       ~}
@@ -1468,9 +1497,9 @@ object Grammar {
    rule short_expr {
       ("->" -> "(")
       <enter>
-      ((s "(" s <param_list> s ")" | {@ {`'_'`} <ctx> -> define_const @}) s
-      "{" {~ <func_body> s <leave> ~} "}"
-      -> make_short_func) {`')'`}
+      ((s "(" s <ctx> <param_list> s ")" | <ctx> {@ {`'_'`} <ctx> -> define_const @}) s
+      "{" {~ <func_body> s ~} "}"
+      -> make_short_func) {`')'`} <leave>
    }
    rule suffix_expr {
       | <invoke_expr>

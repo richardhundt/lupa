@@ -24,7 +24,7 @@ class Dog from Mammal with Guide("guiding"), Pet(42) {
     }
 }
 
-var d = Dog.new()
+var d = Dog()
 d.walk()
 d.greet()
 d.wooz()

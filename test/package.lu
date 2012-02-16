@@ -6,5 +6,5 @@ p.move(1,2,3)
 var q = Point()
 print(q)
 
-5.times ->{ print(_) }
+5.times -> (i : Number) { print(i) }
 

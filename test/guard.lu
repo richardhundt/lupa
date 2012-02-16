@@ -4,27 +4,44 @@ function Int(n : Number) {
    }
    return math::floor(n)
 }
+function Str(s : String) {
+   return s
+}
 
 var i1 : Int = "69"
 print(i1)
 i1 += 42
 print(i1)
 
-var f = function(a : Int) {
+var f = function(a : Int) : Str, Str {
    print("got:", a)
+   return "forty", "two"
 }
 
 f(101)
+
+function g(a : Int) : Int {
+   return a + 1
+}
 
 class Point {
    has x : Int = 0
    has y = 0
 
-   method move(x, y) {
+   method move(x, y : Int, ...r : Int) : Int {
       self.x = x
       self.y = y
+      print(r)
+      return 1
    }
 }
 
 var p = Point()
-p.move(1, 2)
+p.move(1, 2, 3, "four")
+
+function map(fun) {
+   return fun()
+}
+
+map -> { print("Hello") }
+
