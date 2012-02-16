@@ -76,7 +76,7 @@ _G.__class = function(into, name, _from, _with, body)
 
    setmetatable(_class, Class);
 
-   local _24=setmetatable(Hash({ }), Hash({ __index = into }));local _env=_24;
+   local _24=setmetatable(_G.Hash({ }), _G.Hash({ __index = into }));local _env=_24;
    if _with then  
       for i=(1), #(_with)  do local __break repeat 
          _with[i]:compose(_env, _class);
@@ -669,7 +669,7 @@ Pattern.__match = function(patt, subj)
  end;
 
 __class(__env,"Scope",{},{},function(__env,self,super) 
-   __has(self,"entries",nil,function(self) return (Hash({ })) end);
+   __has(self,"entries",nil,function(self) return (_G.Hash({ })) end);
    __has(self,"outer",nil,function(self) return (_G) end);
    __method(self,"__init",function(self,outer) 
       self.outer = outer;
@@ -683,7 +683,7 @@ __class(__env,"Scope",{},{},function(__env,self,super)
        end 
     end);
    __method(self,"define",function(self,name, info) 
-      self.entries[name] = (info )or( Hash({ }));
+      self.entries[name] = (info )or( _G.Hash({ }));
     end);
  end);
 
@@ -743,7 +743,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
     end
 
    local function define(name, ctx, base, type) 
-      ctx:define(name, Hash({ base = base, type = type }));
+      ctx:define(name, _G.Hash({ base = base, type = type }));
        do return name end
     end
    local function define_const(name, ctx,...) 
@@ -798,7 +798,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
       + __patt.P(("finally")) + __patt.P(("if")) + __patt.P(("else")) + __patt.P(("yield")) + __patt.P(("rule"))
    )* idsafe );local keyword=_104;
 
-   local _105=Hash({
+   local _105=_G.Hash({
       [("^^")]  = (4),
       [("*")]   = (5),
       [("/")]   = (5),
@@ -824,7 +824,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
       [("||")]  = (14),
    });local prec=_105;
 
-   local _106=Hash({
+   local _106=_G.Hash({
       [("!")] = ("not(%s)"),
       [("#")] = ("#(%s)"),
       [("-")] = ("-(%s)"),
@@ -834,7 +834,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
       [("typeof")] = ("__op_typeof(%s)"),
    });local unrops=_106;
 
-   local _107=Hash({
+   local _107=_G.Hash({
       [("^^")] = ("(%s)^(%s)"),
       [("*")] = ("(%s)*(%s)"),
       [("/")] = ("(%s)/(%s)"),
@@ -1073,7 +1073,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
    local function make_import_stmt(c, n,f) 
       local _150=_G.Array( );local q=_150;
       for i=(1), #(n)  do local __break repeat 
-         c:define(n[i], Hash({ base = ("__env") }));
+         c:define(n[i], _G.Hash({ base = ("__env") }));
          q[i] = quote(n[i]);
        until true if __break then break end end 
        do return ("__import(__env,%q,{%s});"):format(f, q:concat((","))) end
@@ -1428,7 +1428,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
    __rule(self,"range",
       __patt.Cs( ((
          __patt.P(("["))* s* __patt.V("expr")* s* __patt.P((":"))* s* __patt.V("expr")* ( s* __patt.P((":"))* s* __patt.V("expr") + __patt.Cc(("1")) )* s* __patt.P(("]"))
-      ) )/( ("Range(%1,%2,%3)")) )
+      ) )/( ("_G.Range(%1,%2,%3)")) )
    );
    __rule(self,"array",
       __patt.Cs(
@@ -1442,7 +1442,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
    );
    __rule(self,"hash",
       __patt.Cs(
-         ((__patt.P(("{")) )/( ("Hash({")))* s*
+         ((__patt.P(("{")) )/( ("_G.Hash({")))* s*
          (__patt.V("hash_pairs") + __patt.Cc(("")))* s*
          ((__patt.P(("}")) )/( ("})")) + __patt.P(syntax_error(("expected '}'"))))
       )
@@ -1767,7 +1767,7 @@ _G.compile = function(lupa, name, args)
     until true if __break then break end end 
    if args then  
       for i=(1), #(args)  do local __break repeat 
-         ctx:define(args[i], Hash({ }));
+         ctx:define(args[i], _G.Hash({ }));
        until true if __break then break end end 
     end 
    local _156=__env.Grammar:match(lupa, (1), ctx);local lua=_156;
@@ -1785,7 +1785,7 @@ _G.eval = function(src)
  end;
 
 local _163=function(...) local args=_G.Array(...)
-   local _158=Hash({ });local opt=_158;
+   local _158=_G.Hash({ });local opt=_158;
    local _159=(0);local idx=_159;
    local _160=#(args);local len=_160;
    while (idx )<( len)  do local __break repeat 
@@ -1841,7 +1841,7 @@ local _172=function(...)
          outc:close();
       
       else 
-         local _171=setmetatable(Hash({ }), Hash({ __index = _G }));local main_env=_171;
+         local _171=setmetatable(_G.Hash({ }), _G.Hash({ __index = _G }));local main_env=_171;
          setfenv(main, main_env);
          main(opt[("file")], ...);
        end 

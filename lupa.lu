@@ -1428,7 +1428,7 @@ object Grammar {
    rule range {
       {~ (
          "[" s <expr> s ":" s <expr> ( s ":" s <expr> | {`"1"`} ) s "]"
-      ) -> "Range(%1,%2,%3)" ~}
+      ) -> "_G.Range(%1,%2,%3)" ~}
    }
    rule array {
       {~
@@ -1442,7 +1442,7 @@ object Grammar {
    }
    rule hash {
       {~
-         ("{" -> "Hash({") s
+         ("{" -> "_G.Hash({") s
          (<hash_pairs> | {`""`}) s
          ("}" -> "})" | <{syntax_error("expected '}'")}>)
       ~}
