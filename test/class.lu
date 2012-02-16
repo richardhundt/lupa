@@ -15,6 +15,10 @@ class Point {
 class Point3D from Point {
     has z = 0
 
+    function greet() {
+       print("Hello World!")
+    }
+
     method move(x, y, z) {
         super::move(self, x, y)
         self.z = z
