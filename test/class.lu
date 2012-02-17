@@ -6,9 +6,10 @@ class Point {
     method __init() {
         print("class => ", Point)
     }
-    method move(x, y) {
+    method move(x = 1, y = 1) : Void {
         self.x = x
         self.y = y
+        return
     }
 }
 
@@ -25,8 +26,14 @@ class Point3D from Point {
     }
 }
 
+var p = Point()
+
+p.move()
+print(p.x, p.y)
+
 var p = Point3D()
-for i=1, 10_000_000 {
+
+for i = 1, 10_000_000 {
    p.move(i+1, i+2, i+3)
 }
 print(p.x, p.y, p.z)

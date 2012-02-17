@@ -1,5 +1,7 @@
 #!/usr/bin/env luajit
 
+-- vim: ft=lupa
+
 local __env=setmetatable({},{__index=_G});package.path  = (";;./src/?.lua;./lib/?.lua;"..tostring(package.path).."");
 package.cpath = (";;./lib/?.so;"..tostring(package.cpath).."");
 
@@ -266,6 +268,17 @@ _G.__load = function(_from)
     do return mod end
  end;
 
+_G.__match = function(a, b) 
+   if (b )==( a) then    do return (true) end  end 
+   local _41=getmetatable(b);local meta=_41;
+   if meta then  
+      local _42=rawget(meta, ("__match"));local __match=_42; 
+      if __match then    do return __match(b, a) end  end 
+    end 
+   if a:isa(b) then    do return (true) end  end 
+    do return (false) end
+ end;
+
 _G.__op_as     = setmetatable;
 _G.__op_typeof = getmetatable;
 _G.__op_yield  = coroutine[("yield")];
@@ -286,57 +299,57 @@ _G.__op_like = function(this, that)
     do return (true) end
  end;
 _G.__op_spread = function(a) 
-   local _41=getmetatable(a);local mt=_41;
-   local _42=(mt )and( rawget(mt, ("__spread")));local __spread=_42;
+   local _43=getmetatable(a);local mt=_43;
+   local _44=(mt )and( rawget(mt, ("__spread")));local __spread=_44;
    if __spread then    do return __spread(a) end  end 
     do return unpack(a) end
  end;
 _G.__op_each = function(a,...) 
    if (type(a) )==( ("function")) then    do return a,... end  end 
-   local _43=getmetatable(a);local mt=_43;
-   local _44=(mt )and( rawget(mt, ("__each")));local __each=_44;
+   local _45=getmetatable(a);local mt=_45;
+   local _46=(mt )and( rawget(mt, ("__each")));local __each=_46;
    if __each then    do return __each(a) end  end 
     do return pairs(a) end
  end;
 _G.__op_lshift = function(a,b) 
-   local _45=getmetatable(a);local mt=_45;
-   local _46=(mt )and( rawget(mt, ("__lshift")));local __lshift=_46;
+   local _47=getmetatable(a);local mt=_47;
+   local _48=(mt )and( rawget(mt, ("__lshift")));local __lshift=_48;
    if __lshift then    do return __lshift(a, b) end  end 
     do return bit.lshift(a, b) end
  end;
 _G.__op_rshift = function(a,b) 
-   local _47=getmetatable(a);local mt=_47;
-   local _48=(mt )and( rawget(mt, ("__rshift")));local __rshift=_48;
+   local _49=getmetatable(a);local mt=_49;
+   local _50=(mt )and( rawget(mt, ("__rshift")));local __rshift=_50;
    if __rshift then    do return __rshift(a, b) end  end 
     do return bit.rshift(a, b) end
  end;
 _G.__op_arshift = function(a,b) 
-   local _49=getmetatable(a);local mt=_49;
-   local _50=(mt )and( rawget(mt, ("__arshift")));local __arshift=_50;
+   local _51=getmetatable(a);local mt=_51;
+   local _52=(mt )and( rawget(mt, ("__arshift")));local __arshift=_52;
    if __arshift then    do return __arshift(a, b) end  end 
     do return bit.arshift(a, b) end
  end;
 _G.__op_bor = function(a,b) 
-   local _51=getmetatable(a);local mt=_51;
-   local _52=(mt )and( rawget(mt, ("__bor")));local __bor=_52;
+   local _53=getmetatable(a);local mt=_53;
+   local _54=(mt )and( rawget(mt, ("__bor")));local __bor=_54;
    if __bor then    do return __bor(a, b) end  end 
     do return bit.bor(a, b) end
  end;
 _G.__op_bxor = function(a,b) 
-   local _53=getmetatable(a);local mt=_53;
-   local _54=(mt )and( rawget(mt, ("__bxor")));local __bxor=_54;
+   local _55=getmetatable(a);local mt=_55;
+   local _56=(mt )and( rawget(mt, ("__bxor")));local __bxor=_56;
    if __bxor then    do return __bxor(a, b) end  end 
     do return bit.bxor(a, b) end
  end;
 _G.__op_band = function(a,b) 
-   local _55=getmetatable(a);local mt=_55;
-   local _56=(mt )and( rawget(mt, ("__band")));local __band=_56;
+   local _57=getmetatable(a);local mt=_57;
+   local _58=(mt )and( rawget(mt, ("__band")));local __band=_58;
    if __band then    do return __band(a, b) end  end 
     do return bit.band(a, b) end
  end;
 _G.__op_bnot = function(a) 
-   local _57=getmetatable(a);local mt=_57;
-   local _58=(mt )and( rawget(mt, ("__bnot")));local __bnot=_58;
+   local _59=getmetatable(a);local mt=_59;
+   local _60=(mt )and( rawget(mt, ("__bnot")));local __bnot=_60;
    if __bnot then    do return __bnot(a) end  end 
     do return bit.bnot(a) end
  end;
@@ -370,11 +383,11 @@ Class.__index = function(self, key)
 Class.__newindex = function(self, key, val) 
    if (type(key) )==( ("string")) then  
       if key:match(("^__get_")) then  
-         local _59=key:match(("^__get_(.-)$"));local _k=_59;
+         local _61=key:match(("^__get_(.-)$"));local _k=_61;
          self.__readers[_k] = val;
       
        elseif key:match(("^__set_")) then  
-         local _60=key:match(("^__set_(.-)$"));local _k=_60;
+         local _62=key:match(("^__set_(.-)$"));local _k=_62;
          self.__writers[_k] = val;
        end 
     end 
@@ -395,11 +408,11 @@ Object.__tostring = function(self)
  end;
 Object.__index = Object;
 Object.isa = function(self, that) 
-   local _61=getmetatable(self);local meta=_61;
+   local _63=getmetatable(self);local meta=_63;
     do return ((meta )==( that ))or( ((meta.__from )and( ((meta.__from[that] )~=( (nil)))))) end
  end;
 Object.can = function(self, key) 
-   local _62=getmetatable(self);local meta=_62;
+   local _64=getmetatable(self);local meta=_64;
     do return rawget(meta, key) end
  end;
 Object.does = function(self, that) 
@@ -408,8 +421,8 @@ Object.does = function(self, that)
 
 _G.Trait = setmetatable(newtable(), Type);
 Trait.__call = function(self,...) local args=_G.Array(...)
-   local _63=__trait((nil), self.__name, self.__with, self.__body);local copy=_63;
-   local _64=self.compose;local make=_64;
+   local _65=__trait((nil), self.__name, self.__with, self.__body);local copy=_65;
+   local _66=self.compose;local make=_66;
    copy.compose = function(self, into, recv) 
        do return make(self, into, recv, __op_spread(args)) end
     end;
@@ -435,9 +448,9 @@ Hash.__apply = function(self, table)
     do return setmetatable((table )or( newtable()), self) end
  end;
 Hash.__tostring = function(self) 
-   local _65=newtable();local buf=_65;
+   local _67=newtable();local buf=_67;
    for k, v in __op_each(pairs(self))  do local __break repeat 
-      local _66;local _v=_66;
+      local _68;local _v=_68;
       if (type(v) )==( ("string")) then  
          _v= string.format(("%q"), v);
       
@@ -464,7 +477,7 @@ Array.__apply = function(self,...)
     do return setmetatable(newtable(...), self) end
  end;
 Array.__tostring = function(self) 
-   local _67=newtable();local buf=_67;
+   local _69=newtable();local buf=_69;
    for i=(1), #(self)  do local __break repeat 
       if (type(self[i]) )==( ("string")) then  
          buf[(#(buf) )+( (1))] = string.format(("%q"), self[i]);
@@ -488,9 +501,9 @@ Array.each = function(self, block)
    for i=(1), #(self)  do local __break repeat  block(self[i]);  until true if __break then break end end 
  end;
 Array.map = function(self, block) 
-   local _68=Array();local out=_68;
+   local _70=Array();local out=_70;
    for i=(1), #(self)  do local __break repeat 
-      local _69=self[i];local v=_69;
+      local _71=self[i];local v=_71;
       out[(#(out) )+( (1))] = block(v);
     until true if __break then break end end 
     do return out end
@@ -502,9 +515,9 @@ Array.inject = function(self, block)
     do return self end
  end;
 Array.grep = function(self, block) 
-   local _70=Array();local out=_70;
+   local _72=Array();local out=_72;
    for i=(1), #(self)  do local __break repeat 
-      local _71=self[i];local v=_71;
+      local _73=self[i];local v=_73;
       if block(v) then  
          out[(#(out) )+( (1))] = v;
        end 
@@ -515,12 +528,12 @@ Array.push = function(self, v)
    self[(#(self) )+( (1))] = v;
  end;
 Array.pop = function(self) 
-   local _72=self[#(self)];local v=_72;
+   local _74=self[#(self)];local v=_74;
    self[#(self)] = (nil);
     do return v end
  end;
 Array.shift = function(self) 
-   local _73=self[(1)];local v=_73;
+   local _75=self[(1)];local v=_75;
    for i=(2), #(self)  do local __break repeat 
       self[(i)-((1))] = self[i];
     until true if __break then break end end 
@@ -534,7 +547,7 @@ Array.unshift = function(self, v)
    self[(1)] = v;
  end;
 Array.splice = function(self, offset, count,...) local args=_G.Array(...)
-   local _74=Array();local out=_74;
+   local _76=Array();local out=_76;
    for i=offset, ((offset )+( count ))-( (1))  do local __break repeat 
       out:push(self:remove(offset));
     until true if __break then break end end 
@@ -544,7 +557,7 @@ Array.splice = function(self, offset, count,...) local args=_G.Array(...)
     do return out end
  end;
 Array.reverse = function(self) 
-   local _75=Array();local out=_75;
+   local _77=Array();local out=_77;
    for i=(1), #(self)  do local __break repeat 
       out[i] = self[(((#(self) )-( i)) )+( (1))];
     until true if __break then break end end 
@@ -561,9 +574,9 @@ Range.__apply = function(self, min, max, inc)
     do return setmetatable(newtable(min, max, inc), self) end
  end;
 Range.__each = function(self) 
-   local _76=self[(3)];local inc=_76;
-   local _77=(self[(1)] )-( inc);local cur=_77;
-   local _78=self[(2)];local max=_78;
+   local _78=self[(3)];local inc=_78;
+   local _79=(self[(1)] )-( inc);local cur=_79;
+   local _80=self[(2)];local max=_80;
     do return function() 
       cur= (cur )+( inc);
       if (cur )<=( max) then  
@@ -577,10 +590,15 @@ Range.each = function(self, block)
     until true if __break then break end end 
  end;
 
+_G.Void = function(...) 
+   assert((select("#",...) )==( (0)), ("TypeError: value in Void"));
+    do return ... end
+ end;
+
 _G.Nil = setmetatable(newtable(), Type);
 Nil.__name = ("Nil");
 Nil.__index = function(self, key) 
-   local _79=Type[key];local val=_79;
+   local _81=Type[key];local val=_81;
    if (val )==( (nil)) then  
       error(("TypeError: no such member "..tostring(key).." in type Nil"), (2));
     end 
@@ -592,7 +610,7 @@ _G.Number = setmetatable(newtable(), Type);
 Number.__name = ("Number");
 Number.__index = Number;
 Number.__apply = function(self, val) 
-   local _80=tonumber(val);local v=_80;
+   local _82=tonumber(val);local v=_82;
    if (v )==( (nil)) then  
       error(("TypeError: cannot coerce '"..tostring(val).."' to Number"), (2));
     end 
@@ -619,10 +637,10 @@ String.split = function(str, sep, max)
    if ((max )==( (nil) ))or((  max )<( (1))) then  
       max= (0);
     end 
-   local _81=((("(.-)"))..(sep))..(("()"));local pat=_81;
-   local _82=(0);local idx=_82;
-   local _83=Array();local list=_83;
-   local _84;local last=_84;
+   local _83=((("(.-)"))..(sep))..(("()"));local pat=_83;
+   local _84=(0);local idx=_84;
+   local _85=Array();local list=_85;
+   local _86;local last=_86;
    for part, pos in __op_each(str:gmatch(pat))  do local __break repeat 
       idx= (idx )+( (1));
       list[idx] = part;
@@ -645,9 +663,9 @@ _G.Function = setmetatable(newtable(), Type);
 Function.__name = ("Function");
 Function.__index = Function;
 Function.__apply = function(self, code,...) 
-   local _85=_G.Array( ... );local args=_85;
+   local _87=_G.Array( ... );local args=_87;
    code= compile(code, ("=eval"), args);
-   local _86=assert(loadstring(code, ("=eval")));local func=_86;
+   local _88=assert(loadstring(code, ("=eval")));local func=_88;
     do return func end
  end;
 debug.setmetatable(function()   end, Function);
@@ -694,7 +712,7 @@ __class(__env,"Context",{},{},function(__env,self,super)
     end);
    __method(self,"leave",function(self) 
       if __op_in(("outer") , self.scope) then  
-         local _87=self.scope.outer;local outer=_87;
+         local _89=self.scope.outer;local outer=_89;
          self.scope = outer;
           do return outer end
        end 
@@ -711,10 +729,10 @@ __class(__env,"Context",{},{},function(__env,self,super)
 __object(__env,"Grammar",{},{},function(__env,self,super) 
 
    local function error_line(src, pos) 
-      local _88=(1);local line=_88;
-      local _89,_90=(1),pos;local index,limit=_89,_90;
+      local _90=(1);local line=_90;
+      local _91,_92=(1),pos;local index,limit=_91,_92;
       while (index )<=( limit)  do local __break repeat 
-         local _91,_92=src:find(("\n"), index, (true));local s,e=_91,_92;
+         local _93,_94=src:find(("\n"), index, (true));local s,e=_93,_94;
          if ((s )==( (nil) ))or(( e )>( limit)) then   do __break = true; break end  end 
          index= (e )+( (1));
          line= (line )+( (1));
@@ -731,19 +749,19 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
     end
    local function syntax_error(m) 
        do return function(src, pos) 
-         local _93,_94=error_line(src, pos),error_near(src, pos);local line,near=_93,_94;
+         local _95,_96=error_line(src, pos),error_near(src, pos);local line,near=_95,_96;
          do return error(("SyntaxError: "..tostring((m)or((""))).." on line "..tostring(line).." near '"..tostring(near).."'")) end
        end end
     end
 
-   local _95=(9);local id_counter=_95;
+   local _97=(9);local id_counter=_97;
    local function genid() 
       id_counter=(id_counter)+((1));
        do return (("_"))..(id_counter) end
     end
 
-   local function define(name, ctx, base, type) 
-      ctx:define(name, _G.Hash({ base = base, type = type }));
+   local function define(name, ctx, base, type, expr) 
+      ctx:define(name, _G.Hash({ base = base, type = type, expr = expr }));
        do return name end
     end
    local function define_const(name, ctx,...) 
@@ -760,7 +778,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
    do return  end end
 
    local function lookup(name, ctx) 
-      local _96=ctx:lookup(name);local info=_96;
+      local _98=ctx:lookup(name);local info=_98;
       if info then  
          if info.base then    do return ((info.base)..((".")))..(name) end  end 
           do return name end
@@ -768,7 +786,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
        do return (("__env."))..(name) end
     end
    local function lookup_or_define(name, ctx) 
-      local _97=ctx:lookup(name);local info=_97;
+      local _99=ctx:lookup(name);local info=_99;
       if not(info) then  
          define(name, ctx, ("__env"));
           do return (("__env."))..(name) end
@@ -781,24 +799,24 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
 
    local function quote(c)  do return ("%q"):format(c) end  end
 
-   local _98=__patt.P( __patt.P(("\n")) );local nl=_98;
-   local _99=__patt.P( __patt.Cs(
+   local _100=__patt.P( __patt.P(("\n")) );local nl=_100;
+   local _101=__patt.P( __patt.Cs(
        ((-nl* __patt.Def("s"))^0* ((__patt.P(("//")) )/( ("--")))* (-nl* __patt.P(1))^0* nl)
       + ((__patt.P(("/*")) )/( ("--[=[")))* ((__patt.P(("]=]")) )/( ("]\\=]")) + -__patt.P(("*/"))* __patt.P(1))^0* ((__patt.P(("*/")) )/( ("]=]")))
-   ) );local comment=_99;
-   local _100=__patt.P( -(__patt.Def("alnum") + __patt.P(("_"))) );local idsafe=_100;
-   local _101=__patt.P( (comment + __patt.Def("s"))^0 );local s=_101;
-   local _102=__patt.P( ((__patt.P((";")) )/( ("")))^-1 );local semicol=_102;
-   local _103=__patt.P( (__patt.Def("digit")* __patt.Cs( (__patt.P(("_")) )/( ("")) )^-1)^1 );local digits=_103;
-   local _104=__patt.P( (
-      __patt.P(("var")) + __patt.P(("function")) + __patt.P(("class")) + __patt.P(("with")) + __patt.P(("like")) + __patt.P(("in"))
+   ) );local comment=_101;
+   local _102=__patt.P( -(__patt.Def("alnum") + __patt.P(("_"))) );local idsafe=_102;
+   local _103=__patt.P( (comment + __patt.Def("s"))^0 );local s=_103;
+   local _104=__patt.P( ((__patt.P((";")) )/( ("")))^-1 );local semicol=_104;
+   local _105=__patt.P( (__patt.Def("digit")* __patt.Cs( (__patt.P(("_")) )/( ("")) )^-1)^1 );local digits=_105;
+   local _106=__patt.P( (
+       __patt.P(("var")) + __patt.P(("function")) + __patt.P(("class")) + __patt.P(("with")) + __patt.P(("like")) + __patt.P(("in"))
       + __patt.P(("nil")) + __patt.P(("true")) + __patt.P(("false")) + __patt.P(("typeof")) + __patt.P(("return")) + __patt.P(("as"))
       + __patt.P(("for")) + __patt.P(("throw")) + __patt.P(("method")) + __patt.P(("has")) + __patt.P(("from")) + __patt.P(("break"))
-      + __patt.P(("continue")) + __patt.P(("import")) + __patt.P(("try")) + __patt.P(("catch"))
-      + __patt.P(("finally")) + __patt.P(("if")) + __patt.P(("else")) + __patt.P(("yield")) + __patt.P(("rule"))
-   )* idsafe );local keyword=_104;
+      + __patt.P(("continue")) + __patt.P(("import")) + __patt.P(("try")) + __patt.P(("catch")) + __patt.P(("switch")) + __patt.P(("case"))
+      + __patt.P(("default")) + __patt.P(("finally")) + __patt.P(("if")) + __patt.P(("else")) + __patt.P(("yield")) + __patt.P(("rule"))
+   )* idsafe );local keyword=_106;
 
-   local _105=_G.Hash({
+   local _107=_G.Hash({
       [("^^")]  = (4),
       [("*")]   = (5),
       [("/")]   = (5),
@@ -822,9 +840,9 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
       [("!=")]  = (12),
       [("&&")]  = (13),
       [("||")]  = (14),
-   });local prec=_105;
+   });local prec=_107;
 
-   local _106=_G.Hash({
+   local _108=_G.Hash({
       [("!")] = ("not(%s)"),
       [("#")] = ("#(%s)"),
       [("-")] = ("-(%s)"),
@@ -832,9 +850,9 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
       [("@")] = ("__op_spread(%s)"),
       [("throw")] = ("__op_throw(%s)"),
       [("typeof")] = ("__op_typeof(%s)"),
-   });local unrops=_106;
+   });local unrops=_108;
 
-   local _107=_G.Hash({
+   local _109=_G.Hash({
       [("^^")] = ("(%s)^(%s)"),
       [("*")] = ("(%s)*(%s)"),
       [("/")] = ("(%s)/(%s)"),
@@ -858,7 +876,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
       [("|")] = ("__op_bor(%s,%s)"),
       [("&&")] = ("(%s)and(%s)"),
       [("||")] = ("(%s)or(%s)"),
-   });local binops=_107;
+   });local binops=_109;
 
    local function fold_prefix(o,e) 
       if ((o )==( ("#") ))and( e:match(("^%s*%.%.%.%s*$"))) then  
@@ -869,14 +887,14 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
 
    --/*
    local function fold_infix(e) 
-      local _108=_G.Array( e[(1)] );local s=_108;
+      local _110=_G.Array( e[(1)] );local s=_110;
       for i=(2), #(e)  do local __break repeat 
          s[(#(s) )+( (1))] = e[i];
          while (not(binops[s[#(s)]]) )and( s[(#(s) )-( (1))])  do local __break repeat 
-            local _109=s[(#(s) )-( (1))];local p=_109;
-            local _110=e[(i )+( (1))];local n=_110;
+            local _111=s[(#(s) )-( (1))];local p=_111;
+            local _112=e[(i )+( (1))];local n=_112;
             if ((n )==( (nil) ))or(( prec[p] )<=( prec[n])) then  
-               local _111,_112,_113=s:pop(),s:pop(),s:pop();local b,o,a=_111,_112,_113;
+               local _113,_114,_115=s:pop(),s:pop(),s:pop();local b,o,a=_113,_114,_115;
                if not(binops[o]) then  
                   error(("bad expression: "..tostring(e)..", stack: "..tostring(s)..""));
                 end 
@@ -907,10 +925,10 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
 
    local function make_binop_bind(ctx, a1, a2, o, b) 
       a1= __env.Grammar.expr:match(a1, (nil), ctx);
-      local _114=ctx:lookup(a1);local info=_114;
-      local _115=binops[o];local oper=_115;
+      local _116=ctx:lookup(a1);local info=_116;
+      local _117=binops[o];local oper=_117;
       if info.type then  
-         local _116=lookup(info.type, ctx);local type=_116;
+         local _118=lookup(info.type, ctx);local type=_118;
          oper= ((type)..(("(%s)"))):format(oper);
        end 
        do return a2:format(oper:format(a1,b)) end
@@ -918,31 +936,31 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
 
    local function make_bind_expr(ctx, l, s1, s2, r) 
       if (#(l) )==( (1)) then  
-         local _117=l[(1)]:match(("^([%w_]+)%s*="));local name=_117;
+         local _119=l[(1)]:match(("^([%w_]+)%s*="));local name=_119;
          if name then  
-            local _118=ctx:lookup(name);local info=_118;
+            local _120=ctx:lookup(name);local info=_120;
             if info.type then  
-               local _119=lookup(info.type, ctx);local type=_119;
+               local _121=lookup(info.type, ctx);local type=_121;
                r[(1)] = ((type)..(("(%s)"))):format(r[(1)]);
              end 
           end 
           do return l[(1)]:format((s2 )..( r:concat((",")))) end
        end 
-      local _120=_G.Array( );local t=_120;
+      local _122=_G.Array( );local t=_122;
       for i=(1), #(l)  do local __break repeat 
          t:push(genid());
-         local _121=l[i]:match(("^([%w_]+)%s*="));local name=_121;
+         local _123=l[i]:match(("^([%w_]+)%s*="));local name=_123;
          if name then  
-            local _122=ctx:lookup(name);local info=_122;
+            local _124=ctx:lookup(name);local info=_124;
             if info.type then  
-               local _123=lookup(info.type, ctx);local type=_123;
+               local _125=lookup(info.type, ctx);local type=_125;
                t[i] = ((type)..(("(%s)"))):format(t[i]);
              end 
           end 
 
          l[i] = l[i]:format(t[i]);
        until true if __break then break end end 
-      local _124=_G.Array( );local b=_124;
+      local _126=_G.Array( );local b=_126;
       b:push(("local %s%s=%s%s;"):format(t:concat((",")), s1, s2, r:concat((","))));
       b:push(l:concat((";")));
        do return b:concat() end
@@ -950,8 +968,8 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
 
    local function make_var_decl(ctx, lhs, rhs) 
       rhs= (rhs )or( _G.Array( ));
-      local _125=_G.Array( );local tmp=_125;
-      local _126=_G.Array( );local buf=_126;
+      local _127=_G.Array( );local tmp=_127;
+      local _128=_G.Array( );local buf=_128;
 
       for i=(1), #(lhs)  do local __break repeat 
          tmp:push(genid());
@@ -965,9 +983,9 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
        end 
 
       for i=(1), #(lhs)  do local __break repeat 
-         local _127=ctx:lookup(lhs[i]);local info=_127;
+         local _129=ctx:lookup(lhs[i]);local info=_129;
          if info.type then  
-            local _128=lookup(info.type, ctx);local type=_128;
+            local _130=lookup(info.type, ctx);local type=_130;
             tmp[i] = ((type)..(("(%s)"))):format(tmp[i]);
           end 
        until true if __break then break end end 
@@ -977,27 +995,30 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
     end
 
    local function make_params(ctx, list) 
-      local _129=_G.Array( );local head=_129;
+      local _131=_G.Array( );local head=_131;
       if (#(list) )>( (0)) then  
          for i=(1), #(list)  do local __break repeat 
-            local _130=list[i];local name=_130;
+            local _132=list[i];local name=_132;
             if not(name:find(("%.%.%."))) then  
                name= name:match(("^%s*([^%s]+)%s*$"));
-               local _131=ctx:lookup(name);local info=_131; 
+               local _133=ctx:lookup(name);local info=_133; 
+               if info.expr then  
+                  head:push(("%s = %s == nil and %s or %s"):format(name,name,info.expr,name));
+                end 
                if info.type then  
-                  local _132=lookup(info.type, ctx);local type=_132;
-                  head:push(((((name)..(("=")))..(type))..(("(%s)"))):format(name));
+                  local _134=lookup(info.type, ctx);local type=_134;
+                  head:push(("%s=%s(%s)"):format(name,type,name));
                 end 
              end 
           until true if __break then break end end 
          if list[#(list)]:find(("..."), (1), (true)) then  
-            local _133=list[#(list)];local last=_133;
-            local _134=last:match(("%.%.%.([%w_]+)"));local name=_134;
+            local _135=list[#(list)];local last=_135;
+            local _136=last:match(("%.%.%.([%w_]+)"));local name=_136;
             list[#(list)] = ("...");
             if name then  
-               local _135=ctx:lookup(name);local info=_135; 
+               local _137=ctx:lookup(name);local info=_137; 
                if info.type then  
-                  local _136=lookup(info.type, ctx);local type=_136;
+                  local _138=lookup(info.type, ctx);local type=_138;
                   head:push((("local %s=_G.Array(...):inject(%s)")):format(name,type));
                
                else 
@@ -1009,16 +1030,25 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
        do return list:concat((",")),head:concat((";")) end
     end
 
+   local function make_for_stmt(ctx, name, init, last, step, body) 
+      local _139,_140=make_params(ctx, _G.Array( name ));local list,head=_139,_140;
+       do return ("for %s=%s,%s,%s do %s%s end"):format(name, init, last, step, head, body) end
+    end
+
+   local function make_for_in_stmt(ctx, name_list, expr, body) 
+      local _141,_142=make_params(ctx, name_list);local list,head=_141,_142;
+       do return ("for %s in __op_each(%s) do %s%s end"):format(list, expr, head, body) end
+    end
    local function make_return_stmt(ctx, is_lex, expr_list, ret_guard) 
       expr_list= (expr_list )or( _G.Array( ));
       if ret_guard then  
          for i=(1), #(ret_guard)  do local __break repeat 
-            local _137=lookup(ret_guard[i], ctx);local type=_137;
-            local _138=(expr_list[i] )or( ("nil"));local expr=_138;
+            local _143=lookup(ret_guard[i], ctx);local type=_143;
+            local _144=(expr_list[i] )or( (""));local expr=_144;
             expr_list[i] = ((type)..(("(%s)"):format(expr)));
           until true if __break then break end end 
        end 
-      local _139=expr_list:concat((","));local e=_139;
+      local _145=expr_list:concat((","));local e=_145;
       if is_lex then  
           do return ("do __return = {%s}; return end"):format(e) end
        end 
@@ -1026,19 +1056,19 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
     end
 
    local function make_func(c,p,b) 
-      local _140,_141=make_params(c, p);local p,h=_140,_141;
+      local _146,_147=make_params(c, p);local p,h=_146,_147;
        do return ("function(%s) %s%s end"):format(p,h,b) end
     end
 
    local function make_short_func(c,p,b) 
       if (#(p) )==( (0)) then   p:push(("_"));  end 
       c:define(("_"));
-      local _142,_143=make_params(c, p);local p,h=_142,_143;
+      local _148,_149=make_params(c, p);local p,h=_148,_149;
        do return ("function(%s) %s%s end"):format(p,h,b) end
     end
 
    local function make_func_decl(c,n,p,b,s) 
-      local _144,_145=make_params(c, p);local p,h=_144,_145;
+      local _150,_151=make_params(c, p);local p,h=_150,_151;
       if ((s )==( ("lexical") ))and(( #(n) )==( (1))) then  
          c.scope.outer:define(n[(1)]);
           do return ("local function %s(%s) %s%s end"):format(n[(1)],p,h,b) end
@@ -1051,12 +1081,12 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
 
    local function make_meth_decl(ctx,n,p,b) 
       p:unshift(("self"));
-      local _146,_147=make_params(ctx,p);local p,h=_146,_147;
+      local _152,_153=make_params(ctx,p);local p,h=_152,_153;
        do return ("__method(self,%q,function(%s) %s%s end);"):format(n,p,h,b) end
     end
 
    local function make_trait_decl(c,n,p,w,b) 
-      local _148,_149=make_params(c, p);local p,h=_148,_149;
+      local _154,_155=make_params(c, p);local p,h=_154,_155;
       
       do return ("__trait(__env,%q,{%s},function(__env,self,%s) %s%s end);")
          :format(n,w,p,h,b) end
@@ -1071,7 +1101,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
       ):format(try_body, (catch_args )or( ("")), (catch_body )or( (""))) end
     end
    local function make_import_stmt(c, n,f) 
-      local _150=_G.Array( );local q=_150;
+      local _156=_G.Array( );local q=_156;
       for i=(1), #(n)  do local __break repeat 
          c:define(n[i], _G.Hash({ base = ("__env") }));
          q[i] = quote(n[i]);
@@ -1079,9 +1109,9 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
        do return ("__import(__env,%q,{%s});"):format(f, q:concat((","))) end
     end
    local function make_export_stmt(n) 
-      local _151=_G.Array( );local b=_151;
+      local _157=_G.Array( );local b=_157;
       for i=(1), #(n)  do local __break repeat 
-         local _152=quote(n[i]);local q=_152;
+         local _158=quote(n[i]);local q=_158;
          b[i] = ("__export[%s]=true;"):format(q);
        until true if __break then break end end 
        do return b:concat(("")) end
@@ -1123,6 +1153,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
    );
    __rule(self,"statement",
        __patt.V("if_stmt")
+      + __patt.V("switch_stmt")
       + __patt.V("try_stmt")
       + __patt.V("for_stmt")
       + __patt.V("for_in_stmt")
@@ -1169,15 +1200,33 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
       )
       )
    );
+   __rule(self,"switch_stmt",
+      __patt.Cs(
+         __patt.P(("switch"))* idsafe* s* __patt.Cg( __patt.V("expr"),"expr")* s* __patt.P(("{"))*
+         __patt.Cs( (s* __patt.V("case_stmt"))^0* (s* __patt.V("default_stmt"))^-1* s )*
+         (__patt.P(("}")) )/( ("if false then %2 end"))
+      )
+   );
+   __rule(self,"case_stmt",
+      __patt.Cs(
+         __patt.P(("case"))* idsafe* __patt.Cb("expr")* s* __patt.V("expr")* s* __patt.P((":"))*
+         __patt.Cs( (s* -__patt.V("break_stmt")* __patt.V("statement"))^0* s )*
+         __patt.P(("break"))* idsafe* (__patt.Cs( s* semicol )
+         )/( (" elseif __match(%1,%2) then %3%4"))
+      )
+   );
+   __rule(self,"default_stmt",
+      __patt.Cs( __patt.P(("default"))* idsafe* s* __patt.P((":"))* (__patt.Cs( s* __patt.V("statement")^0 ) )/( (" else %1 ")) )
+   );
    __rule(self,"try_stmt",
       __patt.Cs(
       __patt.P(("try"))* idsafe* s*
       __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s )* (__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) ))*
       ((s* __patt.P(("catch"))* idsafe* s*
          __patt.P(("("))* s* __patt.Cs( __patt.V("enter")* __patt.V("param") )* s* __patt.P((")"))* s*
-         __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s* __patt.V("leave") )* __patt.P(("}"))
+         __patt.P(("{"))* __patt.Cs( __patt.V("lambda_body")* s )* __patt.P(("}"))
       )^-1
-      )/( make_try_stmt)
+      )/( make_try_stmt)* __patt.V("leave")
       )
    );
    __rule(self,"import_stmt",
@@ -1188,18 +1237,21 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
    __rule(self,"export_stmt",
       __patt.Cs( __patt.P(("export"))* idsafe* s* (__patt.Ca( __patt.V("name_list") ) )/( make_export_stmt) )
    );
+   __rule(self,"loop_name",
+      __patt.V("name")* __patt.V("ctx")* __patt.Cc((nil))* ((s* __patt.V("guard_expr"))^-1 )/( define)
+   );
    __rule(self,"for_stmt",
-      __patt.Cs( __patt.P(("for"))* idsafe* s* __patt.V("param")* s* __patt.P(("="))* s* __patt.V("expr")* s* __patt.P((","))* s* __patt.V("expr")*
-         (s* __patt.P((","))* s* __patt.V("expr"))^-1* s* __patt.V("loop_body")
+      __patt.Cs( __patt.P(("for"))* idsafe* s* __patt.V("enter")* __patt.V("ctx")* __patt.V("loop_name")* s* __patt.P(("="))* s* __patt.V("expr")* s* __patt.P((","))* s* __patt.V("expr")*
+         (s* __patt.P((","))* s* __patt.V("expr") + __patt.Cc((1)))* s* (__patt.V("loop_body") )/( make_for_stmt)* __patt.V("leave")
       )
    );
    __rule(self,"for_in_stmt",
-      __patt.Cs( __patt.P(("for"))* idsafe* s* __patt.V("param")* (s* __patt.P((","))* s* __patt.V("param"))^0* s* __patt.P(("in"))* idsafe* s*
-         ((__patt.V("expr") )/( ("__op_each(%1)")))* s* __patt.V("loop_body")
+      __patt.Cs( __patt.P(("for"))* idsafe* s* __patt.V("enter")* __patt.V("ctx")* __patt.Ca( __patt.V("loop_name")* (s* __patt.P((","))* s* __patt.V("loop_name"))^0 )* s* __patt.P(("in"))* idsafe* s*
+         __patt.V("expr")* s* (__patt.V("loop_body") )/( make_for_in_stmt)* __patt.V("leave")
       )
    );
    __rule(self,"while_stmt",
-      __patt.Cs( __patt.P(("while"))* idsafe* s* __patt.V("expr")* s* __patt.V("loop_body") )
+      __patt.Cs( __patt.P(("while"))* idsafe* s* __patt.V("expr")* s* (__patt.V("loop_body") )/( ("while %1 do %2 end")) )
    );
    __rule(self,"do_while_stmt",
       __patt.Cs(
@@ -1208,10 +1260,9 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
       )
    );
    __rule(self,"loop_body",
-      ((__patt.P(("{")) )/( (" do local __break repeat ")))* __patt.V("block_body")* s*
-      (
-         ((__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) ))
-         )/( (" until true if __break then break end end "))
+      __patt.Cs(
+         __patt.P(("{"))* __patt.Cs( __patt.V("block_body")* s )* ((__patt.P(("}")) + __patt.P( syntax_error(("expected '}'")) ))
+         )/( ("local __break repeat %1 until true if __break then break end"))
       )
    );
 
@@ -1366,7 +1417,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
       __patt.Cs( __patt.V("name")* (__patt.V("ctx") )/( lookup) )
    );
    __rule(self,"param",
-      __patt.V("name")* __patt.V("ctx")* __patt.Cc((nil))* ((s* __patt.V("guard_expr"))^-1 )/( define)
+      __patt.V("name")* __patt.V("ctx")* __patt.Cc((nil))* (s* __patt.V("guard_expr") + __patt.Cc((nil)))* ((s* __patt.P(("="))* __patt.V("expr"))^-1 )/( define)
    );
    __rule(self,"name",
       __patt.C( -keyword* ((__patt.Def("alpha") + __patt.P(("_")))* (__patt.Def("alnum") + __patt.P(("_")))^0) )
@@ -1527,11 +1578,11 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
    );
 
    --/*
-   local _153=__patt.P((
+   local _159=__patt.P((
       __patt.P(("+")) + __patt.P(("-")) + __patt.P(("~")) + __patt.P(("^^")) + __patt.P(("*")) + __patt.P(("/")) + __patt.P(("%")) + __patt.P(("^")) + __patt.P((">>>")) + __patt.P((">>")) + __patt.P(("<<"))
       + __patt.P(("||")) + __patt.P(("&&")) + __patt.P(("|")) + __patt.P(("&")) + __patt.P(("==")) + __patt.P(("!=")) + __patt.P((">="))+ __patt.P(("<=")) + __patt.P(("<")) + __patt.P((">"))
       + (__patt.P(("as")) + __patt.P(("in")))* idsafe
-   ));local binop_patt=_153;
+   ));local binop_patt=_159;
 
    __rule(self,"infix_expr",
       (__patt.Ca( __patt.Cs( __patt.V("prefix_expr")* s )* (
@@ -1659,7 +1710,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
       )
    );
 
-   local _154=__patt.P( __patt.P(("->")) + __patt.P(("~>")) + __patt.P(("=>")) );local prod_oper=_154;
+   local _160=__patt.P( __patt.P(("->")) + __patt.P(("~>")) + __patt.P(("=>")) );local prod_oper=_160;
 
    __rule(self,"rule_suffix",
       __patt.Cf((__patt.Cs( __patt.V("rule_prefix")* (#(s* prod_oper)* s)^-1 )*
@@ -1760,7 +1811,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
  end);
 
 _G.compile = function(lupa, name, args) 
-   local _155=__env.Context();local ctx=_155;
+   local _161=__env.Context();local ctx=_161;
    ctx:enter();
    for k,v in __op_each(pairs(_G))  do local __break repeat 
       ctx:define(k);
@@ -1770,7 +1821,7 @@ _G.compile = function(lupa, name, args)
          ctx:define(args[i], _G.Hash({ }));
        until true if __break then break end end 
     end 
-   local _156=__env.Grammar:match(lupa, (1), ctx);local lua=_156;
+   local _162=__env.Grammar:match(lupa, (1), ctx);local lua=_162;
    ctx:leave();
    assert((ctx.scope.outer )==( _G), ("scope is unbalanced"));
    if args then  
@@ -1780,19 +1831,19 @@ _G.compile = function(lupa, name, args)
  end;
 
 _G.eval = function(src) 
-   local _157=assert(loadstring(compile(src),(("=eval:"))..(src)));local eval=_157;
+   local _163=assert(loadstring(compile(src),(("=eval:"))..(src)));local eval=_163;
     do return eval() end
  end;
 
-local _163=function(...) local args=_G.Array(...)
-   local _158=_G.Hash({ });local opt=_158;
-   local _159=(0);local idx=_159;
-   local _160=#(args);local len=_160;
+local _169=function(...) local args=_G.Array(...)
+   local _164=_G.Hash({ });local opt=_164;
+   local _165=(0);local idx=_165;
+   local _166=#(args);local len=_166;
    while (idx )<( len)  do local __break repeat 
       idx= (idx )+( (1));
-      local _161=args[idx];local arg=_161;
+      local _167=args[idx];local arg=_167;
       if (arg:sub((1),(1)) )==( ("-")) then  
-         local _162=arg:sub((2));local o=_162;
+         local _168=arg:sub((2));local o=_168;
          if (o )==( ("o")) then  
             idx= (idx )+( (1));
             opt[("o")] = args[idx];
@@ -1813,45 +1864,45 @@ local _163=function(...) local args=_G.Array(...)
        end 
     until true if __break then break end end 
     do return opt end
- end;local getopt=_163;
+ end;local getopt=_169;
 
-local _172=function(...) 
-   local _164=getopt(...);local opt=_164;
-   local _165=assert(io.open(opt[("file")]));local sfh=_165;
-   local _166=sfh:read(("*a"));local src=_166;
+local _178=function(...) 
+   local _170=getopt(...);local opt=_170;
+   local _171=assert(io.open(opt[("file")]));local sfh=_171;
+   local _172=sfh:read(("*a"));local src=_172;
    sfh:close();
 
-   local _167=compile(src);local lua=_167;
+   local _173=compile(src);local lua=_173;
    if opt[("l")] then  
       io.stdout:write(lua, ("\n"));
       os.exit((0));
     end 
 
    if opt[("o")] then  
-      local _168=io.open(opt[("o")], ("w+"));local outc=_168;
+      local _174=io.open(opt[("o")], ("w+"));local outc=_174;
       outc:write(lua);
       outc:close();
    
    else 
       lua= lua:gsub(("^%s*#![^\n]*"),(""));
-      local _169=assert(loadstring(lua,(("="))..(opt[("file")])));local main=_169;
+      local _175=assert(loadstring(lua,(("="))..(opt[("file")])));local main=_175;
       if opt[("b")] then  
-         local _170=io.open(opt.b, ("wb+"));local outc=_170;
+         local _176=io.open(opt.b, ("wb+"));local outc=_176;
          outc:write(String.dump(main));
          outc:close();
       
       else 
-         local _171=setmetatable(_G.Hash({ }), _G.Hash({ __index = _G }));local main_env=_171;
+         local _177=setmetatable(_G.Hash({ }), _G.Hash({ __index = _G }));local main_env=_177;
          setfenv(main, main_env);
          main(opt[("file")], ...);
        end 
     end 
- end;local run=_172;
+ end;local run=_178;
 
 arg= arg  and  _G.Array( unpack(arg) )  or  _G.Array( );
 do 
    -- from strict.lua
-   local _173=getmetatable(_G);local mt=_173;
+   local _179=getmetatable(_G);local mt=_179;
    if (mt )==( (nil)) then  
       mt= newtable();
       setmetatable(_G, mt);
@@ -1860,13 +1911,13 @@ do
    mt.__declared = newtable();
 
    local function what() 
-      local _174=debug.getinfo((3), ("S"));local d=_174;
+      local _180=debug.getinfo((3), ("S"));local d=_180;
        do return ((d )and( d.what ))or( ("C")) end
     end
 
    mt.__newindex = function(t, n, v) 
       if not(mt.__declared[n]) then  
-         local _175=what();local w=_175;
+         local _181=what();local w=_181;
          if ((w )~=( ("main") ))and(( w )~=( ("C"))) then  
             error(("assign to undeclared variable '"..tostring(n).."'"), (2));
           end 
@@ -1886,14 +1937,14 @@ do
 _G.LUPA_PATH = ("./?.lu;./lib/?.lu;./src/?.lu");
 do 
    package.loaders[(#(package.loaders) )+( (1))] = function(modname) 
-      local _176=modname:gsub(("%."), ("/"));local filename=_176;
+      local _182=modname:gsub(("%."), ("/"));local filename=_182;
       for path in __op_each(LUPA_PATH:gmatch(("([^;]+)")))  do local __break repeat 
          if (path )~=( ("")) then  
-            local _177=path:gsub(("?"), filename);local filepath=_177;
-            local _178=io.open(filepath, ("r"));local file=_178;
+            local _183=path:gsub(("?"), filename);local filepath=_183;
+            local _184=io.open(filepath, ("r"));local file=_184;
             if file then  
-               local _179=file:read(("*a"));local src=_179;
-               local _180=compile(src);local lua=_180;
+               local _185=file:read(("*a"));local src=_185;
+               local _186=compile(src);local lua=_186;
                 do return assert(loadstring(lua, (("="))..(filepath))) end
              end 
           end 
@@ -1902,6 +1953,5 @@ do
  end
 
 if arg[(1)] then   run(unpack(arg));  end 
--- vim: ft=lupa
 
 return __env;

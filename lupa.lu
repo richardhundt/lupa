@@ -1,5 +1,7 @@
 #!/usr/bin/env luajit
 
+// vim: ft=lupa
+
 package.path  = ";;./src/?.lua;./lib/?.lua;${package.path}"
 package.cpath = ";;./lib/?.so;${package.cpath}"
 
@@ -264,6 +266,17 @@ _G.__load = function(_from) {
       }
    }
    return mod
+}
+
+_G.__match = function(a, b) {
+   if b == a { return true }
+   var meta = getmetatable(b)
+   if meta {
+      var __match = rawget(meta, '__match') 
+      if __match { return __match(b, a) }
+   }
+   if a.isa(b) { return true }
+   return false
 }
 
 _G.__op_as     = setmetatable
@@ -577,6 +590,11 @@ Range.each = function(self, block) {
    }
 }
 
+_G.Void = function(...) {
+   assert(#... == 0, "TypeError: value in Void")
+   return ...
+}
+
 _G.Nil = setmetatable(newtable(), Type)
 Nil.__name = 'Nil'
 Nil.__index = function(self, key) {
@@ -742,8 +760,8 @@ object Grammar {
       return '_'~id_counter
    }
 
-   function define(name, ctx, base, type) {
-      ctx.define(name, { base = base, type = type })
+   function define(name, ctx, base, type, expr) {
+      ctx.define(name, { base = base, type = type, expr = expr })
       return name
    }
    function define_const(name, ctx, ...) {
@@ -791,11 +809,11 @@ object Grammar {
    var semicol = / (";" -> '')? /
    var digits  = / (%digit {~ "_" -> '' ~}?)+ /
    var keyword = / (
-      "var" | "function" | "class" | "with" | "like" | "in"
+      | "var" | "function" | "class" | "with" | "like" | "in"
       | "nil" | "true" | "false" | "typeof" | "return" | "as"
       | "for" | "throw" | "method" | "has" | "from" | "break"
-      | "continue" | "import" | "try" | "catch"
-      | "finally" | "if" | "else" | "yield" | "rule"
+      | "continue" | "import" | "try" | "catch" | "switch" | "case"
+      | "default" | "finally" | "if" | "else" | "yield" | "rule"
    ) idsafe /
 
    var prec = {
@@ -984,9 +1002,12 @@ object Grammar {
             if !name.find('%.%.%.') {
                name = name.match('^%s*([^%s]+)%s*$')
                var info = ctx.lookup(name) 
+               if info.expr {
+                  head.push('%s = %s == nil and %s or %s'.format(name,name,info.expr,name))
+               }
                if info.type {
                   var type = lookup(info.type, ctx)
-                  head.push((name~'='~type~'(%s)').format(name))
+                  head.push('%s=%s(%s)'.format(name,type,name))
                }
             }
          }
@@ -1009,12 +1030,21 @@ object Grammar {
       return list.concat(","), head.concat(';')
    }
 
+   function make_for_stmt(ctx, name, init, last, step, body) {
+      var list, head = make_params(ctx, [ name ])
+      return 'for %s=%s,%s,%s do %s%s end'.format(name, init, last, step, head, body)
+   }
+
+   function make_for_in_stmt(ctx, name_list, expr, body) {
+      var list, head = make_params(ctx, name_list)
+      return 'for %s in __op_each(%s) do %s%s end'.format(list, expr, head, body)
+   }
    function make_return_stmt(ctx, is_lex, expr_list, ret_guard) {
       expr_list = expr_list || [ ]
       if ret_guard {
          for i=1, #ret_guard {
             var type = lookup(ret_guard[i], ctx)
-            var expr = expr_list[i] || 'nil'
+            var expr = expr_list[i] || ''
             expr_list[i] = (type~"(%s)".format(expr))
          }
       }
@@ -1123,6 +1153,7 @@ object Grammar {
    }
    rule statement {
       | <if_stmt>
+      | <switch_stmt>
       | <try_stmt>
       | <for_stmt>
       | <for_in_stmt>
@@ -1169,15 +1200,33 @@ object Grammar {
       )
       ~}
    }
+   rule switch_stmt {
+      {~
+         "switch" idsafe s {:expr: <expr> :} s "{"
+         {~ (s <case_stmt>)* (s <default_stmt>)? s ~}
+         "}" -> "if false then %2 end"
+      ~}
+   }
+   rule case_stmt {
+      {~
+         "case" idsafe =expr s <expr> s ":"
+         {~ (s !<break_stmt> <statement>)* s ~}
+         "break" idsafe {~ s semicol ~}
+         -> " elseif __match(%1,%2) then %3%4"
+      ~}
+   }
+   rule default_stmt {
+      {~ "default" idsafe s ":" {~ s <statement>* ~} -> " else %1 " ~}
+   }
    rule try_stmt {
       {~
       "try" idsafe s
       "{" {~ <lambda_body> s ~} ("}" | <{ syntax_error("expected '}'") }>)
       (s "catch" idsafe s
          "(" s {~ <enter> <param> ~} s ")" s
-         "{" {~ <lambda_body> s <leave> ~} "}"
+         "{" {~ <lambda_body> s ~} "}"
       )?
-      -> make_try_stmt
+      -> make_try_stmt <leave>
       ~}
    }
    rule import_stmt {
@@ -1188,18 +1237,21 @@ object Grammar {
    rule export_stmt {
       {~ "export" idsafe s {@ <name_list> @} -> make_export_stmt ~}
    }
+   rule loop_name {
+      <name> <ctx> {`nil`} (s <guard_expr>)? -> define
+   }
    rule for_stmt {
-      {~ "for" idsafe s <param> s "=" s <expr> s "," s <expr>
-         (s "," s <expr>)? s <loop_body>
+      {~ "for" idsafe s <enter> <ctx> <loop_name> s "=" s <expr> s "," s <expr>
+         (s "," s <expr> | {`1`}) s <loop_body> -> make_for_stmt <leave>
       ~}
    }
    rule for_in_stmt {
-      {~ "for" idsafe s <param> (s "," s <param>)* s "in" idsafe s
-         (<expr> -> "__op_each(%1)") s <loop_body>
+      {~ "for" idsafe s <enter> <ctx> {@ <loop_name> (s "," s <loop_name>)* @} s "in" idsafe s
+         <expr> s <loop_body> -> make_for_in_stmt <leave>
       ~}
    }
    rule while_stmt {
-      {~ "while" idsafe s <expr> s <loop_body> ~}
+      {~ "while" idsafe s <expr> s <loop_body> -> 'while %1 do %2 end' ~}
    }
    rule do_while_stmt {
       {~
@@ -1208,11 +1260,10 @@ object Grammar {
       ~}
    }
    rule loop_body {
-      ("{" -> " do local __break repeat ") <block_body> s
-      (
-         ("}" | <{ syntax_error("expected '}'") }>)
-         -> " until true if __break then break end end "
-      )
+      {~
+         "{" {~ <block_body> s ~} ("}" | <{ syntax_error("expected '}'") }>)
+         -> 'local __break repeat %1 until true if __break then break end'
+      ~}
    }
 
    rule block {
@@ -1366,7 +1417,7 @@ object Grammar {
       {~ <name> <ctx> -> lookup ~}
    }
    rule param {
-      <name> <ctx> {`nil`} (s <guard_expr>)? -> define
+      <name> <ctx> {`nil`} (s <guard_expr> | {`nil`}) (s "=" <expr>)? -> define
    }
    rule name {
       { !keyword ((%alpha | "_") (%alnum | "_")*) }
@@ -1902,5 +1953,4 @@ _G.LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu"
 }
 
 if arg[1] { run(unpack(arg)) }
-// vim: ft=lupa
 

@@ -1,0 +1,13 @@
+var a = '40'
+switch a {
+   case 60 + 9:
+      print("sixty-nine")
+      break
+   case /[0-9]+/:
+      print("forty-two")
+      break
+   default:
+      print("dunno")
+}
+
+

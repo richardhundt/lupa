@@ -1,0 +1,5 @@
+var h = { answer = 42 }
+for k : String, v : Number in h {
+   print(k, v)
+}
+

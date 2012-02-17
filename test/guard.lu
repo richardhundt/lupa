@@ -31,13 +31,13 @@ class Point {
    method move(x, y : Int, ...r : Int) : Int {
       self.x = x
       self.y = y
-      print(r)
+      print(@r)
       1
    }
 }
 
 var p = Point()
-p.move(1, 2, 3, "four")
+p.move(1, 2, 3, 4)
 
 function map(fun) {
    return fun()
