@@ -130,17 +130,17 @@ Lupa has the following unary operators:
 
 The following binary operators, grouped by precedence, from highest to lowest:
 
-* "^^" - pow
-* "*", "/", "%" - mul, div, mod
-* "+", "-", "~" - add, sub, concat
-* ">>", "<<", ">>>" - rshift, lshift, arshift
-* "&" - band
-* "^" - bxor
-* "|" - bor
-* "<=", ">=", "<", ">", "in", "as" - le, ge, lt, gt, in, as
-* "==", "!=" - eq, ne
-* "&&" - and
-* "||" - or
+* `^^` - pow
+* `*`, `/`, `%` - mul, div, mod
+* `+`, `-`, `~` - add, sub, concat
+* `>>`, `<<`, `>>>` - rshift, lshift, arshift
+* `&` - band
+* `^` - bxor
+* `|` - bor
+* `<=`, `>=`, `<`, `>`, `in`, `as` - le, ge, lt, gt, in, as
+* `==`, `!=` - eq, ne
+* `&&` - and
+* `||` - or
 
 ## Patterns
 
@@ -183,5 +183,83 @@ object Macro {
 
 var s = "add(mul(a,b),apply(f,x))"
 print(Macro.text(s))
+```
+
+## Scoping
+
+Lupa has two kinds of scopes. The first is simple lexical scoping, which is seen in function and class bodies, and control structures.
+
+The second kind of scope is the environment scope, which is modeled after Lua 5.2's _ENV idea, where symbols which are not declared in a compilation unit, are looked up in a special `__env` table, which delegates to Lua's `_G` global table.
+
+At the top level of a script, class, object, trait and function declarations are bound to `__env`, while variable declarations remain lexical.
+
+However, inside class, object and trait bodies, only `method` and `has` declarations bind to the environment. All other declarations are lexical, including function declarations.
+
+```ActionScript
+// bound to the environment (__env.envfunc)
+function envfunc() {
+    // ...
+}
+// a lexical function
+var localfunc = function() {
+    // ...
+}
+class MyClass {
+    // this function is only visible in this block
+    function hidden() {
+        // ...
+    }
+    method munge() {
+        hidden()
+    }
+}
+```
+
+Nested function declarations are also lexical, however the differ from function literals in that inside a function declaration, the function itself is always visible, so can be called recursively:
+
+```ActionScript
+function outer() {
+
+    // inner function is lexical
+    function inner() {
+        // inner itself is visible here
+    }
+
+    // not quite the same thing
+    var inner = function() {
+        // inner itself is not visible here
+    }
+}
+```
+
+## Modules
+
+Modules are simply Lupa source files. There are no additional namespaces constructs within the language to declare modules or packages. Modules return their `__env` table, so the can export any environment scoped symbol (this is likely to change).
+
+Symbols can be imported using the `import` statement, which takes the form `import <name_list> from <dotted_path>`
+
+```ActionScript
+/*--- file: ./my/shapes.lu ---*/
+class Point {
+    has x = 0
+    has y = 0
+    method move(x, y) {
+        self.x = x
+        self.y = y
+    }
+}
+class Point3D from Point {
+    has z = 0
+    method move(x, y, z) {
+        super::move(self, x, y)
+        self.z = z
+    }
+}
+
+/*--- file: test.lu ---*/
+import Point, Point3D from my.shapes
+
+var p = Point3D()
+p.move(1, 2, 3)
 ```
 
