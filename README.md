@@ -193,7 +193,7 @@ The second kind of scope is the environment scope, which is modeled after Lua 5.
 
 At the top level of a script, class, object, trait and function declarations are bound to `__env`, while variable declarations remain lexical.
 
-However, inside class, object and trait bodies, only `method` and `has` declarations bind to the environment. All other declarations are lexical, including function declarations.
+However, inside class, object and trait bodies, `__env` is only used for lookup, no declarations bind to the environment. All other declarations are lexical, including function declarations.
 
 ```ActionScript
 // bound to the environment (__env.envfunc)
