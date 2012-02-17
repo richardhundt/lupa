@@ -29,11 +29,15 @@ However, Lupa adds several features, such as:
 * short function literals
 * try-catch blocks
 
+## Dependencies
+
+Lupa depends on LPeg, and either LuaJIT2, or Lua + LuaBitop (LJ2 has a bit library included)
+
 # LANGUAGE
 
 Syntactically Lupa belongs to the C family of languages, in that it has curly braces delimiting blocks and includes familiar constructs such as switch statements and while loops.
 
-## SAMPLE
+## Sample
 
 ```ActionScript
 trait Pet(S) {
@@ -104,11 +108,80 @@ local s = String("first")
 ## Assignment
 
 Assignments can be simple binding expressions:
+
 ```ActionScript
 everything.answer = 42
 ```
 ... or compound:
+
 ```ActionScript
 a ||= 1
+```
+
+## Operators
+
+Lupa has the following unary operators:
+
+* `!` - not
+* `#` - len
+* `-` - unm
+* `~` - bnot
+* `@` - unpack
+
+The following binary operators, grouped by precedence, from highest to lowest:
+
+* "^^" - pow
+* "*", "/", "%" - mul, div, mod
+* "+", "-", "~" - add, sub, concat
+* ">>", "<<", ">>>" - rshift, lshift, arshift
+* "&" - band
+* "^" - bxor
+* "|" - bor
+* "<=", ">=", "<", ">", "in", "as" - le, ge, lt, gt, in, as
+* "==", "!=" - eq, ne
+* "&&" - and
+* "||" - or
+
+## Patterns
+
+Lupa integrates LPeg into the language and supports pattern literals delimited by a starting and ending `/`:
+
+```ActionScript
+var ident = / { [a-zA-Z_] ([a-zA-Z_0-9]+) } /
+```
+
+Patterns are also composable. Here the lexical pattern `a` is referenced from within the second pattern:
+
+```ActionScript
+var a = / '42' /
+print(/ { 'answer' | <{a}> } /.match("42"))
+```
+
+Grammars are constructed in that nominal types can declare patterns as rules in their body. Here's the example macro expander from the LPeg website translated to Lupa:
+
+```ActionScript
+object Macro {
+
+    rule text {
+        {~ <item>* ~}
+    }
+    rule item {
+        <macro> | [^()] | '(' <item>* ')'
+    }
+    rule arg {
+        ' '* {~ (!',' <item>)* ~}
+    }
+    rule args {
+        '(' <arg> (',' <arg>)* ')'
+    }
+    rule macro {
+        | ('apply' <args>) -> '%1(%2)'
+        | ('add'   <args>) -> '%1 + %2'
+        | ('mul'   <args>) -> '%1 * %2'
+    }
+}
+
+var s = "add(mul(a,b),apply(f,x))"
+print(Macro.text(s))
 ```
 
