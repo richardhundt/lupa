@@ -1,4 +1,4 @@
-trait Guide(M) {
+trait Guide(M : String) {
     method walk() { print(M) }
 }
 
