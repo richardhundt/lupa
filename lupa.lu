@@ -1460,7 +1460,7 @@ object Grammar {
       -> '__object(__env,"%1",{%2},{%3},function(__env,self,super) %4 end);'
    }
    rule class_body {
-      {:scope: {`'lexical'`} :}
+      {:scope: {`'__env'`} :}
       <enter>
       ({`'super'`} <ctx> -> define_const)
       ({`'self'`}  <ctx> -> define_const)
