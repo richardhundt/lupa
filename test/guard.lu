@@ -26,7 +26,7 @@ function g(a : Int) : Int {
 
 class Point {
    has x : Int = 0
-   has y = 0
+   has y : Int = 0
 
    method move(x, y : Int, ...r : Int) : Int {
       self.x = x
@@ -44,4 +44,7 @@ function map(fun) {
 }
 
 map -> { print("Hello") }
+
+p.x = 1
+//p.x = "cheese"
 

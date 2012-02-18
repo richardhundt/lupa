@@ -27,6 +27,13 @@ _G.__class = function(into, name, _from, _with, body) {
    _class.__readers = readers
    _class.__writers = writers
 
+   _class.__in = function(o, k) {
+      var v = rawget(o, k)
+      if v != nil { return true }
+      var r = rawget(readers, k)
+      return r && r(o) != nil
+   }
+
    var queue  = newtable(unpack(_from))
    while  #queue > 0 {
       var base = table::remove(queue, 1)
@@ -119,22 +126,31 @@ _G.__has = function(into, name, type, def) {
    var setter = '__set_'~name
    var getter = '__get_'~name
    if type {
+      var attr = '$'~name
       into[setter] = function(obj, val) {
-         rawset(obj, name, type(val))
+         rawset(obj, attr, type(val))
+      }
+      into[getter] = function(obj) {
+         var val = rawget(obj, attr)
+         if val == nil {
+            val = def(obj)
+            obj[setter](obj, val)
+         }
+         return val
       }
    }
    else {
       into[setter] = function(obj, val) {
          rawset(obj, name, val)
       }
-   }
-   into[getter] = function(obj) {
-      var val = rawget(obj, name)
-      if val == nil {
-         val = def(obj)
-         obj[setter](obj, val)
+      into[getter] = function(obj) {
+         var val = rawget(obj, name)
+         if val == nil {
+            val = def(obj)
+            obj[setter](obj, val)
+         }
+         return val
       }
-      return val
    }
 }
 _G.__rule = function(into, name, patt) {
@@ -240,7 +256,12 @@ _G.__import = function(into, _from, what) {
    var mod = __load(_from)
    if what {
       for i=1, #what {
-         into[what[i]] = mod[what[i]]
+         var key = what[i]
+         var val = rawget(mod, key)
+         if val == nil {
+            error("ImportError: ${key} from ${_from} is nil")
+         }
+         into[key] = val
       }
    }
    else {
@@ -285,6 +306,9 @@ _G.__op_yield  = coroutine['yield']
 _G.__op_throw  = error
 
 _G.__op_in = function(key, obj) {
+   var mt = getmetatable(obj)
+   var __op_in = mt && rawget(mt, '__in')
+   if __op_in { return __op_in(obj, key) }
    return rawget(obj, key) != nil
 }
 _G.__op_like = function(this, that) {
@@ -688,7 +712,7 @@ Pattern.__match = function(patt, subj) {
 
 class Scope {
    has entries = { }
-   has outer   = _G
+   has outer
    method __init(outer) {
       self.outer = outer
    }
@@ -696,7 +720,7 @@ class Scope {
       if name in self.entries {
          return self.entries[name]
       }
-      else if 'outer' in self {
+      else if self.outer {
          return self.outer.lookup(name)
       }
    }
@@ -707,6 +731,8 @@ class Scope {
 
 class Context {
    has scope = Scope()
+   has exports = { }
+
    method enter() {
       self.scope = Scope(self.scope)
    }
@@ -812,7 +838,7 @@ object Grammar {
       | "var" | "function" | "class" | "with" | "like" | "in"
       | "nil" | "true" | "false" | "typeof" | "return" | "as"
       | "for" | "throw" | "method" | "has" | "from" | "break"
-      | "continue" | "import" | "try" | "catch" | "switch" | "case"
+      | "continue" | "import" | "export" | "try" | "catch" | "switch" | "case"
       | "default" | "finally" | "if" | "else" | "yield" | "rule"
    ) idsafe /
 
@@ -920,7 +946,7 @@ object Grammar {
          type = lookup(type, ctx)
          return '__has(self,"%s",%s,function(self) return %s(%s) end);'.format(name,type,type,body)
       }
-      return '__has(self,"%s",%s,function(self) return (%s) end);'.format(name,type,body)
+      return '__has(self,"%s",%s,function(self) return %s end);'.format(name,type,body)
    }
 
    function make_binop_bind(ctx, a1, a2, o, b) {
@@ -1003,7 +1029,7 @@ object Grammar {
                name = name.match('^%s*([^%s]+)%s*$')
                var info = ctx.lookup(name) 
                if info.expr {
-                  head.push('%s = %s == nil and %s or %s'.format(name,name,info.expr,name))
+                  head.push('if %s==nil then %s=%s else %s=%s end'.format(name,name,info.expr,name,name))
                }
                if info.type {
                   var type = lookup(info.type, ctx)
@@ -1069,14 +1095,14 @@ object Grammar {
 
    function make_func_decl(c,n,p,b,s) {
       var p, h = make_params(c, p)
-      if s == 'lexical' && #n == 1 {
-         c.scope.outer.define(n[1])
-         return "local function %s(%s) %s%s end".format(n[1],p,h,b)
+      if s == 'lexical' {
+         c.scope.outer.define(n)
+         return "local function %s(%s) %s%s end".format(n,p,h,b)
       }
-      else if #n == 1 {
-         return "function __env.%s(%s) %s%s end".format(n[1],p,h,b)
+      else {
+         c.scope.outer.define(n, { base = s })
+         return "function %s.%s(%s) %s%s end".format(s,n,p,h,b)
       }
-      return "function %s(%s) %s%s end".format(n.concat('.'),p,h,b)
    }
 
    function make_meth_decl(ctx,n,p,b) {
@@ -1108,13 +1134,13 @@ object Grammar {
       }
       return "__import(__env,%q,{%s});".format(f, q.concat(','))
    }
-   function make_export_stmt(n) {
+   function make_export_stmt(c,n) {
       var b = [ ]
       for i=1, #n {
-         var q = quote(n[i])
-         b[i] = '__export[%s]=true;'.format(q)
+         c.exports[n[i]] = true
+         b.push(quote(n[i]))
       }
-      return b.concat('')
+      return '__export={%s}'.format(b.concat(','))
    }
 
    method match(...) {
@@ -1127,15 +1153,22 @@ object Grammar {
    rule unit {
       {:set_return: {`false`} :}
       {:ret_guard: {`nil`} :}
-      {:scope: {`'global'`} :}
+      {:scope: {`'__env'`} :}
       { %s* '#!' (!nl .)* %s* }? s
-      {`'local __env=setmetatable({},{__index=_G});'`}
+      {`'local __env,__export=setmetatable({},{__index=_G}),{};'`}
       <enter>
       ({`'_G'   `} <ctx> -> define_const)
       ({`'__env'`} <ctx> -> define_const)
       {~ (s <main_body_stmt>)* s ~}
+      (<ctx> -> function(ctx) {
+         var buf = [ ]
+         for k,v in ctx.exports {
+            buf.push('__export[%q]=%s'.format(k,lookup(k, ctx)))
+         }
+         return buf.concat(';')
+      })
       <leave>
-      {`'return __env;'`}
+      {`' return __export;'`}
    }
 
    rule ctx   { %1 }
@@ -1149,6 +1182,7 @@ object Grammar {
       | <trait_decl>
       | <object_decl>
       | <import_stmt>
+      | <export_stmt>
       | <statement>
    }
    rule statement {
@@ -1235,7 +1269,7 @@ object Grammar {
       ) -> make_import_stmt ~}
    }
    rule export_stmt {
-      {~ "export" idsafe s {@ <name_list> @} -> make_export_stmt ~}
+      {~ "export" idsafe s <ctx> {@ <name> (s "," s <name>)* @} -> make_export_stmt ~}
    }
    rule loop_name {
       <name> <ctx> {`nil`} (s <guard_expr>)? -> define
@@ -1319,7 +1353,7 @@ object Grammar {
       ) -> make_meth_decl ~} <leave>
    }
    rule func_decl {
-      {~ ("function" idsafe <ctx> s {@ <name> (s "." s <name>)* @} s
+      {~ ("function" idsafe <ctx> s <name> s
       <enter>
       "(" s <param_list> s ")" s
       <guard_list>? s
@@ -1823,7 +1857,7 @@ _G.compile = function(lupa, name, args) {
    }
    var lua = Grammar.match(lupa, 1, ctx)
    ctx.leave()
-   assert(ctx.scope.outer == _G, "scope is unbalanced")
+   assert(ctx.scope.outer == nil, "scope is unbalanced")
    if args {
       return "local ${args.concat(',')}=...;${lua}"
    }

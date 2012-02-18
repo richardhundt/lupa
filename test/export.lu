@@ -1,11 +1,22 @@
-import insert, concat from table
+export Point, foo
 
-class A {
-    has a = 42
+function foo() {
+   print("hi")
 }
 
-class B {
-    has b = 69
+class Point {
+   has x = 0
+   has y = 0
 }
 
-print("B => ", B.new().b)
+function bar() {
+   function quux() {
+      bar()
+      print("AR")
+   }
+}
+function blah() { }
+var p = Point()
+p.x = 1
+p.y = 1
+

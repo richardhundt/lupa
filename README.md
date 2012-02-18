@@ -70,7 +70,7 @@ class Hamster from Mammal, Named with Pet("small") {
    var numbers = [ "one", "two", "three", "four", "five" ]
 
    method count(upto) {
-      // short functions as infix expressions
+      // short functions as postfix expressions
       upto.times -> { print(numbers[_]) }
    }
 }

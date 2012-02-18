@@ -1,7 +1,7 @@
 
 class Point {
-    has x = 0
-    has y = 0
+    has x : Number = 0
+    has y : Number = 0
 
     method __init() {
         print("class => ", Point)
@@ -14,13 +14,17 @@ class Point {
 }
 
 class Point3D from Point {
-    has z = 0
+    has z : Number = 0
 
     function greet() {
        print("Hello World!")
     }
 
-    method move(x, y, z) {
+    function getit() {
+       return 4
+    }
+
+    method move(x : Number = getit(), y : Number = 0, z : Number = 0) : Void {
         super::move(self, x, y)
         self.z = z
     }
@@ -33,8 +37,17 @@ print(p.x, p.y)
 
 var p = Point3D()
 
+p.move()
+
 for i = 1, 10_000_000 {
    p.move(i+1, i+2, i+3)
 }
 print(p.x, p.y, p.z)
+
+try {
+   p.z = "cheese"
+}
+catch (e) {
+   print(e)
+}
 
