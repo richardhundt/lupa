@@ -36,8 +36,10 @@ p.move()
 print(p.x, p.y)
 
 var p = Point3D()
+print(p, Point3D)
 
 p.move()
+assert(p.x == 4)
 
 for i = 1, 10_000_000 {
    p.move(i+1, i+2, i+3)
@@ -47,7 +49,10 @@ print(p.x, p.y, p.z)
 try {
    p.z = "cheese"
 }
-catch (e) {
+catch (e : String) {
+   print(e)
+}
+catch (e : Number) {
    print(e)
 }
 

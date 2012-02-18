@@ -16,7 +16,7 @@ _G.__class = function(into, name, _from, _with, body) {
       _from[#_from + 1] = Object
    }
 
-   var _super = newtable()
+   var _super = Super(_from)
    var _class = newtable()
    _class.__name = name
    _class.__from = _from
@@ -176,9 +176,19 @@ _G.__rule = function(into, name, patt) {
    }
 }
 
-_G.__try = function(_try, _catch) {
+_G.__try = function(_try, ...) {
    var ok, er = pcall(_try)
-   if !ok { _catch(er) }
+   if !ok {
+      for i=1, #... {
+         var node = ...[i]
+         var body = node.body
+         var type = node.type
+         if __match(er, type) {
+            return body(er)
+         }
+      }
+      error(er, 2)
+   }
 }
 
 _G.__patt = require("lpeg")
@@ -394,10 +404,22 @@ Type.__index = Type
 Type.__tostring = function(self) {
    return 'type '~(rawget(self, '__name') || 'Type')
 }
+_G.Super = setmetatable(newtable(), Type)
+Super.__tostring = function(self) {
+   return "<super ${self.__name}>"
+}
+Super.__apply = function(self, _from) {
+   var inst = setmetatable(newtable(), self)
+   rawset(inst, '__from', _from)
+   return inst
+}
+Super.__call = function(self, ...) {
+   return self::__from(...)
+}
 
 _G.Class = setmetatable(newtable(), Type)
 Class.__tostring = function(self) {
-   return self.__name
+   return "<class ${self.__name}>"
 }
 Class.__index = function(self, key) {
    error("AccessError: no such member '${key}' in ${self.__name}", 2)
@@ -426,7 +448,7 @@ Object.__with = newtable()
 Object.__readers = newtable()
 Object.__writers = newtable()
 Object.__tostring = function(self) {
-   return "object ${getmetatable(self)}"
+   return "<object ${getmetatable(self).__name}>"
 }
 Object.__index = Object
 Object.isa = function(self, that) {
@@ -1116,13 +1138,24 @@ object Grammar {
          .format(n,w,p,h,b)
    }
 
-   function make_try_stmt(try_body, catch_args, catch_body) {
-      return (
-         'do local __return;'~
-         '__try(function() %s end,function(%s) %s end);' ~
-         'if __return then return __op_spread(__return) end'~
-         ' end'
-      ).format(try_body, catch_args || '', catch_body || '')
+   function make_try_stmt(ctx, try_body, catch_blocks) {
+      var args = [ ]
+      args.push("function() ${try_body} end")
+      for i=1, #catch_blocks {
+         args.push(catch_blocks[i])
+      }
+      var stmt = [ ]
+      stmt.push("do local __return;__try(${args.concat(',')});")
+      stmt.push('if __return then return __op_spread(__return) end end')
+      return stmt.concat(' ')
+   }
+   function make_catch_stmt(ctx, node) {
+      var body = node.body
+      var head = node.head || '__err'
+      var name = head.match('^%s*([^%s]+)%s*$')
+      var info = ctx.lookup(name)
+      var type = info.type
+      return "{body=function(${name}) ${body} end, type=${type}}"
    }
    function make_import_stmt(c, n,f) {
       var q = [ ]
@@ -1266,13 +1299,18 @@ object Grammar {
    }
    rule try_stmt {
       {~
-      "try" idsafe s
-      "{" {~ <lambda_body> s ~} ("}" | <{ syntax_error("expected '}'") }>)
-      (s "catch" idsafe s
-         "(" s {~ <enter> <param> ~} s ")" s
-         "{" {~ <lambda_body> s ~} "}"
-      )?
-      -> make_try_stmt <leave>
+         "try" idsafe s <ctx> <enter>
+         "{" {~ <lambda_body> s ~} ("}" | <{ syntax_error("expected '}'") }>)
+         {@ (s <catch_stmt>)* @}
+         -> make_try_stmt <leave>
+      ~}
+   }
+   rule catch_stmt {
+      {~
+         "catch" idsafe <ctx> <enter> s {%
+            "(" s {:head: <name> <ctx> {`nil`} (s <guard_expr> | {`'String'`}) -> define :} ")" s
+            "{" {:body: {~ <lambda_body> s ~} :} "}"
+         %} -> make_catch_stmt <leave>
       ~}
    }
    rule import_stmt {
