@@ -291,11 +291,9 @@ _G.__load = function(_from)
 
 _G.__match = function(a, b) 
    if (b )==( a) then    do return (true) end  end 
-   local _47=getmetatable(b);local meta=_47;
-   if meta then  
-      local _48=rawget(meta, ("__match"));local __match=_48; 
-      if __match then    do return __match(b, a) end  end 
-    end 
+   local _47=getmetatable(b);local mt=_47;
+   local _48=(mt )and( rawget(mt, ("__match")));local __match=_48;
+   if __match then    do return __match(b, a) end  end 
    if a:isa(b) then    do return (true) end  end 
     do return (false) end
  end;
@@ -1144,10 +1142,10 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
     end
 
    __method(self,"match",function(self,...) 
-      do return self.__init:match(...) end
+      do return self.script:match(...) end
     end);
 
-   __rule(self,"__init",
+   __rule(self,"script",
       __patt.Cs( __patt.V("unit") )* (-__patt.P(1) + __patt.P(syntax_error(("expected <EOF>"))))
    );
    __rule(self,"unit",
@@ -1169,6 +1167,19 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
        end))*
       __patt.V("leave")*
       __patt.Cc((" return __export;"))
+   );
+   __rule(self,"eval",
+      __patt.Cs( 
+         __patt.Cg( __patt.Cc((false)),"set_return")*
+         __patt.Cg( __patt.Cc((nil)),"ret_guard")*
+         __patt.Cg( __patt.Cc(("__env")),"scope")*
+         __patt.Cc(("local __env=setmetatable({},{__index=_G});"))*
+         __patt.V("enter")*
+         (__patt.Cc(("_G")   )* (__patt.V("ctx") )/( define_const))*
+         (__patt.Cc(("__env"))* (__patt.V("ctx") )/( define_const))*
+         __patt.Cs( (s* __patt.V("func_body"))* s )*
+         __patt.V("leave")
+      )* (-__patt.P(1) + __patt.P(syntax_error(("expected <EOF>"))))
    );
 
    __rule(self,"ctx", __patt.Carg(1) );
@@ -1199,6 +1210,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
       + __patt.V("block_stmt")
       + __patt.V("bind_stmt")
       + __patt.V("call_stmt")
+      + #__patt.V("return_stmt")* __patt.P( syntax_error(("return outside of function body")) )
       + -(s* (__patt.P(("}")) + -__patt.P(1)))* __patt.P( syntax_error(("invalid statement")) )
    );
    __rule(self,"call_stmt",
@@ -1369,7 +1381,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
       + __patt.V("func_decl")
       + __patt.V("return_stmt")
       + __patt.V("block_stmt")
-      + (((#(__patt.V("expr")* s* __patt.P(("}")))* __patt.V("ctx")* -- last expr implies return
+      + (((#(__patt.V("expr")* s* (__patt.P(("}")) + -__patt.P(1)))* __patt.V("ctx")* -- last expr implies return
         __patt.Cb("set_return")* __patt.Ca( __patt.V("expr") )*
         __patt.Cb("ret_guard")) )/( make_return_stmt))
       + __patt.V("statement")
@@ -1454,7 +1466,13 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
       __patt.V("name")* __patt.V("ctx")* __patt.Cc((nil))* (s* __patt.V("guard_expr") + __patt.Cc((nil)))* ((s* __patt.P(("="))* __patt.V("expr"))^-1 )/( define)
    );
    __rule(self,"name",
-      __patt.C( -keyword* ((__patt.Def("alpha") + __patt.P(("_")))* (__patt.Def("alnum") + __patt.P(("_")))^0) )
+      __patt.Cs( -keyword* (
+          (__patt.C( (
+             __patt.P(("end")) + __patt.P(("elseif")) + __patt.P(("then")) + __patt.P(("local")) + __patt.P(("repeat")) + __patt.P(("until"))
+            + __patt.P(("_"))* ((__patt.R("09")))^1 + __patt.P(("__return")) + __patt.P(("__break"))
+         )* __patt.P(("_"))^0* idsafe ) )/( ("%1_"))
+         + ((__patt.Def("alpha") + __patt.P(("_")))* (__patt.Def("alnum") + __patt.P(("_")))^0)
+      ) )
    );
    __rule(self,"name_list",
       __patt.Cs( __patt.V("name")* (s* __patt.P((","))* s* __patt.V("name"))^0 )
@@ -1606,9 +1624,7 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
       __patt.Cs( __patt.V("expr")* (s* __patt.P((","))* s* __patt.V("expr"))^0 )
    );
    __rule(self,"expr",
-      __patt.Cs( (__patt.V("infix_expr") + __patt.V("prefix_expr"))* (
-         s* ((__patt.P(("?")) )/( (" and ")))* s* __patt.V("expr")* s* ((__patt.P((":")) )/( (" or ")))* s* __patt.V("expr")
-      )^-1 )
+      __patt.Cs( (__patt.V("infix_expr") + __patt.V("prefix_expr")) )
    );
 
    --/*
@@ -1865,19 +1881,26 @@ _G.compile = function(lupa, name, args)
  end;
 
 _G.eval = function(src) 
-   local _171=assert(loadstring(compile(src),(("=eval:"))..(src)));local eval=_171;
+   local _171=__env.Context();local ctx=_171;
+   ctx:enter();
+   for k,v in __op_each(pairs(_G)) do local __break repeat 
+      ctx:define(k);
+    until true if __break then break end end
+   local _172=__env.Grammar:eval(src, (1), ctx);local lua=_172;
+   ctx:leave();
+   local _173=assert(loadstring(lua,(("=eval:"))..(src)));local eval=_173;
     do return eval() end
  end;
 
-local _177=function(...) local args=_G.Array(...)
-   local _172=_G.Hash({ });local opt=_172;
-   local _173=(0);local idx=_173;
-   local _174=#(args);local len=_174;
+local _179=function(...) local args=_G.Array(...)
+   local _174=_G.Hash({ });local opt=_174;
+   local _175=(0);local idx=_175;
+   local _176=#(args);local len=_176;
    while (idx )<( len) do local __break repeat 
       idx= (idx )+( (1));
-      local _175=args[idx];local arg=_175;
+      local _177=args[idx];local arg=_177;
       if (arg:sub((1),(1)) )==( ("-")) then  
-         local _176=arg:sub((2));local o=_176;
+         local _178=arg:sub((2));local o=_178;
          if (o )==( ("o")) then  
             idx= (idx )+( (1));
             opt[("o")] = args[idx];
@@ -1898,45 +1921,45 @@ local _177=function(...) local args=_G.Array(...)
        end 
     until true if __break then break end end
     do return opt end
- end;local getopt=_177;
+ end;local getopt=_179;
 
-local _186=function(...) 
-   local _178=getopt(...);local opt=_178;
-   local _179=assert(io.open(opt[("file")]));local sfh=_179;
-   local _180=sfh:read(("*a"));local src=_180;
+local _188=function(...) 
+   local _180=getopt(...);local opt=_180;
+   local _181=assert(io.open(opt[("file")]));local sfh=_181;
+   local _182=sfh:read(("*a"));local src=_182;
    sfh:close();
 
-   local _181=compile(src);local lua=_181;
+   local _183=compile(src);local lua=_183;
    if opt[("l")] then  
       io.stdout:write(lua, ("\n"));
       os.exit((0));
     end 
 
    if opt[("o")] then  
-      local _182=io.open(opt[("o")], ("w+"));local outc=_182;
+      local _184=io.open(opt[("o")], ("w+"));local outc=_184;
       outc:write(lua);
       outc:close();
    
    else 
       lua= lua:gsub(("^%s*#![^\n]*"),(""));
-      local _183=assert(loadstring(lua,(("="))..(opt[("file")])));local main=_183;
+      local _185=assert(loadstring(lua,(("="))..(opt[("file")])));local main=_185;
       if opt[("b")] then  
-         local _184=io.open(opt.b, ("wb+"));local outc=_184;
+         local _186=io.open(opt.b, ("wb+"));local outc=_186;
          outc:write(String.dump(main));
          outc:close();
       
       else 
-         local _185=setmetatable(_G.Hash({ }), _G.Hash({ __index = _G }));local main_env=_185;
+         local _187=setmetatable(_G.Hash({ }), _G.Hash({ __index = _G }));local main_env=_187;
          setfenv(main, main_env);
          main(opt[("file")], ...);
        end 
     end 
- end;local run=_186;
+ end;local run=_188;
 
-arg= arg  and  _G.Array( unpack(arg) )  or  _G.Array( );
+arg= ((arg )and( _G.Array( unpack(arg) ) ))or( _G.Array( ));
 do 
    -- from strict.lua
-   local _187=getmetatable(_G);local mt=_187;
+   local _189=getmetatable(_G);local mt=_189;
    if (mt )==( (nil)) then  
       mt= newtable();
       setmetatable(_G, mt);
@@ -1945,13 +1968,13 @@ do
    mt.__declared = newtable();
 
    local function what() 
-      local _188=debug.getinfo((3), ("S"));local d=_188;
+      local _190=debug.getinfo((3), ("S"));local d=_190;
        do return ((d )and( d.what ))or( ("C")) end
     end
 
    mt.__newindex = function(t, n, v) 
       if not(mt.__declared[n]) then  
-         local _189=what();local w=_189;
+         local _191=what();local w=_191;
          if ((w )~=( ("main") ))and(( w )~=( ("C"))) then  
             error(("assign to undeclared variable '"..tostring(n).."'"), (2));
           end 
@@ -1971,14 +1994,14 @@ do
 _G.LUPA_PATH = ("./?.lu;./lib/?.lu;./src/?.lu");
 do 
    package.loaders[(#(package.loaders) )+( (1))] = function(modname) 
-      local _190=modname:gsub(("%."), ("/"));local filename=_190;
+      local _192=modname:gsub(("%."), ("/"));local filename=_192;
       for path in __op_each(LUPA_PATH:gmatch(("([^;]+)"))) do local __break repeat 
          if (path )~=( ("")) then  
-            local _191=path:gsub(("?"), filename);local filepath=_191;
-            local _192=io.open(filepath, ("r"));local file=_192;
+            local _193=path:gsub(("?"), filename);local filepath=_193;
+            local _194=io.open(filepath, ("r"));local file=_194;
             if file then  
-               local _193=file:read(("*a"));local src=_193;
-               local _194=compile(src);local lua=_194;
+               local _195=file:read(("*a"));local src=_195;
+               local _196=compile(src);local lua=_196;
                 do return assert(loadstring(lua, (("="))..(filepath))) end
              end 
           end 

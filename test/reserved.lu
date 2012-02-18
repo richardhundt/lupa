@@ -1,0 +1,5 @@
+var end = 42
+var then = "Answer"
+var _1 = 10
+print(_1, then, end)
+

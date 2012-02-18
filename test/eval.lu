@@ -1,0 +1,6 @@
+for i=1, 10 {
+   print(eval('''
+      var a = 1+2; a
+   '''))
+}
+

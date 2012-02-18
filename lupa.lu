@@ -1142,10 +1142,10 @@ object Grammar {
    }
 
    method match(...) {
-      self.__init.match(...)
+      self.script.match(...)
    }
 
-   rule __init {
+   rule script {
       {~ <unit> ~} (!. | <{syntax_error("expected <EOF>")}>)
    }
    rule unit {
@@ -1167,6 +1167,19 @@ object Grammar {
       })
       <leave>
       {`' return __export;'`}
+   }
+   rule eval {
+      {~ 
+         {:set_return: {`false`} :}
+         {:ret_guard: {`nil`} :}
+         {:scope: {`'__env'`} :}
+         {`'local __env=setmetatable({},{__index=_G});'`}
+         <enter>
+         ({`'_G'   `} <ctx> -> define_const)
+         ({`'__env'`} <ctx> -> define_const)
+         {~ (s <func_body>) s ~}
+         <leave>
+      ~} (!. | <{syntax_error("expected <EOF>")}>)
    }
 
    rule ctx   { %1 }
@@ -1197,6 +1210,7 @@ object Grammar {
       | <block_stmt>
       | <bind_stmt>
       | <call_stmt>
+      | &<return_stmt> <{ syntax_error("return outside of function body") }>
       | !(s ("}" | !.)) <{ syntax_error("invalid statement") }>
    }
    rule call_stmt {
@@ -1367,7 +1381,7 @@ object Grammar {
       | <func_decl>
       | <return_stmt>
       | <block_stmt>
-      | ((&(<expr> s "}") <ctx> // last expr implies return
+      | ((&(<expr> s ("}" | !.)) <ctx> // last expr implies return
         =set_return {@ <expr> @}
         =ret_guard) -> make_return_stmt)
       | <statement>
@@ -1453,7 +1467,10 @@ object Grammar {
    }
    rule name {
       {~ !keyword (
-         | { ('end' | 'elseif' | 'then' | 'local' | 'repeat' | 'until') '_'* idsafe } -> '%1_'
+         | { (
+            | 'end' | 'elseif' | 'then' | 'local' | 'repeat' | 'until'
+            | '_' [0-9]+ | '__return' | '__break'
+         ) '_'* idsafe } -> '%1_'
          | ((%alpha | "_") (%alnum | "_")*)
       ) ~}
    }
@@ -1864,7 +1881,14 @@ _G.compile = function(lupa, name, args) {
 }
 
 _G.eval = function(src) {
-   var eval = assert(loadstring(compile(src),'=eval:'~src))
+   var ctx = Context()
+   ctx.enter()
+   for k,v in pairs(_G) {
+      ctx.define(k)
+   }
+   var lua = Grammar.eval(src, 1, ctx)
+   ctx.leave()
+   var eval = assert(loadstring(lua,'=eval:'~src))
    return eval()
 }
 
