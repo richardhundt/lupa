@@ -1282,20 +1282,19 @@ __object(__env,"Grammar",{},{},function(__env,self,super)
    __rule(self,"switch_stmt",
       __patt.Cs(
          __patt.P(("switch"))* idsafe* s* __patt.Cg( __patt.V("expr"),"expr")* s* __patt.P(("{"))*
-         __patt.Cs( (s* __patt.V("case_stmt"))^0* (s* __patt.V("default_stmt"))^-1* s )*
-         (__patt.P(("}")) )/( ("if false then %2 end"))
+         __patt.Cs( s* (s* __patt.V("case_stmt"))^0* (s* __patt.V("default_stmt"))^-1* s )*
+         (__patt.P(("}")) )/( ("repeat local __break; %2 until true"))
       )
    );
    __rule(self,"case_stmt",
       __patt.Cs(
          __patt.P(("case"))* idsafe* __patt.Cb("expr")* s* __patt.V("expr")* s* __patt.P((":"))*
-         __patt.Cs( (s* -__patt.V("break_stmt")* __patt.V("statement"))^0* s )*
-         __patt.P(("break"))* idsafe* (__patt.Cs( s* semicol )
-         )/( (" elseif __match(%1,%2) then %3%4"))
+         (__patt.Cs( s* (s* -((__patt.P(("case")) + __patt.P(("default")))* idsafe* s)* __patt.V("statement"))^0* s )
+         )/( (" if __match(%1,%2) then %3 end "))
       )
    );
    __rule(self,"default_stmt",
-      __patt.Cs( __patt.P(("default"))* idsafe* s* __patt.P((":"))* (__patt.Cs( s* __patt.V("statement")^0 ) )/( (" else %1 ")) )
+      __patt.Cs( __patt.P(("default"))* idsafe* s* __patt.P((":"))* s* (__patt.Cs( (s* __patt.V("statement")^0) ) )/( ("%1")) )
    );
    __rule(self,"try_stmt",
       __patt.Cs(

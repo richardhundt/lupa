@@ -3,8 +3,13 @@ switch a {
    case 60 + 9:
       print("sixty-nine")
       break
-   case /[0-9]+/:
-      print("forty-two")
+   case 40:
+      print("forty")
+      break
+   case '40':
+      print("number")
+   case String:
+      print("string")
       break
    default:
       print("dunno")

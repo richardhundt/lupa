@@ -20,13 +20,13 @@ class Point3D from Point {
        print("Hello World!")
     }
 
-    function getit() {
-       return 4
-    }
-
     method move(x : Number = getit(), y : Number = 0, z : Number = 0) : Void {
         super::move(self, x, y)
         self.z = z
+    }
+
+    function getit() {
+       return 4
     }
 }
 

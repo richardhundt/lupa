@@ -1282,20 +1282,19 @@ object Grammar {
    rule switch_stmt {
       {~
          "switch" idsafe s {:expr: <expr> :} s "{"
-         {~ (s <case_stmt>)* (s <default_stmt>)? s ~}
-         "}" -> "if false then %2 end"
+         {~ s (s <case_stmt>)* (s <default_stmt>)? s ~}
+         "}" -> "repeat local __break; %2 until true"
       ~}
    }
    rule case_stmt {
       {~
          "case" idsafe =expr s <expr> s ":"
-         {~ (s !<break_stmt> <statement>)* s ~}
-         "break" idsafe {~ s semicol ~}
-         -> " elseif __match(%1,%2) then %3%4"
+         {~ s (s !(("case" | "default") idsafe s) <statement>)* s ~}
+         -> " if __match(%1,%2) then %3 end "
       ~}
    }
    rule default_stmt {
-      {~ "default" idsafe s ":" {~ s <statement>* ~} -> " else %1 " ~}
+      {~ "default" idsafe s ":" s {~ (s <statement>*) ~} -> "%1" ~}
    }
    rule try_stmt {
       {~
