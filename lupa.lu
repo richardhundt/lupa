@@ -291,11 +291,9 @@ _G.__load = function(_from) {
 
 _G.__match = function(a, b) {
    if b == a { return true }
-   var meta = getmetatable(b)
-   if meta {
-      var __match = rawget(meta, '__match') 
-      if __match { return __match(b, a) }
-   }
+   var mt = getmetatable(b)
+   var __match = mt && rawget(mt, '__match')
+   if __match { return __match(b, a) }
    if a.isa(b) { return true }
    return false
 }
@@ -1454,7 +1452,10 @@ object Grammar {
       <name> <ctx> {`nil`} (s <guard_expr> | {`nil`}) (s "=" <expr>)? -> define
    }
    rule name {
-      { !keyword ((%alpha | "_") (%alnum | "_")*) }
+      {~ !keyword (
+         | { ('end' | 'elseif' | 'then' | 'local' | 'repeat' | 'until') '_'* idsafe } -> '%1_'
+         | ((%alpha | "_") (%alnum | "_")*)
+      ) ~}
    }
    rule name_list {
       {~ <name> (s "," s <name>)* ~}
@@ -1606,9 +1607,7 @@ object Grammar {
       {~ <expr> (s "," s <expr>)* ~}
    }
    rule expr {
-      {~ (<infix_expr> | <prefix_expr>) (
-         s ("?" -> ' and ') s <expr> s (":" -> ' or ') s <expr>
-      )? ~}
+      {~ (<infix_expr> | <prefix_expr>) ~}
    }
 
    ///*
@@ -1933,7 +1932,7 @@ var run = function(...) {
    }
 }
 
-arg = arg ? [ unpack(arg) ] : [ ]
+arg = arg && [ unpack(arg) ] || [ ]
 {
    // from strict.lua
    var mt = getmetatable(_G)

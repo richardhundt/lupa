@@ -19,7 +19,6 @@ However, Lupa adds several features, such as:
 * classes with multiple inheritance
 * parameterisable traits and mixins
 * arithmetic assignment expressions
-* ternary expressions
 * switch-case statement
 * language integrated grammars (via LPeg)
 * bitwise operators
