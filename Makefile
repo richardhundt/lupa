@@ -9,13 +9,14 @@ OS_NAME=$(shell uname -s)
 MH_NAME=$(shell uname -m)
 
 CFLAGS=-O2 -fomit-frame-pointer -Wall -g -fno-stack-protector
+LDFLAGS=-lm -ldl
 
 ifeq (${OS_NAME}, Darwin)
 ifeq (${MH_NAME}, x86_64)
-LDFLAGS=-pagezero_size 10000 -image_base 100000000
+CFLAGS+=-pagezero_size 10000 -image_base 100000000
 endif
 else ifeq (${OS_NAME}, Linux)
-LDFLAGS=-Wl,-E
+CFLAGS+=-Wl,-E
 endif
 
 XCFLAGS=-g
@@ -27,7 +28,7 @@ all: ${LIBDIR}/lpeg.so ${LIBDIR}/libluajit.a ${BUILDDIR}/lupa
 
 ${BUILDDIR}/lupa:
 	mkdir -p ${BUILDDIR}
-	${CC} ${CFLAGS} ${LDFLAGS} -I${LUADIR}/src -L${LUADIR}/src -o ${BUILDDIR}/lupa ./src/lupa.c ${LIBDIR}/libluajit.a
+	${CC} ${CFLAGS} -I${LUADIR}/src -L${LUADIR}/src -o ${BUILDDIR}/lupa ./src/lupa.c ${LIBDIR}/libluajit.a ${LDFLAGS}
 
 ${LIBDIR}/lpeg.so:
 	${MAKE} -C ${LPEGDIR} lpeg.so
@@ -45,12 +46,10 @@ clean:
 	rm -f ${LIBDIR}/*.a
 	rm -f ${BUILDDIR}/lupa
 
-boot: all
-	./boot/lupa lupa.lu -o ${BUILDDIR}/lupa.lua
-	mv ./boot/lupa ./boot/lupa.bak
+bootstrap: all
+	${BUILDDIR}/lupa lupa.lu -o ${BUILDDIR}/lupa.lua
 	mv ./src/lupa.h ./src/lupa.h.bak
 	${LUADIR}/src/luajit -b ${BUILDDIR}/lupa.lua ./src/lupa.h
-	cp ${BUILDDIR}/lupa ./boot/lupa
 
-.PHONY: all clean boot
+.PHONY: all clean bootstrap
 

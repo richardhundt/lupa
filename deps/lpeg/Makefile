@@ -1,7 +1,7 @@
 LIBNAME = lpeg
 LUADIR = /usr/include/lua5.1/
 
-COPT = -O2 -DNDEBUG
+COPT = -O2 -DNDEBUG -fPIC
 
 CWARNS = -Wall -Wextra -pedantic \
         -Waggregate-return \
