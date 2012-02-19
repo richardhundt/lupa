@@ -415,10 +415,21 @@ Type.does = function(self, that) {
    return false
 }
 Type.__index = Type
+Type.__apply = function(self, name) {
+   var type = newtable()
+   type.__name = name || self.__name
+   return setmetatable(type, self)
+}
 Type.__tostring = function(self) {
    return 'type '~(rawget(self, '__name') || 'Type')
 }
-_G.Super = setmetatable(newtable(), Type)
+
+var MetaType = newtable()
+MetaType.__metatable = Type
+setmetatable(Type, MetaType)
+MetaType.__call = Type.__call
+
+_G.Super = Type()
 Super.__tostring = function(self) {
    return "<super ${self.__name}>"
 }
@@ -431,7 +442,7 @@ Super.__call = function(self, ...) {
    return self::__from(...)
 }
 
-_G.Class = setmetatable(newtable(), Type)
+_G.Class = Type()
 Class.__tostring = function(self) {
    return "<class ${self.__name}>"
 }
@@ -477,7 +488,7 @@ Object.does = function(self, that) {
    return self.__with[that.__body] != nil
 }
 
-_G.Trait = setmetatable(newtable(), Type)
+_G.Trait = Type()
 Trait.__call = function(self, ...args) {
    var copy = __trait(nil, self.__name, self.__with, self.__body)
    var make = self.compose
@@ -499,8 +510,7 @@ Trait.compose = function(self, into, recv, ...) {
    return into
 }
 
-_G.Hash = setmetatable(newtable(), Type)
-Hash.__name = 'Hash'
+_G.Hash = Type('Hash')
 Hash.__index = Hash
 Hash.__apply = function(self, table) {
    return setmetatable(table || newtable(), self)
@@ -528,8 +538,7 @@ Hash.__getitem = rawget
 Hash.__setitem = rawset
 Hash.__each = pairs
 
-_G.Array = setmetatable(newtable(), Type)
-Array.__name = 'Array'
+_G.Array = Type("Array")
 Array.__index = Array
 Array.__apply = function(self, ...) {
    return setmetatable(newtable(...), self)
@@ -622,8 +631,7 @@ Array.reverse = function(self) {
    return out
 }
 
-_G.Range = setmetatable(newtable(), Type)
-Range.__name = 'Range'
+_G.Range = Type("Range")
 Range.__index = Range
 Range.__apply = function(self, min, max, inc) {
    min = assert(tonumber(min), "range min is not a number")
@@ -648,8 +656,7 @@ Range.each = function(self, block) {
    }
 }
 
-_G.Void = setmetatable(newtable(), Type)
-Void.__name = 'Void'
+_G.Void = Type("Void")
 Void.__apply = function(self, ...) {
    if #... != 0 {
       throw TypeError("value in Void", 2)
@@ -657,8 +664,7 @@ Void.__apply = function(self, ...) {
    return ...
 }
 
-_G.Nil = setmetatable(newtable(), Type)
-Nil.__name = 'Nil'
+_G.Nil = Type("Nil")
 Nil.__index = function(self, key) {
    var val = Type[key]
    if val == nil {
@@ -668,8 +674,7 @@ Nil.__index = function(self, key) {
 }
 debug::setmetatable(nil, Nil)
 
-_G.Number = setmetatable(newtable(), Type)
-Number.__name = 'Number'
+_G.Number = Type("Number")
 Number.__index = Number
 Number.__apply = function(self, val) {
    var v = tonumber(val)
@@ -683,8 +688,10 @@ Number.times = function(self, block) {
 }
 debug::setmetatable(0, Number)
 
-_G.String = setmetatable(string, Type)
-String.__name = 'String'
+_G.String = Type('String')
+for k,v in pairs(string) {
+   String[k] = v
+}
 String.__index = String
 String.__apply = function(self, val) {
    return tostring(val)
@@ -716,12 +723,12 @@ String.split = function(str, sep, max) {
 }
 debug::setmetatable("", String)
 
-_G.Boolean = setmetatable(newtable(), Type)
+_G.Boolean = Type("Boolean")
 Boolean.__name = 'Boolean'
 Boolean.__index = Boolean
 debug::setmetatable(true, Boolean)
 
-_G.Function = setmetatable(newtable(), Type)
+_G.Function = Type("Function")
 Function.__name = 'Function'
 Function.__index = Function
 Function.__apply = function(self, code, ...) {
@@ -732,8 +739,7 @@ Function.__apply = function(self, code, ...) {
 }
 debug::setmetatable(function() { }, Function)
 
-_G.Coroutine = setmetatable(newtable(), Type)
-Coroutine.__name = 'Coroutine'
+_G.Coroutine = Type("Coroutine")
 Coroutine.__index = Coroutine
 for k,v in pairs(coroutine) {
    Coroutine[k] = v
@@ -973,7 +979,6 @@ object Grammar {
       return unrops[o].format(e)
    }
 
-   ///*
    function fold_infix(e) {
       var s = [ e[1] ]
       for i=2, #e {
@@ -995,13 +1000,6 @@ object Grammar {
       }
       return s[1]
    }
-   //*/
-
-   /* enable for recursive descent expr parsing
-   function fold_infix(a,o,b) {
-      return binops[o].format(a,b)
-   }
-   //*/
 
    function make_slot_decl(ctx, name, type, body) {
       if type != 'nil' {
@@ -1708,7 +1706,6 @@ object Grammar {
       {~ (<infix_expr> | <prefix_expr>) ~}
    }
 
-   ///*
    var binop_patt = /(
       "+" | "-" | "~" | "^^" | "*" | "/" | "%" | "^" | ">>>" | ">>" | "<<"
       | "||" | "&&" | "|" | "&" | "==" | "!=" | ">="| "<=" | "<" | ">"
@@ -1721,51 +1718,6 @@ object Grammar {
          {~ s <prefix_expr> (&(s binop_patt) s)? ~}
       )+ @} -> fold_infix
    }
-   //*/
-
-   /*
-   // recursive descent is faster for stock Lua, but LJ2 is faster
-   // with shift-reduce, so right now I'm biased towards LJ2 ;)
-   rule infix_expr {
-      {~ <bool_or_expr> ~}
-   }
-   function make_infix_expr(oper, term) {
-      / (({~ term (&(s oper) s)? ~} {: {oper} {~ s term ~} :}*) ~> fold_infix) /
-   }
-   rule bool_or_expr {
-      <{ make_infix_expr(/"||"/, /<bool_and_expr>/ }>
-   }
-   rule bool_and_expr {
-      <{ make_infix_expr(/"&&"/, /<bit_or_expr>/ }>
-   }
-   rule bit_or_expr {
-      <{ make_infix_expr(/"|"/,  /<bit_xor_expr>/ }>
-   }
-   rule bit_xor_expr {
-      <{ make_infix_expr(/"^"/,  /<bit_and_expr>/ }>
-   }
-   rule bit_and_expr {
-      <{ make_infix_expr(/"&"/,  /<equals_expr>/ }>
-   }
-   rule equals_expr {
-      <{ make_infix_expr(/"=="|"!="/, /<cmp_expr>/ }>
-   }
-   rule cmp_expr {
-      <{ make_infix_expr(/"<="|">="|"<"|">"/, /<shift_expr>/ }>
-   }
-   rule shift_expr {
-      <{ make_infix_expr(/">>>"|">>"|"<<"|("as"|"in") idsafe/, /<add_expr>/ }>
-   }
-   rule add_expr {
-      <{ make_infix_expr(/"+"|"-"|"~"/, /<mul_expr>/ }>
-   }
-   rule mul_expr {
-      <{ make_infix_expr(/"*"|"/"|"%"/, /<pow_expr>/ }>
-   }
-   rule pow_expr {
-      <{ make_infix_expr(/"^^"/, /<prefix_expr>/ }>
-   }
-   //*/
 
    rule prefix_expr {
       {: {

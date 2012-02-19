@@ -44,12 +44,15 @@ assert(p.x == 42)
 for i = 1, 10_000_000 {
    p.move(i+1, i+2, i+3)
 }
-print(p.x, p.y, p.z)
+
+for k,v in p {
+   print("${k} => ${v}")
+}
 
 try {
    p.z = "cheese"
 }
 catch (e : TypeError) {
-   print("caught => ", e)
+   print("caught => ${typeof e}: ${e.message}")
 }
 
