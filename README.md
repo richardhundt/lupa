@@ -237,12 +237,17 @@ function outer() {
 
 ## Modules
 
-Modules are simply Lupa source files. There are no additional namespaces constructs within the language to declare modules or packages. Modules return their `__env` table, so the can export any environment scoped symbol (this is likely to change).
+Modules are simply Lupa source files. There are no additional namespaces constructs within the language to declare modules or packages.
 
-Symbols can be imported using the `import` statement, which takes the form `import <name_list> from <dotted_path>`
+Symbols are not exported by default. To export symbols, the `export` statement can be used. It has the form `export <name> [, <name>]*`
+Symbols can be imported using the `import` statement, which takes the form `import [<name> [, <name>] from <dotted_path>`.
+
+For example:
 
 ```ActionScript
 /*--- file: ./my/shapes.lu ---*/
+export Point, Point3D
+
 class Point {
     has x = 0
     has y = 0
@@ -266,3 +271,4 @@ var p = Point3D()
 p.move(1, 2, 3)
 ```
 
+It is an error to attempt to export a symbol which is never declared, or is declared but evaluates to `nil`.

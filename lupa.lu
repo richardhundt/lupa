@@ -269,7 +269,7 @@ _G.__import = function(into, _from, what) {
          var key = what[i]
          var val = rawget(mod, key)
          if val == nil {
-            error("ImportError: ${key} from ${_from} is nil")
+            throw ImportError("'${key}' from '${_from}' is nil", 2)
          }
          into[key] = val
       }
@@ -284,7 +284,7 @@ _G.__export = function(...what) {
       var expt = what[i]
       var key, val = expt[1], expt[2]
       if val == nil {
-         error("ExportError: ${key} is nil", 2)
+         throw ExportError("${key} is nil", 2)
       }
       exporter[key] = val
    }
@@ -406,6 +406,7 @@ Type.__call = function(self, ...) {
    return self.__apply(...)
 }
 Type.isa = function(self, that) {
+   if that == Any { return true }
    return getmetatable(self) == that
 }
 Type.can = function(self, key) {
@@ -477,6 +478,7 @@ Object.__tostring = function(self) {
 }
 Object.__index = Object
 Object.isa = function(self, that) {
+   if that == Any { return true }
    var meta = getmetatable(self)
    return meta == that || (meta.__from && (meta.__from[that] != nil))
 }
@@ -664,6 +666,11 @@ Void.__apply = function(self, ...) {
    return ...
 }
 
+_G.Any = Type("Any")
+Any.__apply = function(self, ...) {
+   return ...
+}
+
 _G.Nil = Type("Nil")
 Nil.__index = function(self, key) {
    var val = Type[key]
@@ -777,6 +784,8 @@ _G.Error = Error
 
 class SyntaxError from Error { } _G.SyntaxError = SyntaxError
 class AccessError from Error { } _G.AccessError = AccessError
+class ImportError from Error { } _G.ImportError = ImportError
+class ExportError from Error { } _G.ExportError = ExportError
 class TypeError   from Error { } _G.TypeError   = TypeError
 
 class Scope {
@@ -1233,6 +1242,9 @@ object Grammar {
       (<ctx> -> function(ctx) {
          var buf = [ ]
          for k,v in ctx.exports {
+            if !ctx.lookup(k) {
+               throw SyntaxError("export '${k}' was never defined", 2)
+            }
             buf.push('{%q,%s}'.format(k,lookup(k, ctx)))
          }
          return "return __export(${buf.concat(',')});"
@@ -1349,7 +1361,7 @@ object Grammar {
    rule catch_stmt {
       {~
          "catch" idsafe <ctx> <enter> s {%
-            "(" s {:head: <name> <ctx> {`nil`} (s <guard_expr> | {`'String'`}) -> define :} ")" s
+            "(" s {:head: <name> <ctx> {`nil`} (s <guard_expr> | {`'Any'`}) -> define :} ")" s
             "{" {:body: {~ <lambda_body> s ~} :} "}"
          %} -> make_catch_stmt <leave>
       ~}
@@ -2038,8 +2050,16 @@ _G.LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu"
             var file = io::open(filepath, "r")
             if file {
                var src = file.read("*a")
-               var lua = compile(src)
-               return assert(loadstring(lua, '='~filepath))
+               return function(...args) {
+                  try {
+                     var lua  = compile(src)
+                     var main = assert(loadstring(lua, '='~filepath))
+                     return main(@args)
+                  }
+                  catch (e) {
+                     throw ImportError("failed to load ${modname}: ${e}")
+                  }
+               }
             }
          }
       }
