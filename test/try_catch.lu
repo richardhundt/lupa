@@ -1,6 +1,6 @@
 function doit() {
     try {
-        error("cheese!")
+        throw Error("cheese!")
     }
     catch (ex) {
         print("caught:", ex)

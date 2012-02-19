@@ -38,7 +38,7 @@ _G.__class = function(into, name, _from, _with, body) {
    while  #queue > 0 {
       var base = table::remove(queue, 1)
       if getmetatable(base) != Class {
-         error("TypeError: ${base} is not a Class", 2)
+         throw TypeError("${base} is not a Class", 2)
       }
       _from[base] = true
       for k,v in pairs(base) {
@@ -278,10 +278,17 @@ _G.__import = function(into, _from, what) {
       return mod
    }
 }
-_G.__export = function(self, ...what) {
+_G.__export = function(...what) {
+   var exporter = newtable()
    for i=1, #what {
-      self.__export[what[i]] = true
+      var expt = what[i]
+      var key, val = expt[1], expt[2]
+      if val == nil {
+         error("ExportError: ${key} is nil", 2)
+      }
+      exporter[key] = val
    }
+   return exporter
 }
 
 _G.__load = function(_from) {
@@ -311,7 +318,14 @@ _G.__match = function(a, b) {
 _G.__op_as     = setmetatable
 _G.__op_typeof = getmetatable
 _G.__op_yield  = coroutine['yield']
-_G.__op_throw  = error
+_G.__op_throw  = function(err) {
+   var mt = getmetatable(err)
+   var __throw = mt && rawget(mt, '__throw')
+   if __throw {
+      __throw(err, 2)
+   }
+   error(err, 2)
+}
 
 _G.__op_in = function(key, obj) {
    var mt = getmetatable(obj)
@@ -422,7 +436,7 @@ Class.__tostring = function(self) {
    return "<class ${self.__name}>"
 }
 Class.__index = function(self, key) {
-   error("AccessError: no such member '${key}' in ${self.__name}", 2)
+   throw AccessError("no such member '${key}' in ${self.__name}", 2)
 }
 Class.__newindex = function(self, key, val) {
    if type(key) == 'string' {
@@ -629,13 +643,17 @@ Range.__each = function(self) {
    }
 }
 Range.each = function(self, block) {
-   for i in Range.__each(self) {
+   for i in Range::__each(self) {
       block(i)
    }
 }
 
-_G.Void = function(...) {
-   assert(#... == 0, "TypeError: value in Void")
+_G.Void = setmetatable(newtable(), Type)
+Void.__name = 'Void'
+Void.__apply = function(...) {
+   if #... != 0 {
+      throw TypeError("value in Void", 2)
+   }
    return ...
 }
 
@@ -644,7 +662,7 @@ Nil.__name = 'Nil'
 Nil.__index = function(self, key) {
    var val = Type[key]
    if val == nil {
-      error("TypeError: no such member ${key} in type Nil", 2)
+      throw TypeError("no such member ${key} in type Nil", 2)
    }
    return val
 }
@@ -656,7 +674,7 @@ Number.__index = Number
 Number.__apply = function(self, val) {
    var v = tonumber(val)
    if v == nil {
-      error("TypeError: cannot coerce '${val}' to Number", 2)
+      throw TypeError("cannot coerce '${val}' to Number", 2)
    }
    return v
 }
@@ -729,6 +747,31 @@ Pattern.__call = function(patt, self, subj, ...) {
 Pattern.__match = function(patt, subj) {
    return patt.match(subj)
 }
+
+class Error {
+   has level   = 1
+   has message = "unknown"
+   has info
+   has trace
+
+   method __init(message, level) {
+      self.message = message
+      self.level   = level
+   }
+   method __tostring() {
+      return "${self.__name}: ${self.trace}"
+   }
+   method __throw(level) {
+      level ||= 1
+      self.info  = debug::getinfo(level + 1, "Sln")
+      self.trace = debug::traceback("${self.message}", self.level + level)
+   }
+}
+_G.Error = Error
+
+class SyntaxError from Error { } _G.SyntaxError = SyntaxError
+class AccessError from Error { } _G.AccessError = AccessError
+class TypeError   from Error { } _G.TypeError   = TypeError
 
 class Scope {
    has entries = { }
@@ -894,7 +937,6 @@ object Grammar {
       ["-"] = "-(%s)",
       ["~"] = "__op_bnot(%s)",
       ["@"] = "__op_spread(%s)",
-      ["throw"] = "__op_throw(%s)",
       ["typeof"] = "__op_typeof(%s)",
    }
 
@@ -1169,9 +1211,8 @@ object Grammar {
       var b = [ ]
       for i=1, #n {
          c.exports[n[i]] = true
-         b.push(quote(n[i]))
       }
-      return '__export={%s}'.format(b.concat(','))
+      return ''
    }
 
    method match(...) {
@@ -1186,7 +1227,7 @@ object Grammar {
       {:ret_guard: {`nil`} :}
       {:scope: {`'__env'`} :}
       { %s* '#!' (!nl .)* %s* }? s
-      {`'local __env,__export=setmetatable({},{__index=_G}),{};'`}
+      {`'local __env=setmetatable({},{__index=_G});'`}
       <enter>
       ({`'_G'   `} <ctx> -> define_const)
       ({`'__env'`} <ctx> -> define_const)
@@ -1194,12 +1235,11 @@ object Grammar {
       (<ctx> -> function(ctx) {
          var buf = [ ]
          for k,v in ctx.exports {
-            buf.push('__export[%q]=%s'.format(k,lookup(k, ctx)))
+            buf.push('{%q,%s}'.format(k,lookup(k, ctx)))
          }
-         return buf.concat(';')
+         return "return __export(${buf.concat(',')});"
       })
       <leave>
-      {`' return __export;'`}
    }
    rule eval {
       {~ 
@@ -1238,6 +1278,7 @@ object Grammar {
       | <do_while_stmt>
       | <while_stmt>
       | <break_stmt>
+      | <throw_stmt>
       | <continue_stmt>
       | <yield_stmt>
       | <block_stmt>
@@ -1262,6 +1303,9 @@ object Grammar {
    }
    rule yield_stmt {
       'yield' idsafe {~ s <expr_list> ~} -> '__op_yield(%1);' semicol
+   }
+   rule throw_stmt {
+      'throw' idsafe {~ s <expr> ~} -> '__op_throw(%1);' semicol
    }
    rule break_stmt {
       {~ { "break" idsafe } -> "do __break = true; break end" ~}
@@ -1726,7 +1770,7 @@ object Grammar {
    rule prefix_expr {
       {: {
          | "@" | "!" | "#" | "-" | "~"
-         | ("throw" | "typeof") idsafe
+         | "typeof" idsafe
       } s <prefix_expr> :} -> fold_prefix
       | {~ s <term> ~}
    }
@@ -1988,7 +2032,11 @@ var run = function(...) {
       else {
          var main_env = setmetatable({ }, { __index = _G })
          setfenv(main, main_env)
-         main(opt['file'], ...)
+         var good, err = pcall(main, opt['file'], ...)
+         if !good {
+            io.stderr.write(tostring(err),"\n")
+            os::exit(1)
+         }
       }
    }
 }

@@ -1,5 +1,5 @@
 var r = [0:10:0.5]
-for i : Int in r {
+for i : Number in r {
     print(i)
 }
 
