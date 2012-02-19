@@ -1,9 +1,3 @@
-class Context {
-    has out = [ ]
-    method put(str) {
-        self.out.push(str)
-    }
-}
 
 object Markup {
    rule match {
@@ -14,7 +8,7 @@ object Markup {
    }
    rule intrp {
       "<%=" %s* {~ { (!(%s* "%>") .)+ } -> function(s) {
-         return "__ctx.put(%s);".format(s)
+         return "__out.push(%s);".format(s)
       } ~} %s* "%>"
    }
    rule logic {
@@ -23,30 +17,22 @@ object Markup {
    rule const {
       {~ { (!<code> .)* } -> function(s) {
          if s != "" {
-            return "__ctx.put(%q);".format(s)
+            return "__out.push(%q);".format(s)
          }
       } ~}
    }
-}
-
-class Parser {
-    method parse(source) {
-        return Markup.match(source)
-    }
 }
 
 object Compiler {
 
     var CACHE = { }
 
-    has _parser = Parser()
-
     method compile(source) {
         if CACHE[source] {
             return CACHE[source]
         }
-        var code = self._parser.parse(source)
-        var luac = Function(code, '__ctx')
+        var code = Markup.match(source)
+        var luac = Function(code, '__out', '__env')
         CACHE[source] = luac
         return luac
     }
@@ -56,30 +42,35 @@ object Compiler {
     }
 }
 
+import open from io
+
 class Template {
     has _base = "."
+
+    var Environment = { __index = _G }
 
     method __init(base) {
         self._base = base
     }
     method process_file(path, vars) {
         var path = self._base ~ '/' ~ path
-        var file = assert(io::open(path, "r"))
+        var file = assert(open(path, "r"))
         var data = file.read("*a")
         file.close()
         return self.process(data, vars, path)
     }
     method process(src, vars, name) {
-        var ctx = Context()
-        if vars {
-            for k,v in vars {
-                env[k] = v
-            }
-        }
         var code = Compiler.compile(src)
-        code(ctx)
+        var out = [ ] 
+        var env = { } as Environment
 
-        return ctx.out.concat()
+        if vars {
+           for k,v in vars { env[k] = v }
+        }
+
+        code(out, env)
+
+        return out.concat()
     }
 }
 

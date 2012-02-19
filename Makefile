@@ -1,4 +1,5 @@
 LIBDIR=./lib
+SRCDIR=./src
 DEPDIR=./deps
 BUILDDIR=./build
 LPEGDIR=${DEPDIR}/lpeg
@@ -44,4 +45,12 @@ clean:
 	rm -f ${LIBDIR}/*.a
 	rm -f ${BUILDDIR}/lupa
 
-.PHONY: all clean
+boot: all
+	./boot/lupa lupa.lu -o ${BUILDDIR}/lupa.lua
+	mv ./boot/lupa ./boot/lupa.bak
+	mv ./src/lupa.h ./src/lupa.h.bak
+	${LUADIR}/src/luajit -b ${BUILDDIR}/lupa.lua ./src/lupa.h
+	cp ${BUILDDIR}/lupa ./boot/lupa
+
+.PHONY: all clean boot
+

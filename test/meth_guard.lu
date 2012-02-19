@@ -1,8 +1,8 @@
 class A {
-    function foo() : String {
+    method foo() : String {
         return 'blah'
     }
 }
 
-var a = new A()
+var a = A()
 print(a.foo())

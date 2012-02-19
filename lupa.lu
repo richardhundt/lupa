@@ -650,7 +650,7 @@ Range.each = function(self, block) {
 
 _G.Void = setmetatable(newtable(), Type)
 Void.__name = 'Void'
-Void.__apply = function(...) {
+Void.__apply = function(self, ...) {
    if #... != 0 {
       throw TypeError("value in Void", 2)
    }
