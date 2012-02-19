@@ -1,22 +1,47 @@
 LIBDIR=./lib
 DEPDIR=./deps
-BINDIR=./bin
+BUILDDIR=./build
 LPEGDIR=${DEPDIR}/lpeg
-LJ2DIR=${DEPDIR}/luajit
+LUADIR=${DEPDIR}/luajit
 
+OS_NAME=$(shell uname -s)
+MH_NAME=$(shell uname -m)
+
+CFLAGS=-O2 -fomit-frame-pointer -Wall -g -fno-stack-protector
+
+ifeq (${OS_NAME}, Darwin)
+ifeq (${MH_NAME}, x86_64)
+LDFLAGS=-pagezero_size 10000 -image_base 100000000
+endif
+else ifeq (${OS_NAME}, Linux)
+LDFLAGS=-Wl,-E
+endif
+
+XCFLAGS=-g
 XCFLAGS+=-DLUAJIT_ENABLE_LUA52COMPAT
 XCFLAGS+=-DLUA_USE_APICHECK
 export XCFLAGS
 
-all: ${LIBDIR}/lpeg.so ${BINDIR}/luajit
+all: ${LIBDIR}/lpeg.so ${LIBDIR}/libluajit.a ${BUILDDIR}/lupa
+
+${BUILDDIR}/lupa:
+	mkdir -p ${BUILDDIR}
+	${CC} ${CFLAGS} ${LDFLAGS} -I${LUADIR}/src -L${LUADIR}/src -o ${BUILDDIR}/lupa ./src/lupa.c ${LIBDIR}/libluajit.a
 
 ${LIBDIR}/lpeg.so:
 	${MAKE} -C ${LPEGDIR} lpeg.so
 	cp ${LPEGDIR}/lpeg.so ${LIBDIR}/lpeg.so
 
-${BINDIR}/luajit:
-	git submodule update --init ${LJ2DIR}
-	${MAKE} -C ${LJ2DIR}
-	cp ${LJ2DIR}/src/luajit ${BINDIR}/luajit
+${LIBDIR}/libluajit.a:
+	git submodule update --init ${LUADIR}
+	${MAKE} -C ${LUADIR}
+	cp ${LUADIR}/src/libluajit.a ${LIBDIR}/libluajit.a
 
-.PHONY: all
+clean:
+	${MAKE} -C ${LUADIR} clean
+	${MAKE} -C ${LPEGDIR} clean
+	rm -f ${LIBDIR}/*.so
+	rm -f ${LIBDIR}/*.a
+	rm -f ${BUILDDIR}/lupa
+
+.PHONY: all clean

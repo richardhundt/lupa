@@ -23,7 +23,6 @@ class Point3D from Point {
     method move(x : Number = getit(), y : Number = 0, z : Number = 0) : Void {
         super::move(self, x, y)
         self.z = z
-        return 42
     }
 
     function getit() {
@@ -50,8 +49,8 @@ print(p.x, p.y, p.z)
 try {
    p.z = "cheese"
 }
-catch (e : String) {
-   print(e)
+catch (e : TypeError) {
+   print("caught => ", e)
 }
 catch (e : Number) {
    print(e)
