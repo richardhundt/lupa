@@ -1,9 +1,9 @@
-import Point, Point3D from test.shapes
+import Point, Point3D from test.shapes in shapes
 
-var p = Point3D()
+var p = shapes::Point3D()
 p.move(1,2,3)
 
-var q = Point()
+var q = shapes.Point.new()
 print(q)
 
 5.times -> (i : Number) { print(i) }

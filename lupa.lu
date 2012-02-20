@@ -72,7 +72,7 @@ _G.__class = function(into, name, _from, _with, body) {
          rawset(obj, key, val)
       }
    }
-   _class.__apply = function(self, ...) {
+   _class.new = function(self, ...) {
       var obj = setmetatable(newtable(), self)
       if rawget(self, '__init') != nil {
          var ret = obj.__init(...)
@@ -81,6 +81,9 @@ _G.__class = function(into, name, _from, _with, body) {
          }
       }
       return obj
+   }
+   _class.__apply = function(self, ...) {
+      return self.new(...)
    }
 
    setmetatable(_class, Class)
@@ -262,9 +265,13 @@ _G.__patt::setmaxstack(1024)
 
 _G.__env = _G
 
-_G.__import = function(into, _from, what) {
+_G.__import = function(into, _from, what, dest) {
    var mod = __load(_from)
    if what {
+      if dest {
+         into[dest] = newtable()
+         into = into[dest]
+      }
       for i=1, #what {
          var key = what[i]
          var val = rawget(mod, key)
@@ -407,7 +414,8 @@ Type.__call = function(self, ...) {
 }
 Type.isa = function(self, that) {
    if that == Any { return true }
-   return getmetatable(self) == that
+   var meta = getmetatable(self)
+   return meta == that
 }
 Type.can = function(self, key) {
    return rawget(self, key) || rawget(getmetatable(self), key)
@@ -480,10 +488,12 @@ Object.__index = Object
 Object.isa = function(self, that) {
    if that == Any { return true }
    var meta = getmetatable(self)
+   if meta == Class { meta = self }
    return meta == that || (meta.__from && (meta.__from[that] != nil))
 }
 Object.can = function(self, key) {
    var meta = getmetatable(self)
+   if meta == Class { meta = self }
    return rawget(meta, key)
 }
 Object.does = function(self, that) {
@@ -1206,13 +1216,23 @@ object Grammar {
       var type = info.type
       return "{body=function(${name}) ${body} end, type=${type}}"
    }
-   function make_import_stmt(c, n,f) {
+   function make_import_stmt(c, n, f, d) {
       var q = [ ]
-      for i=1, #n {
-         c.define(n[i], { base = '__env' })
-         q[i] = quote(n[i])
+      if d {
+         c.define(d, { base = '__env' })
+         d = quote(d)
+         for i=1, #n {
+            q[i] = quote(n[i])
+         }
       }
-      return "__import(__env,%q,{%s});".format(f, q.concat(','))
+      else {
+         d = 'nil'
+         for i=1, #n {
+            c.define(n[i], { base = '__env' })
+            q[i] = quote(n[i])
+         }
+      }
+      return "__import(__env,%q,{%s},%s);".format(f, q.concat(','), d)
    }
    function make_export_stmt(c,n) {
       var b = [ ]
@@ -1367,8 +1387,11 @@ object Grammar {
       ~}
    }
    rule import_stmt {
-      {~ ("import" idsafe s
-         <ctx> {@ <name> (s "," s <name>)* @} s "from" s {~ <name> ("." <name>)* ~}
+      {~ (
+         "import" idsafe s
+         <ctx> {@ <name> (s "," s <name>)* @} s
+         "from" idsafe s {~ <name> ("." <name>)* ~}
+         (s "in" idsafe s <name>)?
       ) -> make_import_stmt ~}
    }
    rule export_stmt {

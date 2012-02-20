@@ -1,4 +1,5 @@
 # Must haves
+* fix optional semicolons as statement terminators
 * vararg in try { } blocks to reference outer ...
 * resty return guards
 * prefer .new() to .__apply()
