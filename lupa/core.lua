@@ -20,14 +20,14 @@ function __class(into, name, from, with, body)
       from[#from + 1] = Object
    end
 
-   local class = newtable()
+   local class = { }
    local slots = STable(class)
 
    class.__name  = name
    class.__from  = from
    class.__slots = slots
 
-   local queue = newtable(unpack(from))
+   local queue = { unpack(from) }
    while #queue > 0 do
       local base = table.remove(queue, (1))
       if getmetatable(base) ~= Class then
@@ -63,7 +63,7 @@ function __class(into, name, from, with, body)
    end
 
    class.new = function(self, ...)
-      local obj = setmetatable(newtable(), self)
+      local obj = setmetatable({ }, self)
       if rawget(slots, "__init") ~= nil then
          local ret = obj:__init(...)
          if ret ~= nil then
@@ -92,7 +92,7 @@ function __class(into, name, from, with, body)
 end
 
 function __trait(into, name, with, body)
-   local trait = newtable()
+   local trait = { }
    trait.__name = name
    trait.__body = body
    trait.__with = with
@@ -110,7 +110,7 @@ function __object(into, name, from, with, body)
       end
    end
    local anon = __class(into, "#"..name, from, with, body)
-   local inst = setmetatable(newtable(), anon)
+   local inst = setmetatable({ }, anon)
    into[name] = inst
    return inst
 end
@@ -183,7 +183,7 @@ do
        return Pattern.__div(__patt.Ct(patt), make_capt_array(init))
    end
 
-   local predef=newtable()
+   local predef = { }
 
    predef.nl  = __patt.P("\n")
    predef.pos = __patt.Cp()
@@ -225,16 +225,22 @@ function __import(into, from, what, dest)
    local mod = __load(from)
    if what then
       if dest then
-         into[dest] = newtable()
-         into= into[dest]
+         into[dest] = { }
+         into = into[dest]
       end 
-      for i=1, #what do
-         local key=what[i]
-         local val=rawget(mod, key)
-         if val == nil then
-            __op_throw( ImportError("'"..tostring(key).."' from '"..tostring(from).."' is nil", 2) )
+      if #what == 0 then
+         for key, val in pairs(mod) do
+            into[key] = val
          end
-         into[key] = val
+      else
+         for i=1, #what do
+            local key = what[i]
+            local val = rawget(mod, key)
+            if val == nil then
+               __op_throw( ImportError("'"..tostring(key).."' from '"..tostring(from).."' is nil", 2) )
+            end
+            into[key] = val
+         end
       end
    else
       return mod
@@ -243,7 +249,7 @@ end
 
 function __export(...)
    local what = Array(...)
-   local exporter = newtable()
+   local exporter = { }
    for i = 1, #what do
       local expt = what[i];
       local key, val = expt[1], expt[2]
@@ -403,7 +409,7 @@ function __op_bnot(a)
    return bit.bnot(a)
 end
 
-Type= newtable()
+Type = { }
 Type.__name = ("Type")
 Type.__call = function(self, ...)
     return self:__apply(...)
@@ -423,7 +429,7 @@ Type.does = function(self, that)
 end
 Type.__index = Type
 Type.__apply = function(self, name)
-   local type = newtable()
+   local type = { }
    type.__name = name or self.__name
    return setmetatable(type, self)
 end
@@ -431,7 +437,7 @@ Type.__tostring = function(self)
    return "type "..(rawget(self, "__name") or "Type")
 end
 
-local MetaType=newtable()
+local MetaType = { }
 MetaType.__metatable = Type
 setmetatable(Type, MetaType)
 MetaType.__call = Type.__call
@@ -442,7 +448,7 @@ Super.__tostring = function(self)
    return "<super "..tostring(self.__name)..">"
 end
 Super.__apply = function(self, from)
-   local super = setmetatable(newtable(), self)
+   local super = setmetatable({ }, self)
    super.__from = from
    super.__name = from.__name
    return super
@@ -476,7 +482,7 @@ STable.__index = function(self, key)
    return self.__missing
 end
 STable.__apply = function(self, class)
-   local stab = setmetatable(newtable(), self)
+   local stab = setmetatable({ }, self)
    stab.__missing = Missing(class)
    return stab
 end
@@ -484,7 +490,7 @@ end
 Slot = Type("Slot")
 Slot.__index = Slot
 Slot.__apply = function(self, name, type, ctor)
-   local slot = setmetatable(newtable(), self)
+   local slot = setmetatable({ }, self)
    slot.name = name
    slot.ctor = ctor
    slot.type = type
@@ -503,9 +509,10 @@ Slot.get = function(self, obj, key)
 end
 Slot.set = function(self, obj, key, val)
    if self.type then
-      val = self.type(val)
+      rawset(obj, self, self.type(val))
+   else
+      rawset(obj, key, val)
    end
-   rawset(obj, self, val)
 end
 
 Method = Type("Method")
@@ -517,7 +524,7 @@ Method.__call = function(self, ...)
    return self.__code(...)
 end
 Method.__apply = function(type, name, code)
-   local self = setmetatable(newtable(), type)
+   local self = setmetatable({ }, type)
    self.__name = name
    self.__code = code
    return self
@@ -532,7 +539,7 @@ Missing.__tostring = function(self)
 end
 Missing.__index = Missing
 Missing.__apply = function(type, class)
-   local self = setmetatable(newtable(), type)
+   local self = setmetatable({ }, type)
    self.__class = class
    return self
 end
@@ -555,7 +562,7 @@ end
 Rule = Type("Rule")
 Rule.__index = Rule
 Rule.__apply = function(type, into, name, patt)
-   local self = setmetatable(newtable(), type)
+   local self = setmetatable({ }, type)
    self.__name = name
    self.__patt = patt
    self.__into = into
@@ -564,7 +571,7 @@ end
 Rule.get = function(self, obj, key)
    local rule = rawget(obj, self)
    if rule == nil then
-      local grmr = newtable()
+      local grmr = { }
       for k,v in pairs(self.__into) do
          if __patt.type(v) == "pattern" then
             grmr[k] = v
@@ -576,7 +583,6 @@ Rule.get = function(self, obj, key)
    end
    return rule
 end
-
 
 Class = Type()
 Class.__tostring = function(self) 
@@ -595,11 +601,11 @@ Class.__call = function(self,...)
    return self:__apply(...)
 end
 
-Object= setmetatable(newtable(), Class)
+Object = setmetatable({ }, Class)
 Object.__name = "Object"
-Object.__from = newtable()
-Object.__with = newtable()
-Object.__slots = newtable()
+Object.__from = { }
+Object.__with = { }
+Object.__slots = STable(Object)
 Object.__tostring = function(self)
    return "<object "..tostring(getmetatable(self).__name)..">"
 end
@@ -651,10 +657,10 @@ end
 Hash= Type("Hash")
 Hash.__index = Hash
 Hash.__apply = function(self, table)
-   return setmetatable(table or newtable(), self)
+   return setmetatable(table or { }, self)
 end
 Hash.__tostring = function(self)
-   local buf = newtable()
+   local buf = { }
    for k,v in pairs(self) do
       local _v
       if type(v) == "string" then
@@ -677,10 +683,10 @@ Hash.__each = pairs
 Array = Type("Array")
 Array.__index = Array
 Array.__apply = function(self, ...)
-   return setmetatable(newtable(...), self)
+   return setmetatable({ ... }, self)
 end
 Array.__tostring = function(self)
-   local buf = newtable()
+   local buf = { }
    for i = 1, #self do
       if type(self[i]) == "string" then
          buf[#buf + 1] = string.format("%q", self[i])
@@ -775,7 +781,7 @@ Range.__apply = function(self, min, max, inc)
    min = assert(tonumber(min), "range min is not a number")
    max = assert(tonumber(max), "range max is not a number")
    inc = assert(tonumber(inc or 1), "range inc is not a number")
-   return setmetatable(newtable(min, max, inc), self)
+   return setmetatable({ min, max, inc }, self)
 end
 Range.__each = function(self)
    local inc = self[3]
@@ -931,11 +937,11 @@ do
    -- from strict.lua
    local mt = getmetatable(_G)
    if mt == nil then
-      mt = newtable()
+      mt = { }
       setmetatable(_G, mt)
    end
 
-   mt.__declared = newtable()
+   mt.__declared = { }
 
    local function what()
       local d = debug.getinfo(3, "S")

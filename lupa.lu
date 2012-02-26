@@ -428,23 +428,23 @@ object Grammar {
       var type = lookup(info.type, ctx)
       return "{body=function(${name}) ${body} end, type=${type}}"
    }
-   function make_import_stmt(c, n, f, d) {
-      var q = [ ]
-      if d {
-         c.define(d, { base = '__env' })
-         d = quote(d)
-         for i=1, #n {
-            q[i] = quote(n[i])
+   function make_import_stmt(ctx, names, path, dest) {
+      var qnames = [ ]
+      if dest {
+         ctx.define(dest, { base = '__env' })
+         dest = quote(dest)
+         for i=1, #names {
+            qnames[i] = quote(names[i])
          }
       }
       else {
-         d = 'nil'
-         for i=1, #n {
-            c.define(n[i], { base = '__env' })
-            q[i] = quote(n[i])
+         dest = 'nil'
+         for i=1, #names {
+            ctx.define(names[i], { base = '__env' })
+            qnames[i] = quote(n[i])
          }
       }
-      return "__env.__import(__env,%q,{%s},%s);".format(f, q.concat(','), d)
+      return "__env.__import(__env,%q,{%s},%s);".format(path, qnames.concat(','), dest)
    }
    function make_export_stmt(c,n) {
       var b = [ ]
@@ -502,8 +502,6 @@ object Grammar {
    rule leave { <ctx> -> leave }
 
    rule main_body_stmt {
-      | <var_decl>
-      | <func_decl>
       | <class_decl>
       | <trait_decl>
       | <object_decl>
@@ -526,6 +524,8 @@ object Grammar {
       | <block_stmt>
       | <bind_stmt>
       | <call_stmt>
+      | <var_decl>
+      | <func_decl>
       | &<return_stmt> <{ syntax_error("return outside of function body") }>
       | !(s ("}" | !.)) <{ syntax_error("invalid statement") }>
    }
@@ -601,7 +601,7 @@ object Grammar {
    rule import_stmt {
       {~ (
          "import" idsafe s
-         <ctx> {@ <name> (s "," s <name>)* @} s
+         <ctx> {@ (<name> (s "," s <name>)*)? @} s
          "from" idsafe s {~ <name> ("." <name>)* ~}
          (s "in" idsafe s <name>)?
       ) -> make_import_stmt ~}
@@ -651,8 +651,6 @@ object Grammar {
       <leave>
    }
    rule block_body_stmt {
-      | <var_decl>
-      | <func_decl>
       | <return_stmt>
       | <statement>
    }
@@ -703,8 +701,6 @@ object Grammar {
       (s <func_body_stmt>)*
    }
    rule func_body_stmt {
-      | <var_decl>
-      | <func_decl>
       | <return_stmt>
       | <block_stmt>
       | ((&(<expr> s ("}" | !.)) <ctx> // last expr implies return
@@ -762,9 +758,7 @@ object Grammar {
       "with" idsafe s {~ <expr> (s "," s <expr>)* ~}
    }
    rule class_body_stmt {
-      | <var_decl>
       | <slot_decl>
-      | <func_decl>
       | <rule_decl>
       | <meth_decl>
       | <statement>
@@ -1207,6 +1201,11 @@ var getopt = function(...args) {
 }
 
 var run = function(...) {
+   if #... == 0 {
+      var repl = require("lupa.repl")
+      repl.run()
+      os::exit(0)
+   }
    var opt = getopt(...)
    var sfh = assert(io::open(opt['file']))
    var src = sfh.read('*a')
