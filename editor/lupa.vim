@@ -31,18 +31,15 @@ syn keyword lupaConditional	if else switch
 syn keyword lupaRepeat		while for do
 syn keyword lupaBranch		break continue
 syn keyword lupaOperator	in is typeof like
-syn keyword lupaType		Array Boolean Date Function Number Object String RegExp int8 int16 int32 int64 uint8 uint16 uint32 uint64
-syn keyword lupaStatement	return with
-syn keyword lupaSpecial	        return with new bless isa does can gen __init __index __newindex __setitem __getitem __match __add __sub __mul __unm __pow __mod __call __missing __tostring __eq __le __lt __ge __gt __concat __each __make __size __len __gc __mode
-syn keyword lupaBoolean		true false nil
-syn keyword lupaNull		null undefined
+syn keyword lupaType		Array Hash Boolean Error Function Number Object String Type Super Class Trait Range Fiber Pattern Any Void Nil Int8 Int16 Int32 Int64 UInt8 UInt16 UInt32 UInt64
+syn keyword lupaStatement	return
+syn keyword lupaSpecial	        new bless isa does can gen __init __index __newindex __setindex __getindex __match __add __sub __mul __unm __pow __mod __call __missing __tostring __eq __le __lt __ge __gt __concat __each __make __size __len __gc __mode __in __apply __spread
+syn keyword lupaBoolean		true false
+syn keyword lupaConstant	nil
 syn keyword lupaIdentifier	var self
-syn keyword lupaLabel		case default
+syn keyword lupaLabel		default case
 syn keyword lupaException	try catch finally throw
-syn keyword lupaGlobal		window top parent
-syn keyword lupaMember		document event location
-syn keyword lupaDeprecated	escape unescape
-syn keyword lupaReserved	boolean byte char class grammar double enum export extends final float import int long native package short super transient trait object from as guard load yield
+syn keyword lupaReserved	class export import trait object from as guard yield with
 syn keyword lupaFunction	rule function method has needs
 
 if exists("lupa_fold")
@@ -102,11 +99,9 @@ if version >= 508 || !exists("did_lupa_syn_inits")
 
   HiLink lupaIdentifier		    Identifier
   HiLink lupaLabel		    Label
-  HiLink lupaException		    Exception
-  HiLink lupaGlobal		    Keyword
-  HiLink lupaMember		    Keyword
-  HiLink lupaDeprecated		    Exception 
   HiLink lupaReserved		    Keyword
+  HiLink lupaException		    Exception
+  HiLink lupaMember		    Keyword
   HiLink lupaDebug		    Debug
   HiLink lupaConstant		    Label
 

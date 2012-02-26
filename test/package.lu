@@ -8,6 +8,4 @@ print(q)
 
 5.times -> (i : Number) { print(i) }
 
-5.times(function(i : Number) { print(i) })
-
 

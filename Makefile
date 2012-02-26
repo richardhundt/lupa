@@ -1,9 +1,11 @@
 LIBDIR=./lib
 SRCDIR=./src
-DEPDIR=./deps
+BINDIR=./bin
+DEPSDIR=./deps
 BUILDDIR=./build
-LPEGDIR=${DEPDIR}/lpeg
-LUADIR=${DEPDIR}/luajit
+LPEGDIR=${DEPSDIR}/lpeg
+LUADIR=${DEPSDIR}/luajit
+LLTDIR=${DEPSDIR}/llthreads
 
 OS_NAME=$(shell uname -s)
 MH_NAME=$(shell uname -m)
@@ -24,7 +26,7 @@ XCFLAGS+=-DLUAJIT_ENABLE_LUA52COMPAT
 XCFLAGS+=-DLUA_USE_APICHECK
 export XCFLAGS
 
-all: ${LIBDIR}/lpeg.so ${LIBDIR}/libluajit.a ${BUILDDIR}/lupa
+all: ${BINDIR}/luajit ${BUILDDIR}/lupa ${LIBDIR}/lpeg.so ${LIBDIR}/llthreads.so
 
 ${BUILDDIR}/lupa:
 	mkdir -p ${BUILDDIR}
@@ -39,12 +41,23 @@ ${LIBDIR}/libluajit.a:
 	${MAKE} -C ${LUADIR}
 	cp ${LUADIR}/src/libluajit.a ${LIBDIR}/libluajit.a
 
+${LIBDIR}/llthreads.so:
+	git submodule update --init ${LLTDIR}
+	mkdir -p ${LLTDIR}/build
+	cd ${LLTDIR}/build && cmake .. && ${MAKE}
+	cp ${LLTDIR}/build/llthreads.so ${LIBDIR}/llthreads.so
+
+${BINDIR}/luajit: ${LIBDIR}/libluajit.a
+	mkdir -p ${BINDIR}
+	cp ${LUADIR}/src/luajit ${BINDIR}/luajit
+
 clean:
 	${MAKE} -C ${LUADIR} clean
 	${MAKE} -C ${LPEGDIR} clean
+	${MAKE} -C ${DEPSDIR}/llthreads/build clean
+	rm -f ${BUILDDIR}/lupa
 	rm -f ${LIBDIR}/*.so
 	rm -f ${LIBDIR}/*.a
-	rm -f ${BUILDDIR}/lupa
 
 bootstrap: all
 	${BUILDDIR}/lupa lupa.lu -o ${BUILDDIR}/lupa.lua

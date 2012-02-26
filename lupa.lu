@@ -1,802 +1,4 @@
-#!/usr/bin/env luajit
-
-// vim: ft=lupa
-
-package.path  = ";;./src/?.lua;./lib/?.lua;${package.path}"
-package.cpath = ";;./lib/?.so;${package.cpath}"
-
-_G.newtable = loadstring("return {...}")
-_G.bit = require("bit")
-
-var rawget, rawset = _G.rawget, _G.rawset
-var getmetatable, setmetatable = _G.getmetatable, _G.setmetatable
-
-_G.__class = function(into, name, _from, _with, body) {
-   if #_from == 0 {
-      _from[#_from + 1] = Object
-   }
-
-   var _super = Super(_from)
-   var _class = newtable()
-   _class.__name = name
-   _class.__from = _from
-
-   var readers = newtable()
-   var writers = newtable()
-
-   _class.__readers = readers
-   _class.__writers = writers
-
-   _class.__in = function(o, k) {
-      var v = rawget(o, k)
-      if v != nil { return true }
-      var r = rawget(readers, k)
-      return r && r(o) != nil
-   }
-
-   var queue  = newtable(unpack(_from))
-   while  #queue > 0 {
-      var base = table::remove(queue, 1)
-      if getmetatable(base) != Class {
-         throw TypeError("${base} is not a Class", 2)
-      }
-      _from[base] = true
-      for k,v in pairs(base) {
-         if _class[k] == nil { _class[k] = v }
-         if _super[k] == nil { _super[k] = v }
-      }
-      for k,v in pairs(base.__readers) {
-         if readers[k] == nil { readers[k] = v }
-      }
-      for k,v in pairs(base.__writers) {
-         if writers[k] == nil { writers[k] = v }
-      }
-      if base.__from {
-         for i=1, #base.__from {
-            queue[#queue + 1] = base.__from[i]
-         }
-      }
-   }
-
-   _class.__index = function(obj, key) {
-      var reader = readers[key]
-      if reader { return reader(obj) }
-      return _class[key]
-   }
-   _class.__newindex = function(obj, key, val) {
-      var writer = writers[key]
-      if writer {
-         writer(obj, val)
-      }
-      else {
-         rawset(obj, key, val)
-      }
-   }
-   _class.new = function(self, ...) {
-      var obj = setmetatable(newtable(), self)
-      if rawget(self, '__init') != nil {
-         var ret = obj.__init(...)
-         if ret != nil {
-            return ret
-         }
-      }
-      return obj
-   }
-   _class.__apply = function(self, ...) {
-      return self.new(...)
-   }
-
-   setmetatable(_class, Class)
-
-   var _env = setmetatable({ }, { __index = into })
-   if _with {
-      for i=1, #_with {
-         _with[i].compose(_env, _class)
-      }
-   }
-
-   into[name] = _class
-   body(_env, _class, _super)
-
-   return _class
-}
-_G.__trait = function(into, name, _with, body) {
-   var _trait = newtable()
-   _trait.__name = name
-   _trait.__body = body
-   _trait.__with = _with
-   setmetatable(_trait, Trait)
-   if into {
-      into[name] = _trait
-   }
-   return _trait
-}
-_G.__object = function(into, name, _from, _with, body) {
-   for i=1, #_from {
-      if getmetatable(_from[i]) != Class {
-         _from[i] = getmetatable(_from[i])
-      }
-   }
-   var anon = __class(into, '#'~name, _from, _with, body)
-   var inst = setmetatable(newtable(), anon)
-   into[name] = inst
-   return inst
-}
-_G.__method = function(into, name, code) {
-   into[name] = code
-}
-_G.__has = function(into, name, type, def) {
-   var setter = '__set_'~name
-   var getter = '__get_'~name
-   if type {
-      var attr = '$'~name
-      into[setter] = function(obj, val) {
-         rawset(obj, attr, type(val))
-      }
-      into[getter] = function(obj) {
-         var val = rawget(obj, attr)
-         if val == nil {
-            val = def(obj)
-            obj[setter](obj, val)
-         }
-         return val
-      }
-   }
-   else {
-      into[setter] = function(obj, val) {
-         rawset(obj, name, val)
-      }
-      into[getter] = function(obj) {
-         var val = rawget(obj, name)
-         if val == nil {
-            val = def(obj)
-            obj[setter](obj, val)
-         }
-         return val
-      }
-   }
-}
-_G.__rule = function(into, name, patt) {
-   if name == '__init' || rawget(into,1) == nil {
-      into[1] = name
-   }
-   into[name] = patt
-   var rule_name = '__rule_'~name
-   into['__get_'~name] = function(self) {
-      var _rule = rawget(self, rule_name)
-      if _rule == nil {
-         var grmr = newtable()
-         for k,v in pairs(into) {
-            if __patt::type(v) == 'pattern' {
-               grmr[k] = v
-            }
-         }
-         grmr[1] = name
-         _rule = __patt::P(grmr)
-         rawset(self, rule_name, _rule)
-      }
-      return _rule
-   }
-}
-
-_G.__try = function(_try, ...) {
-   var ok, er = pcall(_try)
-   if !ok {
-      for i=1, #... {
-         var node = ...[i]
-         var body = node.body
-         var type = node.type
-         if __match(er, type) {
-            return body(er)
-         }
-      }
-      error(er, 2)
-   }
-}
-
-_G.__patt = require("lpeg")
-_G.__patt::setmaxstack(1024)
-{
-   function make_capt_hash(init) {
-      return function(tab) {
-         if init != nil {
-            for k,v in init {
-               if tab[k] == nil { tab[k] = v }
-            }
-         }
-         return tab as Hash
-      }
-   }
-   function make_capt_array(init) {
-      return function(tab) {
-         if init != nil {
-            for i=1, #init {
-               if tab[i] == nil { tab[i] = init[i] }
-            }
-         }
-         return tab as Array
-      }
-   }
-
-   __patt.Ch = function(patt,init) {
-      return Pattern::__div(__patt::Ct(patt), make_capt_hash(init))
-   }
-   __patt.Ca = function(patt,init) {
-      return Pattern::__div(__patt::Ct(patt), make_capt_array(init))
-   }
-
-   var predef = newtable()
-
-   predef.nl  = __patt::P("\n")
-   predef.pos = __patt::Cp()
-
-   var any = __patt::P(1)
-   __patt::locale(predef)
-
-   predef.a = predef.alpha
-   predef.c = predef.cntrl
-   predef.d = predef.digit
-   predef.g = predef.graph
-   predef.l = predef.lower
-   predef.p = predef.punct
-   predef.s = predef.space
-   predef.u = predef.upper
-   predef.w = predef.alnum
-   predef.x = predef.xdigit
-   predef.A = any - predef.a
-   predef.C = any - predef.c
-   predef.D = any - predef.d
-   predef.G = any - predef.g
-   predef.L = any - predef.l
-   predef.P = any - predef.p
-   predef.S = any - predef.s
-   predef.U = any - predef.u
-   predef.W = any - predef.w
-   predef.X = any - predef.x
-
-   __patt.predef = predef
-   __patt.Def = function(id) {
-      if predef[id] == nil {
-         error("No predefined pattern '${id}'", 2)
-      }
-      return predef[id]
-   }
-}
-
-_G.__env = _G
-
-_G.__import = function(into, _from, what, dest) {
-   var mod = __load(_from)
-   if what {
-      if dest {
-         into[dest] = newtable()
-         into = into[dest]
-      }
-      for i=1, #what {
-         var key = what[i]
-         var val = rawget(mod, key)
-         if val == nil {
-            throw ImportError("'${key}' from '${_from}' is nil", 2)
-         }
-         into[key] = val
-      }
-   }
-   else {
-      return mod
-   }
-}
-_G.__export = function(...what) {
-   var exporter = newtable()
-   for i=1, #what {
-      var expt = what[i]
-      var key, val = expt[1], expt[2]
-      if val == nil {
-         throw ExportError("${key} is nil", 2)
-      }
-      exporter[key] = val
-   }
-   return exporter
-}
-
-_G.__load = function(_from) {
-   var path = _from
-   if type(_from) == 'table' {
-      path = table::concat(_from, '.')
-   }
-   var mod = require(path)
-   if mod == true {
-      mod = _G
-      for i=1, #_from {
-         mod = mod[_from[i]]
-      }
-   }
-   return mod
-}
-
-_G.__match = function(a, b) {
-   if b == a { return true }
-   var mt = getmetatable(b)
-   var __match = mt && rawget(mt, '__match')
-   if __match { return __match(b, a) }
-   if a.isa(b) { return true }
-   return false
-}
-
-_G.__op_as     = setmetatable
-_G.__op_typeof = getmetatable
-_G.__op_yield  = coroutine['yield']
-_G.__op_throw  = function(err) {
-   var mt = getmetatable(err)
-   var __throw = mt && rawget(mt, '__throw')
-   if __throw {
-      __throw(err, 2)
-   }
-   error(err, 2)
-}
-
-_G.__op_in = function(key, obj) {
-   var mt = getmetatable(obj)
-   var __op_in = mt && rawget(mt, '__in')
-   if __op_in { return __op_in(obj, key) }
-   return rawget(obj, key) != nil
-}
-_G.__op_like = function(this, that) {
-   for k,v in pairs(that) {
-      if type(this[k]) != type(v) {
-         return false
-      }
-      if !this[k].isa(getmetatable(v)) {
-         return false
-      }
-   }
-   return true
-}
-_G.__op_spread = function(a) {
-   var mt = getmetatable(a)
-   var __spread = mt && rawget(mt, '__spread')
-   if __spread { return __spread(a) }
-   return unpack(a)
-}
-_G.__op_each = function(a, ...) {
-   if type(a) == 'function' { return a, ... }
-   var mt = getmetatable(a)
-   var __each = mt && rawget(mt, '__each')
-   if __each { return __each(a) }
-   return pairs(a)
-}
-_G.__op_lshift = function(a,b) {
-   var mt = getmetatable(a)
-   var __lshift = mt && rawget(mt, '__lshift')
-   if __lshift { return __lshift(a, b) }
-   return bit::lshift(a, b)
-}
-_G.__op_rshift = function(a,b) {
-   var mt = getmetatable(a)
-   var __rshift = mt && rawget(mt, '__rshift')
-   if __rshift { return __rshift(a, b) }
-   return bit::rshift(a, b)
-}
-_G.__op_arshift = function(a,b) {
-   var mt = getmetatable(a)
-   var __arshift = mt && rawget(mt, '__arshift')
-   if __arshift { return __arshift(a, b) }
-   return bit::arshift(a, b)
-}
-_G.__op_bor = function(a,b) {
-   var mt = getmetatable(a)
-   var __bor = mt && rawget(mt, '__bor')
-   if __bor { return __bor(a, b) }
-   return bit::bor(a, b)
-}
-_G.__op_bxor = function(a,b) {
-   var mt = getmetatable(a)
-   var __bxor = mt && rawget(mt, '__bxor')
-   if __bxor { return __bxor(a, b) }
-   return bit::bxor(a, b)
-}
-_G.__op_band = function(a,b) {
-   var mt = getmetatable(a)
-   var __band = mt && rawget(mt, '__band')
-   if __band { return __band(a, b) }
-   return bit::band(a, b)
-}
-_G.__op_bnot = function(a) {
-   var mt = getmetatable(a)
-   var __bnot = mt && rawget(mt, '__bnot')
-   if __bnot { return __bnot(a) }
-   return bit::bnot(a)
-}
-
-_G.Type = newtable()
-Type.__name = 'Type'
-Type.__call = function(self, ...) {
-   return self.__apply(...)
-}
-Type.isa = function(self, that) {
-   if that == Any { return true }
-   var meta = getmetatable(self)
-   return meta == that
-}
-Type.can = function(self, key) {
-   return rawget(self, key) || rawget(getmetatable(self), key)
-}
-Type.does = function(self, that) {
-   return false
-}
-Type.__index = Type
-Type.__apply = function(self, name) {
-   var type = newtable()
-   type.__name = name || self.__name
-   return setmetatable(type, self)
-}
-Type.__tostring = function(self) {
-   return 'type '~(rawget(self, '__name') || 'Type')
-}
-
-var MetaType = newtable()
-MetaType.__metatable = Type
-setmetatable(Type, MetaType)
-MetaType.__call = Type.__call
-
-_G.Super = Type()
-Super.__tostring = function(self) {
-   return "<super ${self.__name}>"
-}
-Super.__apply = function(self, _from) {
-   var inst = setmetatable(newtable(), self)
-   rawset(inst, '__from', _from)
-   return inst
-}
-Super.__call = function(self, ...) {
-   return self::__from(...)
-}
-
-_G.Class = Type()
-Class.__tostring = function(self) {
-   return "<class ${self.__name}>"
-}
-Class.__index = function(self, key) {
-   throw AccessError("no such member '${key}' in ${self.__name}", 2)
-}
-Class.__newindex = function(self, key, val) {
-   if type(key) == 'string' {
-      if key.match('^__get_') {
-         var _k = key.match('^__get_(.-)$')
-         self.__readers[_k] = val
-      }
-      else if key.match('^__set_') {
-         var _k = key.match('^__set_(.-)$')
-         self.__writers[_k] = val
-      }
-   }
-   rawset(self, key, val)
-}
-Class.__call = function(self, ...) {
-   return self.__apply(...)
-}
-
-_G.Object = setmetatable(newtable(), Class)
-Object.__name = 'Object'
-Object.__from = newtable()
-Object.__with = newtable()
-Object.__readers = newtable()
-Object.__writers = newtable()
-Object.__tostring = function(self) {
-   return "<object ${getmetatable(self).__name}>"
-}
-Object.__index = Object
-Object.isa = function(self, that) {
-   if that == Any { return true }
-   var meta = getmetatable(self)
-   if meta == Class { meta = self }
-   return meta == that || (meta.__from && (meta.__from[that] != nil))
-}
-Object.can = function(self, key) {
-   var meta = getmetatable(self)
-   if meta == Class { meta = self }
-   return rawget(meta, key)
-}
-Object.does = function(self, that) {
-   return self.__with[that.__body] != nil
-}
-
-_G.Trait = Type()
-Trait.__call = function(self, ...args) {
-   var copy = __trait(nil, self.__name, self.__with, self.__body)
-   var make = self.compose
-   copy.compose = function(self, into, recv) {
-      return make(self, into, recv, @args)
-   }
-   return copy
-}
-Trait.__tostring = function(self) {
-   return 'trait '~self.__name
-}
-Trait.__index = Trait
-Trait.compose = function(self, into, recv, ...) {
-   for i=1, #self.__with {
-      self.__with[i].compose(into, recv)
-   }
-   self::__body(into, recv, ...)
-   recv.__with[self.__body] = true
-   return into
-}
-
-_G.Hash = Type('Hash')
-Hash.__index = Hash
-Hash.__apply = function(self, table) {
-   return setmetatable(table || newtable(), self)
-}
-Hash.__tostring = function(self) {
-   var buf = newtable()
-   for k, v in pairs(self) {
-      var _v
-      if type(v) == 'string' {
-         _v = string::format('%q', v)
-      }
-      else {
-         _v = tostring(v)
-      }
-      if type(k) == 'string' {
-         buf[#buf + 1] = k~'='~_v
-      }
-      else {
-         buf[#buf + 1] = "[${k}]=${_v}"
-      }
-   }
-   return '{'~table::concat(buf, ',')~'}'
-}
-Hash.__getitem = rawget
-Hash.__setitem = rawset
-Hash.__each = pairs
-
-_G.Array = Type("Array")
-Array.__index = Array
-Array.__apply = function(self, ...) {
-   return setmetatable(newtable(...), self)
-}
-Array.__tostring = function(self) {
-   var buf = newtable()
-   for i=1, #self {
-      if type(self[i]) == 'string' {
-         buf[#buf + 1] = string::format('%q', self[i])
-      }
-      else {
-         buf[#buf + 1] = tostring(self[i])
-      }
-   }
-   return '['~table::concat(buf,',')~']'
-}
-Array.__each = ipairs
-Array.__spread = unpack
-Array.__getitem = rawget
-Array.__setitem = rawset
-Array.unpack = unpack
-Array.insert = table.insert
-Array.remove = table.remove
-Array.concat = table.concat
-Array.sort = table.sort
-Array.each = function(self, block) {
-   for i=1, #self { block(self[i]) }
-}
-Array.map = function(self, block) {
-   var out = Array()
-   for i=1, #self {
-      var v = self[i]
-      out[#out + 1] = block(v)
-   }
-   return out
-}
-Array.inject = function(self, block) {
-   for i=1, #self {
-      self[i] = block(self[i])
-   }
-   return self
-}
-Array.grep = function(self, block) {
-   var out = Array()
-   for i=1, #self {
-      var v = self[i]
-      if block(v) {
-         out[#out + 1] = v
-      }
-   }
-   return out
-}
-Array.push = function(self, v) {
-   self[#self + 1] = v
-}
-Array.pop = function(self) {
-   var v = self[#self]
-   self[#self] = nil
-   return v
-}
-Array.shift = function(self) {
-   var v = self[1]
-   for i=2, #self {
-      self[i-1] = self[i]
-   }
-   self[#self] = nil
-   return v
-}
-Array.unshift = function(self, v) {
-   for i=#self+1, 1, -1 {
-      self[i] = self[i-1]
-   }
-   self[1] = v
-}
-Array.splice = function(self, offset, count, ...args) {
-   var out = Array()
-   for i=offset, offset + count - 1 {
-      out.push(self.remove(offset))
-   }
-   for i=#args, 1, -1 {
-      self.insert(offset, args[i])
-   }
-   return out
-}
-Array.reverse = function(self) {
-   var out = Array()
-   for i=1, #self {
-      out[i] = self[(#self - i) + 1]
-   }
-   return out
-}
-
-_G.Range = Type("Range")
-Range.__index = Range
-Range.__apply = function(self, min, max, inc) {
-   min = assert(tonumber(min), "range min is not a number")
-   max = assert(tonumber(max), "range max is not a number")
-   inc = assert(tonumber(inc || 1), "range inc is not a number")
-   return setmetatable(newtable(min, max, inc), self)
-}
-Range.__each = function(self) {
-   var inc = self[3]
-   var cur = self[1] - inc
-   var max = self[2]
-   return function() {
-      cur = cur + inc
-      if cur <= max {
-         return cur
-      }
-   }
-}
-Range.each = function(self, block) {
-   for i in Range::__each(self) {
-      block(i)
-   }
-}
-
-_G.Void = Type("Void")
-Void.__apply = function(self, ...) {
-   if #... != 0 {
-      throw TypeError("value in Void", 2)
-   }
-   return ...
-}
-
-_G.Any = Type("Any")
-Any.__apply = function(self, ...) {
-   return ...
-}
-
-_G.Nil = Type("Nil")
-Nil.__index = function(self, key) {
-   var val = Type[key]
-   if val == nil {
-      throw TypeError("no such member ${key} in type Nil", 2)
-   }
-   return val
-}
-debug::setmetatable(nil, Nil)
-
-_G.Number = Type("Number")
-Number.__index = Number
-Number.__apply = function(self, val) {
-   var v = tonumber(val)
-   if v == nil {
-      throw TypeError("cannot coerce '${val}' to Number", 2)
-   }
-   return v
-}
-Number.times = function(self, block) {
-   for i=1, self { block(i) }
-}
-debug::setmetatable(0, Number)
-
-_G.String = Type('String')
-for k,v in pairs(string) {
-   String[k] = v
-}
-String.__index = String
-String.__apply = function(self, val) {
-   return tostring(val)
-}
-String.__match = function(a,p) {
-   return __patt::P(p).match(a)
-}
-String.split = function(str, sep, max) {
-   if !str.find(sep) {
-      return Array(str)
-   }
-   if max == nil ||  max < 1 {
-      max = 0
-   }
-   var pat = "(.-)"~sep~"()"
-   var idx = 0
-   var list = Array()
-   var last
-   for part, pos in str.gmatch(pat) {
-      idx = idx + 1
-      list[idx] = part
-      last = pos
-      if idx == max { break }
-   }
-   if idx != max {
-      list[idx + 1] = str.sub(last)
-   }
-   return list
-}
-debug::setmetatable("", String)
-
-_G.Boolean = Type("Boolean")
-Boolean.__name = 'Boolean'
-Boolean.__index = Boolean
-debug::setmetatable(true, Boolean)
-
-_G.Function = Type("Function")
-Function.__name = 'Function'
-Function.__index = Function
-Function.__apply = function(self, code, ...) {
-   var args = [ ... ]
-   code = compile(code, '=eval', args)
-   var func = assert(loadstring(code, '=eval'))
-   return func
-}
-debug::setmetatable(function() { }, Function)
-
-_G.Coroutine = Type("Coroutine")
-Coroutine.__index = Coroutine
-for k,v in pairs(coroutine) {
-   Coroutine[k] = v
-}
-debug::setmetatable(coroutine::create(function() { }), Coroutine)
-
-_G.Pattern = setmetatable(getmetatable(__patt::P(1)), Type)
-Pattern.__call = function(patt, self, subj, ...) {
-   return patt.match(subj, ...)
-}
-Pattern.__match = function(patt, subj) {
-   return patt.match(subj)
-}
-
-class Error {
-   has level   = 1
-   has message = "unknown"
-   has info
-   has trace
-
-   method __init(message, level) {
-      self.message = message
-      self.level   = level
-   }
-   method __tostring() {
-      return "${self.__name}: ${self.trace}"
-   }
-   method __throw(level) {
-      level ||= 1
-      self.info  = debug::getinfo(level + 1, "Sln")
-      self.trace = debug::traceback("${self.message}", self.level + level)
-   }
-}
-_G.Error = Error
-
-class SyntaxError from Error { } _G.SyntaxError = SyntaxError
-class AccessError from Error { } _G.AccessError = AccessError
-class ImportError from Error { } _G.ImportError = ImportError
-class ExportError from Error { } _G.ExportError = ExportError
-class TypeError   from Error { } _G.TypeError   = TypeError
+export Compiler, Grammar
 
 class Scope {
    has entries = { }
@@ -960,9 +162,9 @@ object Grammar {
       ["!"] = "not(%s)",
       ["#"] = "#(%s)",
       ["-"] = "-(%s)",
-      ["~"] = "__op_bnot(%s)",
-      ["@"] = "__op_spread(%s)",
-      ["typeof"] = "__op_typeof(%s)",
+      ["~"] = "__env.__op_bnot(%s)",
+      ["@"] = "__env.__op_spread(%s)",
+      ["typeof"] = "__env.__op_typeof(%s)",
    }
 
    var binops = {
@@ -973,27 +175,27 @@ object Grammar {
       ["+"] = "(%s)+(%s)",
       ["-"] = "(%s)-(%s)",
       ["~"] = "(%s)..(%s)",
-      [">>"] = "__op_rshift(%s,%s)",
-      ["<<"] = "__op_lshift(%s,%s)",
-      [">>>"] = "__op_arshift(%s,%s)",
+      [">>"] = "__env.__op_rshift(%s,%s)",
+      ["<<"] = "__env.__op_lshift(%s,%s)",
+      [">>>"] = "__env.__op_arshift(%s,%s)",
       ["<="] = "(%s)<=(%s)",
       [">="] = "(%s)>=(%s)",
       ["<"] = "(%s)<(%s)",
       [">"] = "(%s)>(%s)",
-      ["in"] = "__op_in(%s,%s)",
-      ["as"] = "__op_as(%s,%s)",
+      ["in"] = "__env.__op_in(%s,%s)",
+      ["as"] = "__env.__op_as(%s,%s)",
       ["=="] = "(%s)==(%s)",
       ["!="] = "(%s)~=(%s)",
-      ["&"] = "__op_band(%s,%s)",
-      ["^"] = "__op_bxor(%s,%s)",
-      ["|"] = "__op_bor(%s,%s)",
+      ["&"] = "__env.__op_band(%s,%s)",
+      ["^"] = "__env.__op_bxor(%s,%s)",
+      ["|"] = "__env.__op_bor(%s,%s)",
       ["&&"] = "(%s)and(%s)",
       ["||"] = "(%s)or(%s)",
    }
 
    function fold_prefix(o,e) {
       if o == '#' && e.match('^%s*%.%.%.%s*$') {
-         return 'select("#",...)'
+         return '__env.select("#",...)'
       }
       return unrops[o].format(e)
    }
@@ -1023,9 +225,9 @@ object Grammar {
    function make_slot_decl(ctx, name, type, body) {
       if type != 'nil' {
          type = lookup(type, ctx)
-         return '__has(self,"%s",%s,function(self) return %s(%s) end);'.format(name,type,type,body)
+         return '__env.__has(self,"%s",%s,function(self) return %s(%s) end);'.format(name,type,type,body)
       }
-      return '__has(self,"%s",%s,function(self) return %s end);'.format(name,type,body)
+      return '__env.__has(self,"%s",%s,function(self) return %s end);'.format(name,type,body)
    }
 
    function make_binop_bind(ctx, a1, a2, o, b) {
@@ -1076,15 +278,25 @@ object Grammar {
       var tmp = [ ]
       var buf = [ ]
 
+      if #rhs == 0 {
+         return lhs.concat()
+      }
+
+      if #lhs == 1 {
+         var info = ctx.lookup(lhs[1])
+         if info.type {
+            var type = lookup(info.type, ctx)
+            rhs[1] = (type~'(%s)').format(rhs[1] || '')
+         }
+         return "%s=%s;".format(lhs[1], rhs[1] || '')
+      }
+
       for i=1, #lhs {
          tmp.push(genid())
       }
 
       if #rhs > 0 {
          buf.push('%s=%s'.format(tmp.concat(','), rhs.concat(',')))
-      }
-      else {
-         buf.push(tmp.concat())
       }
 
       for i=1, #lhs {
@@ -1108,7 +320,7 @@ object Grammar {
                name = name.match('^%s*([^%s]+)%s*$')
                var info = ctx.lookup(name) 
                if info.expr {
-                  head.push('if %s==nil then %s=%s else %s=%s end'.format(name,name,info.expr,name,name))
+                  head.push('if %s==nil then %s=%s end'.format(name,name,info.expr))
                }
                if info.type {
                   var type = lookup(info.type, ctx)
@@ -1124,10 +336,10 @@ object Grammar {
                var info = ctx.lookup(name) 
                if info.type {
                   var type = lookup(info.type, ctx)
-                  head.push(('local %s=_G.Array(...):inject(%s)').format(name,type))
+                  head.push(('local %s=__env.Array(...):inject(%s)').format(name,type))
                }
                else {
-                  head.push("local %s=_G.Array(...)".format(name))
+                  head.push("local %s=__env.Array(...)".format(name))
                }
             }
          }
@@ -1142,7 +354,7 @@ object Grammar {
 
    function make_for_in_stmt(ctx, name_list, expr, body) {
       var list, head = make_params(ctx, name_list)
-      return 'for %s in __op_each(%s) do %s%s end'.format(list, expr, head, body)
+      return 'for %s in __env.__op_each(%s) do %s%s end'.format(list, expr, head, body)
    }
    function make_return_stmt(ctx, is_lex, expr_list, ret_guard) {
       expr_list = expr_list || [ ]
@@ -1187,13 +399,13 @@ object Grammar {
    function make_meth_decl(ctx,n,p,b) {
       p.unshift('self')
       var p, h = make_params(ctx,p)
-      return "__method(self,%q,function(%s) %s%s end);".format(n,p,h,b)
+      return "__env.__method(self,%q,function(%s) %s%s end);".format(n,p,h,b)
    }
 
    function make_trait_decl(c,n,p,w,b) {
       var p, h = make_params(c, p)
       return
-      '__trait(__env,%q,{%s},function(__env,self,%s) %s%s end);'
+      '__env.__trait(__env,%q,{%s},function(__env,self,%s) %s%s end);'
          .format(n,w,p,h,b)
    }
 
@@ -1204,8 +416,8 @@ object Grammar {
          args.push(catch_blocks[i])
       }
       var stmt = [ ]
-      stmt.push("do local __return;__try(${args.concat(',')});")
-      stmt.push('if __return then return __op_spread(__return) end end')
+      stmt.push("do local __return;__env.__try(${args.concat(',')});")
+      stmt.push('if __return then return __env.__op_spread(__return) end end')
       return stmt.concat(' ')
    }
    function make_catch_stmt(ctx, node) {
@@ -1213,7 +425,7 @@ object Grammar {
       var head = node.head || '__err'
       var name = head.match('^%s*([^%s]+)%s*$')
       var info = ctx.lookup(name)
-      var type = info.type
+      var type = lookup(info.type, ctx)
       return "{body=function(${name}) ${body} end, type=${type}}"
    }
    function make_import_stmt(c, n, f, d) {
@@ -1232,7 +444,7 @@ object Grammar {
             q[i] = quote(n[i])
          }
       }
-      return "__import(__env,%q,{%s},%s);".format(f, q.concat(','), d)
+      return "__env.__import(__env,%q,{%s},%s);".format(f, q.concat(','), d)
    }
    function make_export_stmt(c,n) {
       var b = [ ]
@@ -1254,9 +466,9 @@ object Grammar {
       {:ret_guard: {`nil`} :}
       {:scope: {`'__env'`} :}
       { %s* '#!' (!nl .)* %s* }? s
-      {`'local __env=setmetatable({},{__index=_G});'`}
+      {`'local __env=_G.setmetatable({},{__index=_G.require("lupa.core")});'`}
       <enter>
-      ({`'_G'   `} <ctx> -> define_const)
+      ({`'_G'`}    <ctx> -> define_const)
       ({`'__env'`} <ctx> -> define_const)
       {~ (s <main_body_stmt>)* s ~}
       (<ctx> -> function(ctx) {
@@ -1267,7 +479,7 @@ object Grammar {
             }
             buf.push('{%q,%s}'.format(k,lookup(k, ctx)))
          }
-         return "return __export(${buf.concat(',')});"
+         return "return __env.__export(${buf.concat(',')});"
       })
       <leave>
    }
@@ -1276,9 +488,9 @@ object Grammar {
          {:set_return: {`false`} :}
          {:ret_guard: {`nil`} :}
          {:scope: {`'__env'`} :}
-         {`'local __env=setmetatable({},{__index=_G});'`}
+         {`'local __env=...;'`}
          <enter>
-         ({`'_G'   `} <ctx> -> define_const)
+         ({`'_G'`}    <ctx> -> define_const)
          ({`'__env'`} <ctx> -> define_const)
          {~ (s <func_body>) s ~}
          <leave>
@@ -1332,10 +544,10 @@ object Grammar {
       ~}
    }
    rule yield_stmt {
-      'yield' idsafe {~ s <expr_list> ~} -> '__op_yield(%1);' semicol
+      'yield' idsafe {~ s <expr_list> ~} -> '__env.__op_yield(%1);' semicol
    }
    rule throw_stmt {
-      'throw' idsafe {~ s <expr> ~} -> '__op_throw(%1);' semicol
+      'throw' idsafe {~ s <expr> ~} -> '__env.__op_throw(%1);' semicol
    }
    rule break_stmt {
       {~ { "break" idsafe } -> "do __break = true; break end" ~}
@@ -1364,7 +576,7 @@ object Grammar {
       {~
          "case" idsafe =expr s <expr> s ":"
          {~ s (s !(("case" | "default") idsafe s) <statement>)* s ~}
-         -> " if __match(%1,%2) then %3 end "
+         -> " if __env.__match(%1,%2) then %3 end "
       ~}
    }
    rule default_stmt {
@@ -1519,11 +731,12 @@ object Grammar {
       (<class_from> | {`""`}) s
       (<class_with> | {`""`}) s
       "{" {~ <class_body> s ~} "}"
-      -> '__class(__env,"%1",{%2},{%3},function(__env,self,super) %4 end);'
+      -> '__env.__class(__env,"%1",{%2},{%3},function(__env,self) %4 end);'
    }
    rule trait_decl {
       "trait" idsafe s <ctx> {~ <name> <ctx> {`'__env'`} -> define ~} s
-      ("(" s <enter> <param_list> s ")" | {`'...'`} {`''`}) s
+      <enter>
+      ("(" s <param_list> s ")" | {@ {`'...'`} @}) s
       (<class_with> | {`""`}) s
       "{" {~ <class_body> s ~} "}"
       -> make_trait_decl <leave>
@@ -1533,13 +746,12 @@ object Grammar {
       (<class_from> | {`""`}) s
       (<class_with> | {`""`}) s
       "{" {~ <class_body> s ~} "}"
-      -> '__object(__env,"%1",{%2},{%3},function(__env,self,super) %4 end);'
+      -> '__env.__object(__env,"%1",{%2},{%3},function(__env,self) %4 end);'
    }
    rule class_body {
       {:scope: {`'__env'`} :}
       <enter>
-      ({`'super'`} <ctx> -> define_const)
-      ({`'self'`}  <ctx> -> define_const)
+      ({`'self'`} <ctx> -> define_const)
       {~ (s <class_body_stmt>)* ~}
       <leave>
    }
@@ -1562,7 +774,7 @@ object Grammar {
    }
    rule stack {
       {~
-      | ('...' s "[" s <expr> s ("]" | <{ syntax_error("expected ']'") }>)) -> 'select(%1,...)'
+      | ('...' s "[" s <expr> s ("]" | <{ syntax_error("expected ']'") }>)) -> '(select(%1,...))'
       | {'...'}
       ~}
    }
@@ -1645,11 +857,11 @@ object Grammar {
    rule range {
       {~ (
          "[" s <expr> s ":" s <expr> ( s ":" s <expr> | {`"1"`} ) s "]"
-      ) -> "_G.Range(%1,%2,%3)" ~}
+      ) -> "__env.Range(%1,%2,%3)" ~}
    }
    rule array {
       {~
-         ("[" -> "_G.Array(") s
+         ("[" -> "__env.Array(") s
          (<array_elements> | {`""`}) s
          ("]" -> ")" | <{syntax_error("expected ']'")}>)
       ~}
@@ -1659,7 +871,7 @@ object Grammar {
    }
    rule hash {
       {~
-         ("{" -> "_G.Hash({") s
+         ("{" -> "__env.Hash({") s
          (<hash_pairs> | {`""`}) s
          ("}" -> "})" | <{syntax_error("expected '}'")}>)
       ~}
@@ -1804,14 +1016,14 @@ object Grammar {
 
    // PEG grammar and pattern rules
    rule pattern {
-      "/" {~ s <rule_alt> s ~} "/" -> '__patt.P(%1)'
+      "/" {~ s <rule_alt> s ~} "/" -> '__env.__patt.P(%1)'
    }
    rule rule_decl {
       "rule" idsafe s <name> s "{" {~ s <rule_body> s ~} "}"
-      -> '__rule(self,"%1",%2);'
+      -> '__env.__rule(self,"%1",%2);'
    }
    rule rule_body {
-      <rule_alt> | {`'__patt.P(nil)'`}
+      <rule_alt> | {`'__env.__patt.P(nil)'`}
    }
    rule rule_alt {
       {~ ("|" -> '' s)? <rule_seq> (s ("|" -> "+") s <rule_seq>)* ~}
@@ -1834,10 +1046,10 @@ object Grammar {
       ({~ <rule_prefix> (&(s prod_oper) s)? ~}
       {: {prod_oper} {~ s <term> ~} :}*) ~> function(a,o,b) {
          if o == "=>" {
-            return '__patt.Cmt(%s,%s)'.format(a,b)
+            return '__env.__patt.Cmt(%s,%s)'.format(a,b)
          }
          else if o == "~>" {
-            return '__patt.Cf(%s,%s)'.format(a,b)
+            return '__env.__patt.Cf(%s,%s)'.format(a,b)
          }
          else {
             return '(%s)/(%s)'.format(a,b)
@@ -1867,37 +1079,37 @@ object Grammar {
       ~}
    }
    rule rule_term {
-      {~ <string> -> '__patt.P(%1)' ~}
+      {~ <string> -> '__env.__patt.P(%1)' ~}
    }
    rule rule_class {
       {~
-         ("[" -> '(') ("^" -> '__patt.P(1)-')?
+         ("[" -> '(') ("^" -> '__env.__patt.P(1)-')?
          ({@ (!"]" <rule_item>)+ @} -> function(a) { "("~a.concat("+")~")" })
          ("]" -> ')')
       ~}
    }
    rule rule_item {
       {~ <rule_predef> | <rule_range>
-      | {.} -> function(c) { '__patt.P(%q)'.format(c) }
+      | {.} -> function(c) { '__env.__patt.P(%q)'.format(c) }
       ~}
    }
    rule rule_predef {
       {~ ('%' -> '') (
-         | { [0-9]+ } -> '__patt.Carg(%1)'
-         | <name> -> '__patt.Def("%1")'
+         | { [0-9]+ } -> '__env.__patt.Carg(%1)'
+         | <name> -> '__env.__patt.Def("%1")'
       ) ~}
    }
    rule rule_range {
-      {~ . ("-"->'') !"]" . ~} -> function(r) { '__patt.R(%q)'.format(r) }
+      {~ . ("-"->'') !"]" . ~} -> function(r) { '__env.__patt.R(%q)'.format(r) }
    }
    rule rule_any {
-      {~ "." -> '__patt.P(1)' ~}
+      {~ "." -> '__env.__patt.P(1)' ~}
    }
    rule rule_ref {
       {~
       ("<" -> '') s
-         ( <name> -> '__patt.V("%1")'
-         | {~ ("{" -> '__patt.P(') s <expr> s ("}" -> ")") ~}
+         ( <name> -> '__env.__patt.V("%1")'
+         | {~ ("{" -> '__env.__patt.P(') s <expr> s ("}" -> ")") ~}
          ) s
       (">" -> '')
       | <qname>
@@ -1905,59 +1117,62 @@ object Grammar {
    }
    rule rule_group_capt {
       {~ "{:" ((<name> -> quote ":") | {`'nil'`}) {~ s <rule_alt> ~} s ":}"
-      -> '__patt.Cg(%2,%1)'
+      -> '__env.__patt.Cg(%2,%1)'
       ~}
    }
    rule rule_back_capt {
-      "=" (<name> -> quote) -> '__patt.Cb(%1)'
+      "=" (<name> -> quote) -> '__env.__patt.Cb(%1)'
    }
    rule rule_sub_capt {
-      "{~" {~ s <rule_alt> s ~} "~}" -> '__patt.Cs(%1)'
+      "{~" {~ s <rule_alt> s ~} "~}" -> '__env.__patt.Cs(%1)'
    }
    rule rule_const_capt {
-      "{`" {~ s <expr_list> s ~} "`}" -> '__patt.Cc(%1)'
+      "{`" {~ s <expr_list> s ~} "`}" -> '__env.__patt.Cc(%1)'
    }
    rule rule_hash_capt {
-      "{%" {~ s <rule_alt> s ~} "%}" -> '__patt.Ch(%1)'
+      "{%" {~ s <rule_alt> s ~} "%}" -> '__env.__patt.Ch(%1)'
    }
    rule rule_array_capt {
-      "{@" {~ s <rule_alt> s ~} "@}" -> '__patt.Ca(%1)'
+      "{@" {~ s <rule_alt> s ~} "@}" -> '__env.__patt.Ca(%1)'
    }
    rule rule_simple_capt {
-      "{" {~ s <rule_alt> s ~} "}" -> '__patt.C(%1)'
+      "{" {~ s <rule_alt> s ~} "}" -> '__env.__patt.C(%1)'
    }
 }
 
-_G.compile = function(lupa, name, args) {
-   var ctx = Context()
-   ctx.enter()
-   for k,v in pairs(_G) {
-      ctx.define(k)
-   }
-   if args {
-      for i=1, #args {
-         ctx.define(args[i], { })
+object Compiler {
+
+   method compile(lupa, name, args) {
+      var ctx = Context.new()
+      ctx.enter()
+      if args {
+         for i=1, #args {
+            ctx.define(args[i], { })
+         }
       }
+      var lua = Grammar.match(lupa, 1, ctx)
+      ctx.leave()
+      assert(ctx.scope.outer == nil, "scope is unbalanced")
+      if args {
+         return "local ${args.concat(',')}=select(2,...);${lua}"
+      }
+      return lua
    }
-   var lua = Grammar.match(lupa, 1, ctx)
-   ctx.leave()
-   assert(ctx.scope.outer == nil, "scope is unbalanced")
-   if args {
-      return "local ${args.concat(',')}=...;${lua}"
-   }
-   return lua
-}
 
-_G.eval = function(src) {
-   var ctx = Context()
-   ctx.enter()
-   for k,v in pairs(_G) {
-      ctx.define(k)
+   method eval(src) {
+      var ctx = Context.new()
+      ctx.enter()
+      var lua = Grammar.eval(src, 1, ctx)
+      ctx.leave()
+      var eval = assert(loadstring(lua,'=eval:'~src))
+
+      var eenv = newtable()
+      var meta = newtable()
+      meta.__index = _G::require("lupa.core")
+      _G::setmetatable(eenv, meta)
+
+      return eval(eenv)
    }
-   var lua = Grammar.eval(src, 1, ctx)
-   ctx.leave()
-   var eval = assert(loadstring(lua,'=eval:'~src))
-   return eval()
 }
 
 var getopt = function(...args) {
@@ -1997,7 +1212,7 @@ var run = function(...) {
    var src = sfh.read('*a')
    sfh.close()
 
-   var lua = compile(src)
+   var lua = Compiler.compile(src)
    if opt['l'] {
       io.stdout.write(lua, "\n")
       os::exit(0)
@@ -2018,8 +1233,7 @@ var run = function(...) {
       }
       else {
          var main_env = setmetatable({ }, { __index = _G })
-         setfenv(main, main_env)
-         var good, err = pcall(main, opt['file'], ...)
+         var good, err = pcall(main, main_env, opt['file'], ...)
          if !good {
             io.stderr.write(tostring(err),"\n")
             os::exit(1)
@@ -2028,42 +1242,7 @@ var run = function(...) {
    }
 }
 
-arg = arg && [ unpack(arg) ] || [ ]
-{
-   // from strict.lua
-   var mt = getmetatable(_G)
-   if mt == nil {
-      mt = newtable()
-      setmetatable(_G, mt)
-   }
-
-   mt.__declared = newtable()
-
-   function what() {
-      var d = debug::getinfo(3, "S")
-      return d && d.what || "C"
-   }
-
-   mt.__newindex = function(t, n, v) {
-      if !mt.__declared[n] {
-         var w = what()
-         if w != "main" && w != "C" {
-            error("assign to undeclared variable '${n}'", 2)
-         }
-         mt.__declared[n] = true
-      }
-      rawset(t, n, v)
-   }
-
-   mt.__index = function(t, n) {
-      if !mt.__declared[n] && what() != "C" {
-         error("variable '${n}' is not declared", 2)
-      }
-      return rawget(t, n)
-   }
-}
-
-_G.LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu"
+LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu"
 {
    package.loaders[#package.loaders + 1] = function(modname) {
       var filename = modname.gsub("%.", "/")
@@ -2075,7 +1254,7 @@ _G.LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu"
                var src = file.read("*a")
                return function(...args) {
                   try {
-                     var lua  = compile(src)
+                     var lua  = Compiler.compile(src)
                      var main = assert(loadstring(lua, '='~filepath))
                      return main(@args)
                   }
@@ -2089,5 +1268,6 @@ _G.LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu"
    }
 }
 
+arg = "arg" in _G && [ unpack(arg) ] || [ ]
 if arg[1] { run(unpack(arg)) }
 

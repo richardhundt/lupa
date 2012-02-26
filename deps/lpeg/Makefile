@@ -42,4 +42,4 @@ lpeg.o:		Makefile lpeg.c lpeg.h
 test: test.lua re.lua lpeg.so
 	lua test.lua
 clean:
-	rm *.o *.so
+	rm -f *.o *.so

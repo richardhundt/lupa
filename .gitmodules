@@ -1,3 +1,6 @@
 [submodule "deps/luajit"]
 	path = deps/luajit
 	url = http://luajit.org/git/luajit-2.0.git
+[submodule "deps/llthreads"]
+	path = deps/llthreads
+	url = https://github.com/Neopallium/lua-llthreads.git

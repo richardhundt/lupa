@@ -1,51 +1,46 @@
 
 class Point {
-    has x : Number = 0
-    has y : Number = 0
+   has x : Number = 0
+   has y : Number = 0
 
-    method __init() {
-        print("class => ", Point)
-    }
-    method move(x = 1, y = 1) : Void {
-        self.x = x
-        self.y = y
-        return
-    }
+   method __init() {
+      print("class => ", self)
+   }
+   method move(x = 0, y = 0) : Void {
+      self.x = x
+      self.y = y
+   }
 }
 
 class Point3D from Point {
-    has z : Number = 0
+   has z : Number = 0
 
-    function greet() {
-       print("Hello World!")
-    }
+   method greet() {
+      print("Hello World!")
+   }
 
-    method move(x : Number = getit(), y : Number = 0, z : Number = 0) : Void {
-        super::move(self, x, y)
-        self.z = z
-    }
-
-    function getit() {
-       return 42
-    }
+   method move(x = 0, y = 0, z = 0) : Void {
+      self.Point.move(x, y)
+      self.z = z
+   }
 }
 
 var p = Point()
-
-p.move()
-print(p.x, p.y)
-
 var p = Point3D()
-print(p, Point3D)
 
+print("HERE:", p)
 p.move()
-assert(p.x == 42)
+p.greet()
+print("HERE2")
+
 assert(p.isa(Point3D))
 assert(p.isa(Point))
 
 for i = 1, 10_000_000 {
    p.move(i+1, i+2, i+3)
 }
+
+print("HERE:", p)
 
 for k,v in p {
    print("${k} => ${v}")
@@ -55,6 +50,6 @@ try {
    p.z = "cheese"
 }
 catch (e : TypeError) {
-   print("caught => ${typeof e}: ${e.message}")
+   print("caught => ${e}")
 }
 

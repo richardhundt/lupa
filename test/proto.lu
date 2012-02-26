@@ -6,6 +6,7 @@ class Point {
     has y = 0
 
     method __init(x, y) {
+        print("Point.__init")
         self.x = x
         self.y = y
     }
@@ -16,24 +17,25 @@ class Point {
     }
 }
 
-class Explosive {
-    has mesg = "KABOOM!"
+trait Explosive(M) {
+    has mesg = M || "KABOOM!"
 
     method ignite() {
-        print("%{self} => %{self.mesg}")
+        print("${self} => ${self.mesg}")
     }
 }
 
-class Point3D extends Point {
+class Point3D from Point with Explosive {
     has z = 0
 
     method __init(x, y, z) {
-        super::__init(self, x, y)
+        print("Point3D.__init")
+        self.Point.__init(x, y)
         self.z = z
     }
 
     method move(x, y, z) {
-        super::move(self, x, y)
+        self.Point.move(x, y)
         self.z = z
     }
 }
@@ -53,5 +55,8 @@ print(q.x, q.y, q.z)
 print(Point)
 print(q, Point3D)
 
-assert(q.isa(Point))
-assert(q.isa(Point3D))
+assert(q.isa(Point), "not isa Point")
+assert(q.isa(Point3D), "not isa Point3D")
+
+q.ignite()
+
