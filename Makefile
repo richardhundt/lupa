@@ -4,6 +4,7 @@ BINDIR=./bin
 DEPSDIR=./deps
 BUILDDIR=./build
 LPEGDIR=${DEPSDIR}/lpeg
+LMARDIR=${DEPSDIR}/lua-marshal
 LUADIR=${DEPSDIR}/luajit
 LLTDIR=${DEPSDIR}/llthreads
 
@@ -26,7 +27,7 @@ XCFLAGS+=-DLUAJIT_ENABLE_LUA52COMPAT
 XCFLAGS+=-DLUA_USE_APICHECK
 export XCFLAGS
 
-all: ${BINDIR}/luajit ${BUILDDIR}/lupa ${LIBDIR}/lpeg.so ${LIBDIR}/llthreads.so
+all: ${BINDIR}/luajit ${BUILDDIR}/lupa ${LIBDIR}/lpeg.so ${LIBDIR}/llthreads.so ${LIBDIR}/marshal.so
 
 ${BUILDDIR}/lupa:
 	mkdir -p ${BUILDDIR}
@@ -35,6 +36,10 @@ ${BUILDDIR}/lupa:
 ${LIBDIR}/lpeg.so:
 	${MAKE} -C ${LPEGDIR} lpeg.so
 	cp ${LPEGDIR}/lpeg.so ${LIBDIR}/lpeg.so
+
+${LIBDIR}/marshal.so:
+	${MAKE} -C ${LMARDIR} marshal.so
+	cp ${LMARDIR}/marshal.so ${LIBDIR}/marshal.so
 
 ${LIBDIR}/libluajit.a:
 	git submodule update --init ${LUADIR}
@@ -54,6 +59,7 @@ ${BINDIR}/luajit: ${LIBDIR}/libluajit.a
 clean:
 	${MAKE} -C ${LUADIR} clean
 	${MAKE} -C ${LPEGDIR} clean
+	${MAKE} -C ${LMARDIR} clean
 	${MAKE} -C ${DEPSDIR}/llthreads/build clean
 	rm -f ${BUILDDIR}/lupa
 	rm -f ${LIBDIR}/*.so

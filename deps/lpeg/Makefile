@@ -35,7 +35,7 @@ ENV=
 endif
 
 lpeg.so: lpeg.o
-	env $(ENV) $(CC) $(DLLFLAGS) lpeg.o -o lpeg.so
+	env $(ENV) $(CC) $(CFLAGS) $(DLLFLAGS) lpeg.o -o lpeg.so
 
 lpeg.o:		Makefile lpeg.c lpeg.h
 

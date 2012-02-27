@@ -4,3 +4,6 @@
 [submodule "deps/llthreads"]
 	path = deps/llthreads
 	url = https://github.com/Neopallium/lua-llthreads.git
+[submodule "deps/lua-marshal"]
+	path = deps/lua-marshal
+	url = git@github.com:richardhundt/lua-marshal.git
