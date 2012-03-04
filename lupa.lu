@@ -837,7 +837,7 @@ object Grammar {
       ~} -> quote
    }
    rule string_expr {
-      ('${' -> '"..') {~ s (<expr> -> 'tostring(%1)') s ~} ("}" -> '.."')
+      ('${' -> '"..') {~ s (<expr> -> '__env.tostring(%1)') s ~} ("}" -> '.."')
    }
    rule vnil {
       {~ { "nil" } idsafe -> '(nil)' ~}

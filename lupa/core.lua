@@ -1,5 +1,6 @@
 local __env = setmetatable({ }, { __index = _G })
 setfenv(1, __env)
+package.cpath = ';;./lib/?.so;'..package.cpath
 
 local bit = require("bit")
 newtable  = loadstring("return {...}")
@@ -892,12 +893,12 @@ Function.__apply = function(self, code, ...)
 end
 debug.setmetatable(function() end, Function)
 
-Fiber = Type("Fiber")
-Fiber.__index = Fiber
+Coroutine = Type("Coroutine")
+Coroutine.__index = Coroutine
 for k,v in pairs(coroutine) do
-   Fiber[k] = v
+   Coroutine[k] = v
 end
-debug.setmetatable(coroutine.create(function() end), Fiber)
+debug.setmetatable(coroutine.create(function() end), Coroutine)
 
 Pattern = setmetatable(getmetatable(__patt.P(1)), Type)
 Pattern.__call = function(patt, self, subj, ...)
