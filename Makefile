@@ -1,5 +1,6 @@
 LIBDIR=./lib
 SRCDIR=./src
+INCDIR=./include
 BINDIR=./bin
 DEPSDIR=./deps
 BUILDDIR=./build
@@ -7,6 +8,7 @@ LPEGDIR=${DEPSDIR}/lpeg
 LMARDIR=${DEPSDIR}/lua-marshal
 LUADIR=${DEPSDIR}/luajit
 LLTDIR=${DEPSDIR}/llthreads
+UVDIR=${DEPSDIR}/libuv
 
 OS_NAME=$(shell uname -s)
 MH_NAME=$(shell uname -m)
@@ -27,7 +29,9 @@ XCFLAGS+=-DLUAJIT_ENABLE_LUA52COMPAT
 XCFLAGS+=-DLUA_USE_APICHECK
 export XCFLAGS
 
-all: ${BINDIR}/luajit ${BUILDDIR}/lupa ${LIBDIR}/lpeg.so ${LIBDIR}/llthreads.so ${LIBDIR}/marshal.so
+#cc -I./deps/libuv/include -undefined dynamic_lookup -shared -o ./lib/libuv.so ./deps/libuv/uv/*.o
+
+all: ${BINDIR}/luajit ${BUILDDIR}/lupa ${LIBDIR}/lpeg.so ${LIBDIR}/llthreads.so ${LIBDIR}/marshal.so ${LIBDIR}/libuv.so
 
 ${BUILDDIR}/lupa:
 	mkdir -p ${BUILDDIR}
@@ -36,6 +40,14 @@ ${BUILDDIR}/lupa:
 ${LIBDIR}/lpeg.so:
 	${MAKE} -C ${LPEGDIR} lpeg.so
 	cp ${LPEGDIR}/lpeg.so ${LIBDIR}/lpeg.so
+
+${LIBDIR}/libuv.so:
+	${MAKE} -C ${UVDIR}
+	mkdir -p ${BUILDDIR}/uv
+	cp ${UVDIR}/uv.a ${BUILDDIR}/uv/uv.a
+	cd ${BUILDDIR}/uv/ && ar -x uv.a
+	${CC} -I${UVDIR}/include ${UVDIR}/include/uv.h -E | grep -v '#' >${INCDIR}/uv.h
+	${CC} -I${UVDIR}/include -undefined dynamic_lookup -shared -o ${LIBDIR}/libuv.so ${BUILDDIR}/uv/*.o
 
 ${LIBDIR}/marshal.so:
 	${MAKE} -C ${LMARDIR} marshal.so
@@ -60,6 +72,7 @@ clean:
 	${MAKE} -C ${LUADIR} clean
 	${MAKE} -C ${LPEGDIR} clean
 	${MAKE} -C ${LMARDIR} clean
+	${MAKE} -C ${UVDIR} clean
 	${MAKE} -C ${DEPSDIR}/llthreads/build clean
 	rm -f ${BUILDDIR}/lupa
 	rm -f ${LIBDIR}/*.so

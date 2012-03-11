@@ -544,7 +544,7 @@ object Grammar {
       ~}
    }
    rule yield_stmt {
-      'yield' idsafe {~ s <expr_list> ~} -> '__env.__op_yield(%1);' semicol
+      'yield' idsafe {~ s <expr_list> | {`''`} ~} -> '__env.__op_yield(%1);' semicol
    }
    rule throw_stmt {
       'throw' idsafe {~ s <expr> ~} -> '__env.__op_throw(%1);' semicol

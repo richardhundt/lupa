@@ -3,8 +3,21 @@ setfenv(1, __env)
 package.cpath = ';;./lib/?.so;'..package.cpath
 
 local bit = require("bit")
+local ffi = require('ffi')
+
+do
+   local fh  = io.open('./include/uv.h')
+   local def = fh:read('*a')
+   fh:close()
+   ffi.cdef(def)
+   __system = assert(ffi.load('./lib/libuv.so'))
+end
+
 newtable  = loadstring("return {...}")
 local rawget, rawset = rawget, rawset
+
+local uv = assert(ffi.load('./lib/libuv.so'))
+local loop = uv.uv_loop_new()
 
 local _tostring = tostring
 function tostring(obj)
@@ -31,8 +44,9 @@ function __class(into, name, from, with, body)
    local queue = { unpack(from) }
    while #queue > 0 do
       local base = table.remove(queue, (1))
-      if getmetatable(base) ~= Class then
-         __op_throw(TypeError(tostring(base).." is not a Class", 2))
+      local meta = getmetatable(base)
+      if meta ~= Class and meta ~= Type then
+         __op_throw(TypeError(tostring(base).." is not a Class or Type", 2))
       end
       from[base] = true
       slots[base.__name] = Super(base)
@@ -934,6 +948,76 @@ __class(__env,"ImportError",{Error},{},function(__env,self) end)
 __class(__env,"ExportError",{Error},{},function(__env,self) end)
 __class(__env,"TypeError",  {Error},{},function(__env,self) end)
 
+Fiber = Type("Fiber")
+Fiber.__index = Fiber
+Fiber.__apply = function(class, body, ...)
+   local self = setmetatable({ }, class) 
+   self._coro = coroutine.create(body)
+   self._args = { ... }
+   return self
+end
+Fiber.new = function(class, ...)
+   return class(...)
+end
+Fiber.ready = function(self)
+   Scheduler:add_ready(self)
+end
+Fiber.suspend = function(self)
+   Scheduler:del_ready(self)
+end
+Fiber.resume = function(self, ...)
+   self._args = { ... }
+   assert(coroutine.resume(self._coro, unpack(self._args)))
+end
+Fiber.status = function(self)
+   return coroutine.status(self._coro)
+end
+
+Scheduler = Type("Scheduler")
+do
+   local self = Scheduler
+   self.ready = setmetatable({ }, { __mode = "kv" })
+   self.queue = { }
+   self.loop  = __system.uv_default_loop()
+   self.idle  = ffi.new('uv_idle_t')
+
+   local on_idle_close = function() end
+   function self:start()
+      __system.uv_idle_init(self.loop, self.idle)
+      __system.uv_idle_start(self.idle, function(handle, status)
+         local fiber
+         repeat
+            fiber = table.remove(self.queue, 1)
+         until #self.queue == 0 or self.ready[fiber]
+         if fiber then
+            self.ready[fiber] = nil
+            self.current = fiber
+            fiber:resume()
+            self.current = nil
+         else
+            self:stop()
+         end
+      end)
+      __system.uv_run(self.loop)
+   end
+
+   function self:stop()
+      __system.uv_close(ffi.cast('uv_handle_t *', self.idle), on_idle_close)
+   end
+
+   function self:add_ready(fiber)
+      if self.ready[fiber] then
+         return true
+      end
+      self.ready[fiber] = true
+      self.queue[#self.queue + 1] = fiber
+   end
+
+   function self:del_ready(fiber)
+      self.ready[fiber] = nil
+   end
+end
+
 do
    -- from strict.lua
    local mt = getmetatable(_G)
@@ -990,7 +1074,8 @@ do
                      return main(env)
                   end)
                   if not good then
-                     error(__env.ImportError("failed to load "..tostring(modname)..": "..tostring(retv)), 2)
+                     error(__env.ImportError(
+                        "failed to load "..tostring(modname)..": "..tostring(retv)), 2)
                   end
                   return retv
                end
@@ -999,5 +1084,31 @@ do
       end
    end
 end
+
+function __op_yield(...)
+   if Scheduler.current then
+      Scheduler.current:ready()
+   end
+   return coroutine.yield(...)
+end
+
+local f1 = Fiber:new(function()
+   for i=1, 10 do
+      print("1 - tick: ", i)
+      __op_yield()
+   end
+end)
+
+local f2 = Fiber:new(function()
+   for i=1, 10 do
+      print("2 - tick: ", i)
+      __op_yield()
+   end
+end)
+
+f1:ready()
+f2:ready()
+
+Scheduler:start()
 
 return __env

@@ -7,3 +7,6 @@
 [submodule "deps/lua-marshal"]
 	path = deps/lua-marshal
 	url = git@github.com:richardhundt/lua-marshal.git
+[submodule "deps/libuv"]
+	path = deps/libuv
+	url = https://github.com/joyent/libuv.git

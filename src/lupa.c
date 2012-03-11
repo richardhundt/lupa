@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "uv.h"
 #include "lua.h"
 #include "lualib.h"
 #include "lauxlib.h"
