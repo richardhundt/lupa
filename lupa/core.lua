@@ -1092,6 +1092,7 @@ function __op_yield(...)
    return coroutine.yield(...)
 end
 
+--[[
 local f1 = Fiber:new(function()
    for i=1, 10 do
       print("1 - tick: ", i)
@@ -1110,5 +1111,7 @@ f1:ready()
 f2:ready()
 
 Scheduler:start()
+--]]
 
 return __env
+

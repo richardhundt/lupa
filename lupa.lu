@@ -127,7 +127,7 @@ object Grammar {
    var keyword = / (
       | "var" | "function" | "class" | "with" | "like" | "in"
       | "nil" | "true" | "false" | "typeof" | "return" | "as"
-      | "for" | "throw" | "method" | "has" | "from" | "break"
+      | "for" | "while" | "do" | "throw" | "method" | "has" | "from" | "break"
       | "continue" | "import" | "export" | "try" | "catch" | "switch" | "case"
       | "default" | "finally" | "if" | "else" | "yield" | "rule"
    ) idsafe /
@@ -523,17 +523,14 @@ object Grammar {
       | <yield_stmt>
       | <block_stmt>
       | <bind_stmt>
-      | <call_stmt>
+      | <expr_stmt>
       | <var_decl>
       | <func_decl>
       | &<return_stmt> <{ syntax_error("return outside of function body") }>
       | !(s ("}" | !.)) <{ syntax_error("invalid statement") }>
    }
-   rule call_stmt {
-      {~ {~
-         <primary> s (
-         <invoke_expr> | <{syntax_error("expected <invoke_expr>") }>
-      ) ~} -> '%1;' semicol ~}
+   rule expr_stmt {
+      <term> semicol {`';'`}
    }
    rule return_stmt {
       {~ "return" -> '' idsafe s (
@@ -894,36 +891,17 @@ object Grammar {
       | "(" s <expr> s (")" | <{ syntax_error("expected ')'") }>)
    }
    rule paren_expr {
-      "(" s ( <expr_list> | {`""`} ) s (")" | <{ syntax_error("expected ')'") }>)
+      "(" {~ s ( <expr_list> | {`""`} ) s ~} (")" | <{ syntax_error("expected ')'") }>)
    }
    rule member_expr {
       {~
       | "." s <name> -> '.%1'
-      | "[" s <expr> s ("]" | <{ syntax_error("expected ']'") }>)
+      | "[" s <expr> s "]" -> '[%1]'
       ~}
    }
    rule method_expr {
       {~
-      | ("." -> ":" | "::" -> ".") s <name> s (<short_expr> | <paren_expr>)
-      ~}
-   }
-   rule access_expr {
-      {~
-      | <invoke_expr> s <access_expr>
-      | <member_expr>
-      ~}
-   }
-   rule invoke_expr {
-      {~
-      | (
-         | <method_expr>
-         | <member_expr>
-         | <short_expr>
-         | <paren_expr>
-      ) s <invoke_expr>
-      | <method_expr>
-      | <short_expr>
-      | <paren_expr>
+         ("." -> ":" | "::" -> ".") s <name> s (<short_expr> | <paren_expr>)
       ~}
    }
    rule short_expr {
@@ -934,11 +912,16 @@ object Grammar {
       -> make_short_func) {`')'`} <leave>
    }
    rule suffix_expr {
-      | <invoke_expr>
-      | <access_expr>
+      | <method_expr>
+      | <member_expr>
+      | <short_expr>
+      | <paren_expr>
    }
    rule term {
-      {~ <primary> (s <suffix_expr>)* ~}
+      {~
+         | <primary> (s <suffix_expr>)+
+         | <primary>
+      ~}
    }
    rule expr_list {
       {~ <expr> (s "," s <expr>)* ~}
@@ -1003,8 +986,8 @@ object Grammar {
    }
    rule bind_suffix {
       {~
-      | "." {~ s <name> s ~} -> '.%1=%%s'
-      | "[" {~ s <expr> s ~} "]" {s} -> '[%1]%2=%%s'
+      | "." s <name> s -> '.%1=%%s'
+      | "[" {~ s <expr> s ~} "]" {s} -> '[%1]=%2%%s'
       ~}
    }
 
