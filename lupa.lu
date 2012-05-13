@@ -166,6 +166,7 @@ object Grammar {
       ["-"] = "-(%s)",
       */
       ["!"] = "not(%s)",
+      ["typeof"] = "__env.typeof(%s)",
    }
 
    var binops = {
@@ -1171,7 +1172,7 @@ object Grammar {
    }
 
    rule prefix_expr {
-      | {: { "..."|"$"|"@"|"!"|"#"|"-"|"~"|"*" } <term> :} -> fold_prefix
+      | {: { "..."|"$"|"@"|"!"|"#"|"-"|"~"|"*"|"typeof"idsafe } {~ hs* <term> ~} :} -> fold_prefix
       | {~ <term> ~}
    }
 

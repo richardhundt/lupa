@@ -421,7 +421,7 @@ function __match(a, b)
  end
 
 __op_as     = setmetatable
-__op_typeof = getmetatable
+typeof = getmetatable
 __op_yield  = coroutine["yield"]
 
 function __op_throw(err)
@@ -448,15 +448,6 @@ function __op_like(this, that)
       end
    end
    return true
-end
-
-function __op_spread(a)
-   local mt = getmetatable(a)
-   local __spread = mt and rawget(mt, "__spread")
-   if __spread then
-      return __spread(a)
-   end
-   return unpack(a)
 end
 
 function _each(a, ...)
@@ -714,7 +705,6 @@ Array.__tostring = function(self)
    return "["..table.concat(buf, ",").."]"
 end
 Array.__each = ipairs
-Array.__spread = unpack
 Array.__slots[mangle'_[]'] = rawget
 Array.__slots[mangle'_[]='] = rawset
 Array.__slots.unpack = unpack
@@ -1013,7 +1003,7 @@ Error = class(__env, "Error", nil, {}, function(__env,self)
       self:level_eq(level)
    end)
    method(self,'toString',function(self)
-      return tostring(__op_typeof(self).__name)..": "..tostring(self:trace())
+      return tostring(typeof(self).__name)..": "..tostring(self:trace())
    end)
    method(self,'__throw',function(self,level)
       level = level or 1
