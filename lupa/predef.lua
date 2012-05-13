@@ -651,7 +651,7 @@ Trait.of = function(self, ...)
    local copy = trait(nil, self.__name .. tostring(...), self.__with, self.__want, self.__body)
    local make = self.make
    copy.make = function(self, into, recv) 
-      return make(self, into, recv, __op_spread(args))
+      return make(self, into, recv, args:unpack())
    end
    return copy
 end
