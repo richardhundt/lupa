@@ -61,3 +61,6 @@ catch (e : TypeError) {
    print("caught => ${e}")
 }
 
+var h = { }
+h#__index = h
+

@@ -466,16 +466,10 @@ object Grammar {
       }
    }
 
-   function make_meth_decl(c,n,t,p,b,s) {
+   function make_meth_decl(c,n,p,b,s) {
       p.unshift('self')
       var p, h = make_params(c,p)
-      if t.len > 0 {
-         var t, u = make_params(c,t)
-         return "__env.method(self,%q,function(self,%s)%s return function(%s)%s %s end end, %s);".format(n,t,u,p,h,b,t.len)
-      }
-      else {
-         return "__env.method(self,%q,function(%s)%s %s end,0);".format(n,p,h,b)
-      }
+      return "__env.method(self,%q,function(%s)%s %s end);".format(n,p,h,b)
    }
    function make_class_decl(c,n,f,w,b,s) {
       var decl = '__env.class(__env,%q,%s,{%s},function(__env,self,super) %s end);'
@@ -589,7 +583,7 @@ object Grammar {
    }
 
    rule script {
-      {~ <unit> ~} (!. | <{syntax_error("expected <EOF>")}>)
+      {~ <unit> ~} (!. | <{syntax_error("invalid syntax")}>)
    }
    rule unit {
       {:set_return: {`false`} :}
@@ -598,7 +592,7 @@ object Grammar {
       {:loopy: {`false`} :}
       { %s* '#!' (!nl .)* %s* }? s
       <enter>
-      {`'local __env=_G.setmetatable({},{__index=require("lupa.predef")});'`}
+      {`'local __env=_G.setmetatable({},{__index=_G.require("lupa.predef")});'`}
       <stmt_list>? s
       (<ctx> -> function(ctx) {
          var buf = [ ]
@@ -623,7 +617,7 @@ object Grammar {
          ({`'__env'`} <ctx> -> static_define)
          {~ s <func_body> s ~}
          <leave>
-      ~} (!. | <{syntax_error("expected <EOF>")}>)
+      ~} (!. | <{syntax_error("invalid syntax")}>)
    }
 
    rule ctx   { %1 }
@@ -855,7 +849,6 @@ object Grammar {
       ({~ {"_[]=" | "_[]"} -> mangle ~} | <opname> ("=" -> mangle)?) s
       <enter>
       ({`'self'`} <ctx> -> static_define)
-      ("[" s <param_list> s <{ expect("]") }> s | {`[]`})
       ("(" s <param_list> s <{ expect(")") }> s | {`[]`})
       <guard_list>? s
       "{" {~ s <func_body> s ~} <{ expect("}") }>
@@ -990,7 +983,7 @@ object Grammar {
    rule name {
       {~ !keyword (
          | { ('end' | 'elseif' | 'then' | 'local' | 'repeat' | 'until' | "do") idsafe } -> '%1_'
-         | {~ (%alpha | "_" | "$") (%alnum | "_" | "$")* ~} -> mangle
+         | { (%alpha | "_" | "$") (%alnum | "_" | "$")* } -> mangle
       ) ~}
    }
    rule opname {
@@ -1110,7 +1103,7 @@ object Grammar {
       | ("." -> ":") s <opname> (&( hs* (<paren_expr>)) | {`'()'`})
       | "[" {~ s <expr> s ~} "]" -> ":${mangle('_[]')}(%1)"
       | ("#" -> '') hs* "[" s <expr> s "]"
-      | ("#" -> ".") s <name>
+      | ("#" -> ".") hs* {~ <name> -> demangle ~}
       | ("::" -> ":${mangle('::')}") s (<name> -> '("%1")')
       ~}
    }
@@ -1217,11 +1210,11 @@ object Grammar {
    }
    rule bind_suffix {
       {~
-      | "." {s} <opname> ->":%1%2${mangle('=')}(%%s)"
-      | "#" {s} <name> ->'.%1%2=%%s'
+      | "." {hs*} <opname> ->":%1%2${mangle('=')}(%%s)"
+      | "#" {hs*} {~ <name> -> demangle ~} -> '.%1%2=%%s'
       | "[" {~ s <expr> s ~} "]" -> ":${mangle('_[]=')}(%1,%%s)"
       | "#" {hs*} "[" {~ s <expr> s ~} "]" -> '%1[%2]=%%s'
-      | ("::" -> ":${mangle('::=')}") ({s} <name> -> '("%2",%1%%s)')
+      | ("::" -> ":${mangle('::=')}") ({hs*} <name> -> '("%2",%1%%s)')
       ~}
    }
 
@@ -1395,7 +1388,7 @@ object Compiler {
 
       var eenv = newtable()
       var meta = newtable()
-      meta.__index = global#require("lupa.predef")
+      meta#__index = global#require("lupa.predef")
       global#setmetatable(eenv, meta)
 
       return eval(eenv)

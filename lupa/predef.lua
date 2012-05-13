@@ -53,7 +53,7 @@ local function mangle(name)
       return mangles[o]
    end)
 end
-local function demangle(name)
+function demangle(name)
    return tostring(name):gsub('(_%w%w)', function(o)
       if demangles[o] then
          return demangles[o]
@@ -266,7 +266,7 @@ do
                end
             end
          end
-         return __op_as(tab, Hash)
+         return __op_as(tab, Table)
       end
    end
    local function make_capt_array(init)
@@ -679,33 +679,6 @@ Trait.coerce = function(self, that)
    return that
 end
 
-
-Hash= Type("Hash")
-Hash.__index = Hash
-Hash.apply = function(self, table)
-   return setmetatable(table or { }, self)
-end
-Hash.__tostring = function(self)
-   local buf = { }
-   for k,v in pairs(self) do
-      local _v
-      if type(v) == "string" then
-         _v = string.format("%q", v)
-      else
-         _v = tostring(v)
-      end
-      if type(k) == "string" then
-         buf[#buf + 1] = k.."=".._v
-      else
-         buf[#buf + 1] = "["..tostring(k).."]="..tostring(_v)
-      end
-   end
-   return "{"..table.concat(buf, ",").."}"
-end
-Hash[mangle"_[]"] = rawget
-Hash[mangle"_[]="] = rawset
-Hash.__each = pairs
-
 Array = Type("Array")
 Array.apply = function(self, ...)
    return setmetatable({ ... }, self)
@@ -715,7 +688,7 @@ Array.of = function(self, type)
    A.__slots = { }
    A.__index = A.__slots
    A.__slots[mangle'_[]='] = function(a,k,v)
-      a[mangle'_[]'](a, type:coerce(v))
+      a[k]=type:coerce(v)
    end
    A.coerce = function(self, v)
       local get, set = mangle'_[]', mangle'_[]='
@@ -1135,6 +1108,39 @@ do
    end
 end
 
+do
+   -- from strict.lua
+   local mt = getmetatable(_G)
+   if mt == nil then
+      mt = { }
+      setmetatable(_G, mt)
+   end
+
+   mt.__declared = { }
+
+   local function what()
+      local d = debug.getinfo(3, "S")
+      return d and d.what or "C"
+   end
+
+   mt.__newindex = function(t, n, v)
+      if not mt.__declared[n] then
+         local w = what()
+         if w ~= "main" and w ~= "C" then
+            error("assign to undeclared variable '"..tostring(n).."'", 2)
+         end
+         mt.__declared[n] = true
+      end
+      rawset(t, n, v)
+   end
+
+   mt.__index = function(t, n)
+      if not mt.__declared[n] and what() ~= "C" then
+         error("variable '"..tostring(n).."' is not declared", 2)
+      end
+      return rawget(t, n)
+   end
+end
 
 __env.global = _G
 return __env
