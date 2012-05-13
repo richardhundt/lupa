@@ -1,10 +1,10 @@
+import from test.shapes in shapes
 import Point, answer, cheese from test.shapes
-import Point from test.shapes in shapes
 
-var p = Point.new()
+var p = Point.new
 p.move(1, 2)
 
-var q = shapes::Point.new()
+var q = shapes::Point.new
 q.move(1, 2)
 
 print("the answer:", answer)

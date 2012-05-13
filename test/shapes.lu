@@ -1,4 +1,4 @@
-export Point, Point3D
+export Point, Point3D, answer, cheese
 
 class Point {
    has x = 0
@@ -12,8 +12,10 @@ class Point {
 class Point3D from Point {
    has z = 0
    method move(x, y, z) {
-      super::move(self, x, y)
+      super.move(x, y)
       self.z = z
    }
 }
 
+var answer = 42
+var cheese = "Chutney"

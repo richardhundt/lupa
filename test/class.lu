@@ -2,12 +2,12 @@ class Point {
    has x : Number = 0
    has y : Number = 0
 
-   method __init() {
-      print("class => ", self)
+   method init() {
+      print("HELLS BELLS", self)
    }
    method move(x = 0, y = 0) : Void {
-      self.x = x
-      self.y = y
+      .x = x
+      .y = y
    }
 }
 
@@ -18,14 +18,19 @@ class Point3D from Point {
       print("Hello World!")
    }
 
+   method >>+<<(b) {
+      print("funny operator:", b)
+   }
    method move(x = 0, y = 0, z = 0) : Void {
-      self.Point.move(x, y)
-      self.z = z
+      super.move(x, y)
+      .z = z
    }
 }
 
-var p = Point()
-var p = Point3D()
+var p = Point.new
+var p = Point3D.new
+
+var a = p >>+<< 42
 
 print("HERE:", p)
 p.move()
@@ -39,6 +44,10 @@ for i = 1, 10_000_000 {
    p.move(i+1, i+2, i+3)
 }
 
+function munge() {
+   print("nom nom")
+}
+munge()
 print("HERE:", p)
 
 for k,v in p {
