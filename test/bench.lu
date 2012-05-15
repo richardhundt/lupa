@@ -1,6 +1,6 @@
 class Point {
-    has x : Number = 0
-    has y : Number = 0
+    has x = 0
+    has y = 0
     method move(x, y) {
         self.x = x
         self.y = y
@@ -8,7 +8,7 @@ class Point {
 }
 
 class Point3D from Point {
-    has z : Number = 0
+    has z = 0
     method move(x, y, z) {
         super.move(x, y)
         self.z = z

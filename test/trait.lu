@@ -1,9 +1,9 @@
 
-trait Guide[M : String] {
+trait Guide(M) {
     method walk() { print(M) }
 }
 
-trait Pet[N] {
+trait Pet(N) {
     has size = N
     needs legs
     method wooz() {
@@ -16,18 +16,11 @@ class Mammal {
     has blood = "warm"
 }
 
-guard Maybe[T](v) {
-   if v == nil { return v }
-   return T.coerce(v)
-}
-
-class Dog from Mammal with Guide["guiding"], Pet[42] {
-    DEBUG = true
-
+class Dog from Mammal with Guide("guiding"), Pet(42) {
     has legs : Number
-    has name : Maybe[String]
+    has name : String
 
-    method greet(mesg : Array[String] = [ 'asdfas' ]) {
+    method greet(mesg : Array = [ 'asdfas' ]) {
         print("woof!")
         print("Size => ", self.size)
         print("BLOOD => ", self.blood)
@@ -42,13 +35,6 @@ d.legs = 4
 d.legs = nil
 d.name = "Fido"
 
-print(d isa Dog)
+print(d is Dog)
 print(d does Pet)
-
-var a : Array[Number] = [ ]
-
-var h : Table[String,Number] = { }
-h['foo'] = 42
-h[a] = 'cheese'
-h = { foo = 'bar' }
 

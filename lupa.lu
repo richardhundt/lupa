@@ -1,48 +1,49 @@
 export Compiler, Grammar, Context
 
-var GEN = 0
 class Scope {
-   has id
    has entries = { }
    has outer
    method init(outer) {
-      self.id = GEN
-      GEN = GEN + 1
-      self.outer = outer
+      .outer = outer
    }
    method lookup(name) {
-      if name in self.entries {
-         return self.entries[name]
+      if name in .entries {
+         return .entries[name]
       }
-      else if self.outer {
-         return self.outer.lookup(name)
+      else if .outer {
+         return .outer.lookup(name)
       }
    }
    method define(name, info) {
-      self.entries[name] = info || { }
+      .entries[name] = info || { }
    }
 }
 
 class Context {
    has scope = Scope.new
    has exports = { }
+   has resolve = { }
+   has source
 
    method enter() {
-      self.scope = Scope.new(self.scope)
+      .scope = Scope.new(.scope)
    }
    method leave() {
-      if `outer in self.scope {
-         var outer = self.scope.outer
-         self.scope = outer
+      var outer = .scope.outer
+      if outer != nil {
+         .scope = outer
          return outer
       }
-      error("no outer scope")
+      throw Error.new("no outer scope")
    }
    method define(name, info) {
-      self.scope.define(name, info)
+      if .resolve[name] {
+         .resolve[name] = nil
+      }
+      .scope.define(name, info)
    }
    method lookup(name) {
-      self.scope.lookup(name)
+      .scope.lookup(name)
    }
 }
 
@@ -101,9 +102,7 @@ object Grammar {
       return
    }
 
-   function lookup(name, ctx) {
-      //return name
-      //*
+   function lookup(pos, name, ctx) {
       var info = ctx.lookup(name)
       if info {
          if info['base'] {
@@ -114,14 +113,14 @@ object Grammar {
          }
          return name
       }
+      ctx.resolve[name] = pos
       return '__env.'+name
-      //*/
    }
-   function update(name, ctx) {
-      //*
+   function update(pos, name, ctx) {
       var info = ctx.lookup(name)
       if !info {
          define(name, ctx, '__env')
+         ctx.resolve[name] = pos
          return '__env.'+name+'=%s'
       }
       if info['base'] {
@@ -130,7 +129,6 @@ object Grammar {
          }
          return info['base']+'.'+name+'=%s'
       }
-      //*/
       return name+"=%s"
    }
 
@@ -188,14 +186,15 @@ object Grammar {
 
       // XXX Type member leakage
       ['can'] = false,
-      ['isa'] = false,
+      ['is'] = false,
+      ['as'] = false,
       ['does'] = false,
 
       ["==="] = "(%s)==(%s)",
       ["!=="] = "(%s)~=(%s)",
       ["&&"] = "(%s)and(%s)",
       ["||"] = "(%s)or(%s)",
-      ["in"] = "__env.__op_in(%s,%s)",
+      ["in"] = "__env._in(%s,%s)",
    }
 
    var mangles = {
@@ -247,12 +246,14 @@ object Grammar {
 
    function make_bind_expr(ctx, l, s1, s2, r) {
       if l.len == 1 {
-         var name = l[1].match('^([^%s=]+)%s*=')
+         var name = l[1].match('^([%w_]+)')
          if name {
             var info = ctx.lookup(name)
-            if info && info['type'] {
-               var type = info['type']
-               r[1] = (type+':coerce(%s)').format(r[1])
+            if info {
+               if info['type'] {
+                  var type = info['type']
+                  r[1] = (type+':coerce(%s)').format(r[1])
+               }
             }
          }
          return l[1].format(s2 + r.concat(','))
@@ -260,7 +261,7 @@ object Grammar {
       var t = [ ]
       for i = 1, l.len {
          t.push(genid())
-         var name = l[i].match('^([%w_]+)%s*=')
+         var name = l[i].match('^([%w_]+)')
          if name {
             var info = ctx.lookup(name)
             if info['type'] {
@@ -493,15 +494,17 @@ object Grammar {
       return decl.format(n,n,f,w,b)
    }
    function make_trait_decl(c,n,p,w,b) {
-      var p, h = make_params(c, p)
+      var a, h = make_params(c, p)
       var decl = '__env.trait(__env,%q,{%s},%s,function(__env,self,%s)%s %s end);'
+      var l = p.len
+      var p = p.concat(',')
       if s == 'lexical' {
          decl = 'local %s='+decl
       }
       else {
          decl = "__env.%s="+decl
       }
-      return decl.format(n,n,w,p.len,p,h,b)
+      return decl.format(n,n,w,l,a,h,b)
    }
    function make_guard_decl(c,n,p1,p2,b,s) {
       var p1, h1 = make_params(c, p1)
@@ -593,15 +596,25 @@ object Grammar {
       {:loopy: {`false`} :}
       { %s* '#!' (!nl .)* %s* }? s
       <enter>
+      ({`'__env'`} <ctx> -> static_define)
       {`'local __env=_G.setmetatable({},{__index=_G.require("lupa.predef")});'`}
       <stmt_list>? s
       (<ctx> -> function(ctx) {
+         for k,v in ctx.resolve {
+            if !ctx.lookup(k) {
+               throw SyntaxError(
+                  "symbol '${k}' was never defined on"+
+                  " line: ${error_line(ctx.source,v)}"+
+                  " near: ${error_near(ctx.source,v)}",
+               2)
+            }
+         }
          var buf = [ ]
          for k,v in ctx.exports {
             if !ctx.lookup(k) {
                throw SyntaxError("export '${k}' was never defined", 2)
             }
-            buf.push('{%q,%s}'.format(k,lookup(k, ctx)))
+            buf.push('{%q,%s}'.format(k,lookup(0, k, ctx)))
          }
          return " return __env.export(${buf.concat(',')});"
       })
@@ -694,7 +707,6 @@ object Grammar {
       {~ (
          "import" idsafe s {~ word ("." word)* ~} (
             | ".{" s {~ <import_term> (s "," s <import_term>)* ~} s "}"
-            | "." ("*" ->  quote)
             | {`''`}
          )
       ) -> '__env.import(__env,"%1",{%2})' ~}
@@ -775,7 +787,7 @@ object Grammar {
       {~ "default" idsafe s ":" {~ s <stmt_list>? ~} -> "%1" ~}
    }
    rule throw_stmt {
-      "throw" idsafe {~ s <expr> ~} -> '__env.__op_throw(%1)'
+      "throw" idsafe {~ s <expr> ~} -> '__env.throw(%1)'
    }
    rule break_stmt {
       {~ { "break" idsafe } (
@@ -816,10 +828,10 @@ object Grammar {
       {~ <ident> ("[" s <expr_list> s "]" -> ":of(%1)")? ~}
    }
    rule guard_expr {
-      ":" s <guard_term>
+      ":" s <expr>
    }
    rule guard_list {
-      ":" s {:ret_guard: (<guard_term> (s "," s <guard_term>)* -> [ ]) :}
+      ":" s {:ret_guard: (<expr> (s "," s <expr>)* -> [ ]) :}
    }
 
    rule var_decl {
@@ -911,10 +923,20 @@ object Grammar {
       =scope
       -> make_class_decl
    }
+
+   rule name_decl {
+      <name> <ctx> {`nil`} -> define
+   }
+   rule name_list_decl {
+      <name_decl> (s "," <name_decl>)*
+   }
+   rule name_list {
+      <ident> (s "," <ident>)*
+   }
    rule trait_decl {
       "trait" idsafe s <ctx> {~ <name> <ctx> {`'__env'`} -> define ~} s
       <enter>
-      ("[" s <param_list> s "]" | ({`'...'`} -> [ ])) s
+      ("(" s <param_list> s ")" | {`['...']`}) s
       (<class_with> | {`""`}) s
       "{" {~ s <trait_body> s ~} <{ expect("}") }>
       -> make_trait_decl <leave>
@@ -942,13 +964,13 @@ object Grammar {
       <leave>
    }
    rule class_from {
-      "from" idsafe s {~ <ident> ~}
+      "from" idsafe s {~ <expr> ~}
    }
    rule class_with {
-      "with" idsafe s {~ <with_term> (s "," s <with_term>)* ~}
+      "with" idsafe s {~ <expr> (s "," s <expr>)* ~}
    }
    rule with_term {
-      <ident> {~ "[" s <expr_list> s "]" -> ":of(%1)" ~}?
+      <ident> {~ "[" s <name_list> s "]" -> ":of(%1)" ~}?
    }
 
    rule class_body_stmt {
@@ -976,7 +998,7 @@ object Grammar {
       | <param>
    }
    rule ident {
-      {~ <name> <ctx> -> lookup ~}
+      {~ %pos <name> <ctx> -> lookup ~}
    }
    rule param {
       <name> <ctx> {`nil`} (s <guard_expr> | {`nil`}) (s "=" s <expr>)? -> define
@@ -1200,7 +1222,7 @@ object Grammar {
    rule bind_term {
       {~
       | <primary> (hs* <bind_member>)+
-      | <name> <ctx> -> update
+      | %pos <name> <ctx> -> update
       ~}
    }
    rule bind_member {
@@ -1364,12 +1386,19 @@ object Grammar {
 object Compiler {
 
    method compile(lupa, name, args) {
-      var ctx = Context.new()
+      var ctx = Context.new
+      ctx.source = lupa
       ctx.enter()
       if args {
          for i=1, args.len {
             ctx.define(args[i], { })
          }
+      }
+      for k,v in global {
+         ctx.define(k, { base = '__env' })
+      }
+      for k,v in main {
+         ctx.define(k, { base = '__env' })
       }
       var lua = Grammar.match(lupa, 1, ctx)
       ctx.leave()
@@ -1468,7 +1497,7 @@ var run = function(...a) {
    }
 }
 
-LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu"
+var LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu"
 {
    table#insert(package#loaders, function(modname) {
       var filename = modname.gsub("%.", "/")
@@ -1485,7 +1514,7 @@ LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu"
                      return main(...args)
                   }
                   catch (e) {
-                     throw ImportError("failed to load ${modname}: ${e}")
+                     throw ImportError.new("failed to load ${modname}: ${e}")
                   }
                }
             }

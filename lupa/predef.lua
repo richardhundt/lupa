@@ -65,7 +65,7 @@ end
 
 local metamethods = {
    __tostring = function(a) return a:toString() end;
-   __concat = function(a, b) return a:_ti(b) end;
+   __concat = function(a, b) return a:_pl(b) end;
    __call = function(self, ...) return self:apply(...) end;
    __add = function(a, b) return a:_pl(b) end;
    __sub = function(a, b) return a:_mi(b) end;
@@ -73,8 +73,8 @@ local metamethods = {
    __mod = function(a, b) return a:_pe(b) end;
    __div = function(a, b) return a:_sl(b) end;
    __mul = function(a, b) return a:_st(b) end;
-   __unm = function(a) return a:_mi_() end;
-   __len = function(a) return a:_po_() end;
+   __unm = function(a) return a:_mi_us() end;
+   __len = function(a) return a:_po_us() end;
    __eq = function(a, b) return a:_eq(b) end;
    __ne = function(a, b) return a:_ba_eq(b) end;
    __gt = function(a, b) return a:_gt(b) end;
@@ -328,19 +328,18 @@ do
 end
 
 function import(into, from, what) 
-   if next(what, nil) == nil then
-      from, what[1] = from:match('^(.-)%.([%w_]+)$')
-   end
    local mod = __load(from)
-   if what[1] == '*' then
-      for key, val in pairs(mod) do
-         into[key] = val
+   if next(what, nil) == nil then
+      local path = { }
+      for frag in from:gmatch'([^%.]+)' do
+         path[#path + 1] = frag
       end
+      into[path[#path]] = mod
    else
       for sym,key in pairs(what) do
          local val = rawget(mod, key)
          if val == nil then
-            __op_throw( ImportError("'"..tostring(key).."' from '"..tostring(from).."' is nil", 2) )
+            throw( ImportError("'"..tostring(key).."' from '"..tostring(from).."' is nil", 2) )
          end
          into[sym] = val
       end
@@ -348,8 +347,13 @@ function import(into, from, what)
    return mod
 end
 
+---[[
 function import(into, from, what, dest) 
    local mod = __load(from)
+   local path = { }
+   for frag in from:gmatch"([^%.]+)" do
+      path[#path + 1] = frag
+   end
    if what then
       if dest then
          into[dest] = { }
@@ -365,7 +369,7 @@ function import(into, from, what, dest)
             local key = what[i]
             local val = rawget(mod, key)
             if val == nil then
-               __op_throw( ImportError("'"..tostring(key).."' from '"..tostring(from).."' is nil", 2) )
+               throw( ImportError("'"..tostring(key).."' from '"..tostring(from).."' is nil", 2) )
             end
             into[key] = val
          end
@@ -374,7 +378,7 @@ function import(into, from, what, dest)
       return mod
    end
 end
-
+--]]
 
 function export(...)
    local what = Array(...)
@@ -383,7 +387,7 @@ function export(...)
       local expt = what[i];
       local key, val = expt[1], expt[2]
       if val == nil then
-         __op_throw( ExportError("'"..tostring(key).."' is nil", 2) )
+         throw( ExportError("'"..tostring(key).."' is nil", 2) )
       end
       exporter[key] = val
    end
@@ -414,7 +418,7 @@ function __match(a, b)
    if __match then
       return __match(b, a)
    end
-   if a:isa(b) then
+   if a:is(b) then
       return true
    end
    return false
@@ -424,7 +428,7 @@ __op_as     = setmetatable
 typeof = getmetatable
 __op_yield  = coroutine["yield"]
 
-function __op_throw(err)
+function throw(err)
    local mt = getmetatable(err)
    local __throw = mt and mt.__throw
    if __throw then
@@ -432,18 +436,24 @@ function __op_throw(err)
    end
    return error(err, 2)
 end
+__op_throw = throw
 
-function __op_in(key, obj)
+function _in(key, obj)
    local mt = getmetatable(obj)
+   local _in = mt and mt.__in
+   if _in then
+      return _in(obj,key)
+   end
    return obj[key] ~= nil
 end
+__op_in = _in
 
 function __op_like(this, that)
    for k,v in pairs(that) do
       if type(this[k]) ~= type(v) then
          return false
       end
-      if not this[k]:isa(getmetatable(v)) then
+      if not this[k]:is(getmetatable(v)) then
          return false
       end
    end
@@ -467,7 +477,7 @@ Type.__name = "Type"
 Type.__call = function(self, ...)
    return self:apply(...)
 end
-Type.isa = function(self, that)
+Type.is = function(self, that)
    if that == Any then
       return true
    end
@@ -607,7 +617,7 @@ Any.init = function(self, ...)
    end
 end
 Any.coerce = function(self, that)
-   if that:isa(self) then
+   if that:is(self) then
       return that
    else
       error("TypeError: "..tostring(that).." is not a "..name, 2)
@@ -620,7 +630,7 @@ Any.toString = function(self)
    debug.setmetatable(self, meta)
    return '<object '..meta.__name..'@'..addr..'>'
 end
-Any.isa = function(self, that)
+Any.is = function(self, that)
    if that == Any then
       return true
    end
@@ -655,6 +665,7 @@ Trait.of = function(self, ...)
    end
    return copy
 end
+Trait.__call = Trait.of
 Trait.make = function(self, into, recv, ...) 
    for i = 1, #self.__with, 1 do
       self.__with[i]:make(into, recv)
@@ -690,8 +701,10 @@ Array.of = function(self, type)
    end
    return A
 end
+Array.coerce = Any.coerce
 Array.__slots = { }
 Array.__index = Array.__slots
+Array.__slots.is = Any.is
 Array.__slots.len = function(self) return #self end
 Array.__tostring = function(self)
    local buf = { }
@@ -783,13 +796,8 @@ Array.__slots.reverse = function(self)
 end
 
 Table = Type("Table")
-Table.__index = Table
-Table.len = function(self) return #self end
 Table.apply = function(self, table)
    return setmetatable(table or { }, self)
-end
-Table.each = function(self)
-   return pairs
 end
 Table.__tostring = function(self)
    local buf = { }
@@ -808,26 +816,28 @@ Table.__tostring = function(self)
    end
    return "{"..table.concat(buf, ",").."}"
 end
-Table[mangle"_[]"] = rawget
-Table[mangle"_[]="] = rawset
 Table.__each = pairs
+Table.__in = function(self, key)
+   return rawget(self, key) ~= nil
+end
 Table.of = function(self, ...)
    local T = Table{ }
+   T.__slots = { }
+   T.__index = T.__slots
    local ktype, vtype
    if select('#', ...) == 1 then
       vtype = ...
-      T[mangle'_[]='] = function(t, k, v)
+      T.__slots[mangle'_[]='] = function(t, k, v)
          t[k] = vtype:coerce(v)
       end
    elseif select('#', ...) == 2 then
       ktype, vtype = ...
-      T[mangle'_[]='] = function(t, k, v)
+      T.__slots[mangle'_[]='] = function(t, k, v)
          t[ktype:coerce(k)] = vtype:coerce(v)
       end
    else
       error("of takes 1 or 2 parameters", 2)
    end
-   T.__index = T
    T.coerce = function(self, val)
       local set = mangle'_[]='
       for k,v in _each(val) do
@@ -837,8 +847,16 @@ Table.of = function(self, ...)
    end
    return T
 end
+Table.__slots = { }
+Table.__index = Table.__slots
+Table.__slots.len = function(self) return #self end
+Table.__slots.each = function(self)
+   return pairs(self)
+end
+Table.__slots[mangle"_[]"] = rawget
+Table.__slots[mangle"_[]="] = rawset
 
-for k,v in pairs(table) do Table[k] = v end
+for k,v in pairs(table) do Table.__slots[k] = v end
 
 Range = Type("Range")
 Range.__index = Range
@@ -869,7 +887,7 @@ end
 Void = Type("Void")
 Void.coerce = function(self, ...)
    if select("#", ...) ~= 0 then
-      __op_throw(TypeError("value in Void", 2))
+      throw(TypeError("value in Void", 2))
    end 
    return ...
 end
@@ -878,7 +896,7 @@ Nil = Type("Nil")
 Nil.__index = function(self, key)
    local val = Type[key]
    if val == nil then
-      __op_throw("TypeError: no such member '"..demangle(key).."' in type Nil", 2)
+      throw("TypeError: no such member '"..demangle(key).."' in type Nil", 2)
    end
    return val
 end
@@ -896,11 +914,11 @@ end
 Number.coerce = function(self, val) 
    local v = tonumber(val)
    if v == nil then
-      __op_throw(TypeError("cannot coerce '"..tostring(val).."' to Number", 2))
+      throw(TypeError("cannot coerce '"..tostring(val).."' to Number", 2))
    end
    return v
 end
-Number._mi_ = function(a) return -a end
+Number._mi_us = function(a) return -a end
 Number._st = function(a, b) return a * b end
 Number._pe = function(a, b) return a % b end
 Number._sl = function(a, b) return a / b end
@@ -1133,5 +1151,6 @@ do
 end
 
 __env.global = _G
+__env.main = __env
 return __env
 

@@ -3,7 +3,7 @@ class Point {
    has y : Number = 0
 
    method init() {
-      print("HELLS BELLS", self)
+      print("HELLS BELLS", self, Point3D)
    }
    method move(x = 0, y = 0) : Void {
       .x = x
@@ -13,7 +13,6 @@ class Point {
 
 class Point3D from Point {
    has z : Number = 0
-
    method greet() {
       print("Hello World!")
    }
@@ -26,6 +25,9 @@ class Point3D from Point {
       .z = z
    }
 }
+
+var a = [ ]
+a.map(function() { })
 
 var p = Point.new
 var p = Point3D.new
