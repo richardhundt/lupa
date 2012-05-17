@@ -246,7 +246,7 @@ object Grammar {
 
    function make_bind_expr(ctx, l, s1, s2, r) {
       if l.len == 1 {
-         var name = l[1].match('^([%w_]+)')
+         var name = l[1].match('^([%w_]+)%s*=')
          if name {
             var info = ctx.lookup(name)
             if info {
@@ -261,7 +261,7 @@ object Grammar {
       var t = [ ]
       for i = 1, l.len {
          t.push(genid())
-         var name = l[i].match('^([%w_]+)')
+         var name = l[i].match('^([%w_]+)%s*=')
          if name {
             var info = ctx.lookup(name)
             if info['type'] {
@@ -506,10 +506,11 @@ object Grammar {
       }
       return decl.format(n,n,w,l,a,h,b)
    }
-   function make_guard_decl(c,n,p1,p2,b,s) {
-      var p1, h1 = make_params(c, p1)
-      var p2, h2 = make_params(c, p2)
-      var decl = '__env.guard("%s",%s,function(self,%s)%s function self:coerce(%s)%s %s end end)'
+   function make_guard_decl(c,n,p,b,s) {
+      p.unshift('self')
+      c.define('self', { })
+      var p, h = make_params(c, p)
+      var decl = '__env.guard("%s",function(%s)%s %s end)'
       if s == 'lexical' {
          c.scope.outer.define(n)
          decl = "local %s="+decl
@@ -518,10 +519,10 @@ object Grammar {
          c.scope.outer.define(n, { base = '__env' })
          decl = "__env.%s="+decl
       }
-      return decl.format(n,n,p1.len,p1,h1,p2,h2,b)
+      return decl.format(n,n,p,h,b)
    }
 
-   function make_try_stmt(ctx, try_body, catch_blocks, loopy) {
+   function make_try_stmt(s,ctx, try_body, catch_blocks, loopy) {
       var args = [ ]
       if loopy {
          args.push("function() repeat ${try_body} until true end")
@@ -533,7 +534,7 @@ object Grammar {
          args.push(catch_blocks[i])
       }
       var stmt = [ ]
-      stmt.push("do")
+      stmt.push("do${s}")
       stmt.push("local _return;__env.try(${args.concat(',')});")
       stmt.push('if _return then return unpack(_return) end')
       if loopy {
@@ -542,17 +543,16 @@ object Grammar {
       stmt.push('end')
       return stmt.concat(' ')
    }
-   function make_catch_stmt(ctx, node, loopy) {
-      var body = node['body']
-      var head = node['head'] || '__err'
+   function make_catch_stmt(ctx, s1, s2, head, s3, body, loopy) {
+      var head = head || '__err'
       var name = head.match('^%s*([^%s]+)%s*$')
       var info = ctx.lookup(name)
       var type = info['type']
       if loopy {
-         return "{body=function(${name}) repeat ${body} until true end, type=${type}}"
+         return "{body=${s1}function(${s2}${name}) ${s3} repeat ${body} until true end, type=${type}}"
       }
       else {
-         return "{body=function(${name}) ${body} end, type=${type}}"
+         return "{body=${s1}function(${s2}${name}) ${s3} ${body} end, type=${type}}"
       }
    }
    function make_import_decl(ctx, names, path, dest) {
@@ -804,19 +804,18 @@ object Grammar {
    }
    rule try_stmt {
       {~
-         "try" idsafe s <ctx> <enter>
+         "try" idsafe {s} <ctx> <enter>
          "{" {~ s <lambda_body> s ~} <{ expect("}") }>
-         ((s <catch_stmt>)* -> [ ]) =loopy
+         ({~ s <catch_stmt> ~}* -> [ ]) =loopy
          -> make_try_stmt <leave>
       ~}
    }
    rule catch_stmt {
       {~
-         "catch" idsafe <ctx> <enter> s ((
-            "(" s {:head: <name> <ctx> {`nil`}
-            (s <guard_expr> | {`nil`}) -> define :}
-            ")" s "{" {:body: {~ s <lambda_body> s ~} :} "}"
-         ) -> { }) =loopy -> make_catch_stmt <leave>
+         "catch" idsafe <ctx> <enter> {s}
+         "(" {s} (<name> <ctx> {`nil`} (hs* <guard_expr> | {`nil`}) -> define)
+         ")" {s} "{" {~ s <lambda_body> s ~} "}"
+         =loopy -> make_catch_stmt <leave>
       ~}
    }
    rule lambda_body {
@@ -906,7 +905,7 @@ object Grammar {
 
    rule guard_decl {
       {~ (
-         "guard" idsafe hs+ <ctx> <name> (s "[" s <param_list> s "]" | {`[]`}) s
+         "guard" idsafe hs+ <ctx> <name> s
          <enter>
          ("(" s <param_list> s <{ expect(")") }> s | {`[]`})
          <guard_list>? s "{"
@@ -1006,7 +1005,7 @@ object Grammar {
    rule name {
       {~ !keyword (
          | { ('end' | 'elseif' | 'then' | 'local' | 'repeat' | 'until' | "do") idsafe } -> '%1_'
-         | { (%alpha | "_" | "$") (%alnum | "_" | "$")* } -> mangle
+         | { (%alpha | "_" | "$" | "?") (%alnum | "_" | "$")* "!"? } -> mangle
       ) ~}
    }
    rule opname {
@@ -1267,22 +1266,22 @@ object Grammar {
    var prod_oper = / "->" | "~>" | "=>" /
 
    rule rule_suffix {
-      ({~ <rule_patt> ~} {: s {prod_oper} s <rule_prod> :}*) ~> function(a,o,b,t) {
+      ({~ <rule_patt> ~} {: {s} {prod_oper} {s} <rule_prod> :}*) ~> function(a,s1,o,s2,b,t) {
          if o == "=>" {
-            return '__env._patt.Cmt(%s,%s)'.format(a,b)
+            return '__env._patt.Cmt(%s%s,%s%s)'.format(a,s1,s2,b)
          }
          else if o == "~>" {
-            return '__env._patt.Cf(%s,%s)'.format(a,b)
+            return '__env._patt.Cf(%s%s,%s%s)'.format(a,s1,s2,b)
          }
          else {
             if t == 'table' {
-               return '__env._patt.Ch(%s,%s)'.format(a,b)
+               return '__env._patt.Ch(%s%s,%s%s)'.format(a,s1,s2,b)
             }
             else if t == 'array' {
-               return '__env._patt.Ca(%s,%s)'.format(a,b)
+               return '__env._patt.Ca(%s%s,%s%s)'.format(a,s1,s2,b)
             }
             else {
-               return '(%s)/(%s)'.format(a,b)
+               return '(%s)%s/%s(%s)'.format(a,s1,s2,b)
             }
          }
       }
@@ -1362,7 +1361,7 @@ object Grammar {
       | <rule_group_capt>
    }
    rule rule_group_capt {
-      {~ "{:" ((<name> -> quote ":") | {`'nil'`}) {~ s <rule_alt> ~} s <{ expect(":}") }>
+      {~ "{:" ((<name> -> quote ":") | {`'nil'`}) {~ s <rule_alt> s ~} <{ expect(":}") }>
       -> '__env._patt.Cg(%2,%1)'
       ~}
    }
@@ -1467,7 +1466,14 @@ var run = function(...a) {
    var src = sfh.read('*a')
    sfh.close()
 
-   var lua = Compiler.compile(src)
+   var lua
+   try {
+      lua = Compiler.compile(src)
+   }
+   catch (e) {
+      print(tostring(e))
+      os#exit(-1)
+   }
    if opt['l'] {
       io#stdout.write(lua, "\n")
       os#exit(0)

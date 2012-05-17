@@ -39,8 +39,8 @@ p.move()
 p.greet()
 print("HERE2")
 
-assert(p.isa(Point3D))
-assert(p.isa(Point))
+assert(p is Point3D)
+assert(p is Point)
 print(typeof p)
 
 for i = 1, 10_000_000 {

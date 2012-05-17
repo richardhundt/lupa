@@ -512,27 +512,15 @@ MetaType.__call = Type.__call
 
 Guard = Type()
 Guard.__index = Guard
-Guard.of = function(self, ...)
-   local narg = select('#',...)
-   if self.__want == narg then
-      return guard(self.__name, self.__want - narg, self.__body, ...)
-   else
-      error("ComposeError: want "..tostring(self.__want).." arguments (got "..tostring(narg)..")", 2)
-   end
-end
-
-function guard(name, want, body, ...)
+function guard(name, body)
    local guard = setmetatable({
       __name = name;
-      __want = want;
       __body = body;
    }, Guard)
-   if want == 0 then
-      body(guard, ...)
-   else
-      function guard:coerce() error("TypeError: coerce to abstract guard", 2) end
-   end
    return guard
+end
+Guard.coerce = function(self, ...)
+   return self:__body(...)
 end
 
 Method = Type("Method")
@@ -620,7 +608,7 @@ Any.coerce = function(self, that)
    if that:is(self) then
       return that
    else
-      error("TypeError: "..tostring(that).." is not a "..name, 2)
+      error("TypeError: "..tostring(that).." is not a "..tostring(self), 2)
    end
 end
 Any.toString = function(self)

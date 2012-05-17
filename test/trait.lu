@@ -16,8 +16,13 @@ class Mammal {
     has blood = "warm"
 }
 
+guard ?Number(v) {
+   if v == nil { return v }
+   return Number.coerce(v)
+}
+
 class Dog from Mammal with Guide("guiding"), Pet(42) {
-    has legs : Number
+    has legs : ?Number
     has name : String
 
     method greet(mesg : Array = [ 'asdfas' ]) {
@@ -27,7 +32,7 @@ class Dog from Mammal with Guide("guiding"), Pet(42) {
     }
 }
 
-var d = Dog.new
+var d : Dog = Dog.new
 d.walk
 d.greet
 d.wooz
