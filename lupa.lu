@@ -806,7 +806,7 @@ object Grammar {
       {~ <name> (hs* "," s <name>)* ~}
    }
    rule type_name {
-      {~ <ident> (hs* "." s <name>)* ~}
+      {~ <ident> (hs* ("." -> ':') s <name> {`'()'`})* ~}
    }
    rule type_term {
       {~ <type_name> ("[" s <type_term_list> s "]" -> ":of(%1)")? ~}
