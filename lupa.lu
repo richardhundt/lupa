@@ -889,14 +889,14 @@ object Grammar {
    rule short_func {
       {~ (
          ("(" s <enter> <ctx> <param_list> s ")" (s <type_list>)? s
-         | <enter> <ctx> {`[]`})
+         | <enter> <ctx> (({`"${mangle('_')}"`} <ctx> -> define) -> [ ]))
          '=>' s (
             | "{" {~ s <func_body> s ~} <{ expect("}") }>
-            | (
+            | {~ (
                <ctx>
                =set_return (<expr> -> [ ])
                =ret_type -> make_return_stmt
-            ) <sep>?
+            ) <sep>? ~}
          )
       ) -> make_func ~} <leave>
    }

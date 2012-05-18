@@ -6,7 +6,7 @@ trait Guide[T] {
 }
 
 trait Pet {
-   has size : Number = 4
+   has size : Number = 42
    needs legs
    method wooz() {
       var x = 42
