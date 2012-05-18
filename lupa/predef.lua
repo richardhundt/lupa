@@ -62,17 +62,56 @@ __env[mangle"::"] = function(self, name)
    return self[name]
 end
 
-local function newenviron(outer)
-   return setmetatable({ }, { __index = outer })
+REGISTRY = setmetatable({ }, { __mode = 'k' })
+
+function environ(outer)
+   if not outer then
+      outer = __env
+   end
+   return setmetatable({ }, {
+      __index = outer;
+      __newindex = function(env, key, val)
+         rawset(env, key, val)
+         if typeof(val) == Function then
+            REGISTRY[val] = { name = key, body = val, item = val }
+         elseif typeof(val) == Class then
+            local body = rawget(val, '__body')
+            REGISTRY[body] = { name = key, body = body, item = val }
+         elseif typeof(val) == Trait then
+            local body = rawget(val, '__body')
+            REGISTRY[body] = { name = key, body = body, item = val }
+         end
+      end;
+   })
 end
+
 local function newindexer(slots)
    return function(self, key)
       local val = slots[key]
       if val == nil then
-         error("TypeError: no such member '"..tostring(key).."' in "..tostring(self), 2)
+         throw(TypeError:new("no such member '"..tostring(key).."' in "..tostring(self)), 2)
       end
       return val
    end
+end
+
+function trace(level)
+   level = (level or 1) + 1
+   local idx = level
+   local buf = { 'trace:' }
+   while true do
+      local info = debug.getinfo(idx, 'nSlf')
+      if not info then
+         break
+      end
+      local func = info.func
+      local item = REGISTRY[func]
+      if item ~= nil then
+         buf[#buf + 1] = string.format("%s:%s in %s", info.short_src, info.currentline, demangle(item.name))
+      end
+      idx = idx + 1
+   end
+   return table.concat(buf, "\n\t")
 end
 
 function class(into, name, from, with, body)
@@ -89,6 +128,7 @@ function class(into, name, from, with, body)
    class.__size = from.__size
    class.__with = { }
    class.__need = { }
+   class.__body = body
 
    class.__rules = setmetatable(rules, { __index = from.__rules })
    class.__slots = setmetatable(slots, { __index = from.__slots })
@@ -107,7 +147,7 @@ function class(into, name, from, with, body)
    end
    setmetatable(class, Class)
 
-   local inner = newenviron(into)
+   local inner = environ(into)
 
    inner[name] = class
    class[mangle"::"] = function(self, name)
@@ -123,7 +163,7 @@ function class(into, name, from, with, body)
    body(inner, class, from.__slots)
    for k,v in pairs(class.__need) do
       if class.__slots[k] == nil then
-         error("ComposeError: '"..tostring(k).."' is needed", 2)
+         throw(ComposeError:new("'"..tostring(k).."' is needed"), 2)
       end
    end
    return class
@@ -154,8 +194,13 @@ function object(into, name, from, with, body)
 end
 
 function has(into, key, type, ctor, meta) 
-   into.__size = into.__size + 1
-   local idx = into.__size
+   local idx
+   if meta then
+      idx = key
+   else
+      into.__size = into.__size + 1
+      idx = into.__size
+   end
    local function set(obj, val)
       if type then
          rawset(obj, idx, type:coerce(val))
@@ -181,6 +226,7 @@ function has(into, key, type, ctor, meta)
 end
 
 function method(into, name, code, meta) 
+   REGISTRY[code] = { name = name, body = code, item = into }
    if meta then
       into[name] = code
    else
@@ -206,6 +252,7 @@ function rule(into, name, patt)
       return rule
    end
 
+   REGISTRY[get] = { name = name, body = get, item = into }
    into.__slots[name] = get
    into.__rules[name] = patt
 end
@@ -224,7 +271,7 @@ function try(try,...)
              return body(er)
          end
       end
-      error(er, 2)
+      throw(er, 2)
    end
 end
 
@@ -295,30 +342,10 @@ do
    _patt.predef = predef
    _patt.Def = function(id)
       if predef[id] == nil then
-         error("No predefined pattern '"..tostring(id).."'", 2)
+         throw("No predefined pattern '"..tostring(id).."'", 2)
       end
       return predef[id]
    end
-end
-
-function import(into, from, what) 
-   local mod = __load(from)
-   if next(what, nil) == nil then
-      local path = { }
-      for frag in from:gmatch'([^%.]+)' do
-         path[#path + 1] = frag
-      end
-      into[path[#path]] = mod
-   else
-      for sym,key in pairs(what) do
-         local val = rawget(mod, key)
-         if val == nil then
-            throw( ImportError:new("'"..tostring(key).."' from '"..tostring(from).."' is nil", 2) )
-         end
-         into[sym] = val
-      end
-   end
-   return mod
 end
 
 function import(into, from, what, dest) 
@@ -329,22 +356,35 @@ function import(into, from, what, dest)
    end
    if what then
       if dest then
-         into[dest] = { }
+         into[dest] = setmetatable({ }, {
+            __index = newindexer({ });
+            __tostring = function(self)
+               return dest
+            end
+         })
          into = into[dest]
          into[mangle'::'] = function(self, name) return self[name] end
       end 
       if #what == 0 then
          for key, val in pairs(mod) do
-            into[key] = val
+            if dest then
+               into[key] = function() return val end
+            else
+               into[key] = val
+            end
          end
       else
          for i=1, #what do
             local key = what[i]
             local val = rawget(mod, key)
             if val == nil then
-               throw( ImportError:new("'"..tostring(key).."' from '"..tostring(from).."' is nil", 2) )
+               throw(ImportError:new("'"..tostring(key).."' from '"..tostring(from).."' is nil"), 2)
             end
-            into[key] = val
+            if dest then
+               into[key] = function() return val end
+            else
+               into[key] = val
+            end
          end
       end
    else
@@ -359,7 +399,7 @@ function export(from, ...)
       local expt = what[i];
       local key, val = expt[1], expt[2]
       if val == nil then
-         throw("ExportError: '"..tostring(key).."' is nil", 2)
+         throw(ExportError:new(tostring(key).."' is nil"), 2)
       end
       exporter[key] = val
    end
@@ -396,40 +436,8 @@ function __match(a, b)
    return false
  end
 
-__op_as     = setmetatable
 typeof = getmetatable
-__op_yield  = coroutine["yield"]
-
-function throw(err)
-   local throw = err.throw
-   if throw then
-      throw(err, 2)
-   end
-   return error(err, 2)
-end
-__op_throw = throw
-
-function _in(key, obj)
-   local mt = getmetatable(obj)
-   local _in = mt and mt.__in
-   if _in then
-      return _in(obj,key)
-   end
-   return obj[key] ~= nil
-end
-__op_in = _in
-
-function __op_like(this, that)
-   for k,v in pairs(that) do
-      if type(this[k]) ~= type(v) then
-         return false
-      end
-      if not this[k]:is(getmetatable(v)) then
-         return false
-      end
-   end
-   return true
-end
+throw  = error
 
 function _each(a, ...)
    if type(a) == "function" then
@@ -470,7 +478,11 @@ Any.__slots.init = function(self, ...)
    end
 end
 Any.__slots.toString = function(self)
-   return '<object '..tostring(getmetatable(self).__name)..'>'
+   local meta = getmetatable(self)
+   setmetatable(self, nil)
+   local addr = tostring(self):match(": (.+)$")
+   setmetatable(self, meta)
+   return '<object '..tostring(getmetatable(self).__name).."@"..addr..'>'
 end
 Any.__slots.is = function(self, that)
    if that == Any then return true end
@@ -507,6 +519,7 @@ local function newtype(name)
 end
 
 Class = newtype"Class"
+Class.__index = newindexer(Class.__slots)
 Class.__slots[mangle"::"] = function(obj, key)
    return obj.__slots[key]
 end
@@ -515,6 +528,7 @@ Class.__slots.toString = function(self)
 end
 
 Trait = newtype"Trait"
+Trait.__index = newindexer(Trait.__slots)
 Trait.__slots.toString = function(self)
    return "<trait "..tostring(self.__name)..">"
 end
@@ -717,7 +731,7 @@ end
 Void = newtype"Void"
 Void.apply = function(self, ...)
    if select("#", ...) ~= 0 then
-      throw(TypeError:new("value in Void", 2))
+      throw(TypeError:new("value in Void"), 2)
    end 
    return ...
 end
@@ -725,30 +739,21 @@ end
 Nil = newtype"Nil"
 Nil.__tostring = nil
 Nil.__slots.apply = function(self)
-   error("TypeError: attempt to call a nil value", 2)
+   throw(TypeError:new("attempt to call a nil value"), 2)
 end
 Nil.__slots.coerce = function(self, val)
    if val == nil then return val end
-   error("TypeError: attempt to coerce "..tostring(val).." to nil", 2)
+   throw(TypeError:new("attempt to coerce "..tostring(val).." to nil"), 2)
 end
 debug.setmetatable(nil, Nil)
 
 Number = newtype"Number"
-Number.apply = function(self, val) 
+Number.coerce = function(self, val)
    local v = tonumber(val)
    if v == nil then
-      throw(TypeError:new("cannot coerce '"..tostring(val).."' to Number", 2))
+      throw(TypeError:new("cannot coerce '"..tostring(val).."' to Number"), 2)
    end
    return v
-end
-Number.coerce = Number.apply
-Number[mangle">"] = function(self, val)
-   return function(v)
-      if not v:_gt(val) then
-         error("Constraint Number > "..tostring(val).." failed for "..tostring(v), 2)
-      end
-      return v
-   end
 end
 Number.__tostring = nil
 Number.__slots.toString = tostring
@@ -840,7 +845,7 @@ Function.__slots.coerce = function(self, ...)
 end
 Function.coerce = function(self, that)
    if type(that) ~= 'function' then
-      error("TypeError: cannot coerce "..tostring(that).." to Function", 2)
+      throw(TypeError:new("cannot coerce "..tostring(that).." to Function"), 2)
    end
    return that
 end
@@ -853,7 +858,7 @@ Thread.yield = coroutine.yield
 Thread.wrap  = coroutine.wrap
 Thread.coerce = function(self, code)
    if type(code) ~= "function" then
-      error("TypeError: cannot coerce "..tostring(code).." to Thread", 2)
+      throw(TypeError:new("cannot coerce "..tostring(code).." to Thread"), 2)
    end
    return coroutine.wrap(code)
 end
@@ -888,28 +893,22 @@ end
 Error = class(__env, "Error", nil, {}, function(__env,self)
    has(self, "level",   nil, function(self) return 1 end)
    has(self, "message", nil, function(self) return "unknown" end)
-   has(self, "info",    nil, function(self) return {} end)
-   has(self, "trace",   nil, function(self) return "" end)
 
    method(self,'init',function(self,message,level)
       self:message_eq(demangle(message))
       self:level_eq(level)
    end)
    method(self,'toString',function(self)
-      return tostring(typeof(self).__name)..": "..tostring(self:trace())
-   end)
-   method(self,'throw',function(self,level)
-      level = level or 1
-      self:trace_eq(demangle(debug.traceback(self:message(), self:level() + level)))
-      error(self)
+      return tostring(typeof(self).__name)..": "..tostring(self:message())
    end)
 end)
 
-SyntaxError = class(__env,"SyntaxError",Error,{},function() end)
-AccessError = class(__env,"AccessError",Error,{},function() end)
-ImportError = class(__env,"ImportError",Error,{},function() end)
-ExportError = class(__env,"ExportError",Error,{},function() end)
-TypeError   = class(__env,"TypeError",  Error,{},function() end)
+SyntaxError  = class(__env, "SyntaxError",  Error, { }, function() end)
+AccessError  = class(__env, "AccessError",  Error, { }, function() end)
+ImportError  = class(__env, "ImportError",  Error, { }, function() end)
+ExportError  = class(__env, "ExportError",  Error, { }, function() end)
+TypeError    = class(__env, "TypeError",    Error, { }, function() end)
+ComposeError = class(__env, "ComposeError", Error, { }, function() end)
 
 function evaluate(lua)
    local main = assert(loadstring(lua))

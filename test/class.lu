@@ -25,6 +25,7 @@ class Point3D from Point {
 
    method >>+<<(b) {
       print("funny operator:", b)
+      print("TRACE:", trace())
    }
    method move(x = 0, y = 0, z = 0) : Void {
       super.move(x, y)
@@ -55,12 +56,6 @@ print(typeof p)
 for i = 1, 10_000_000 {
    p.move(i+1, i+2, i+3)
 }
-
-function munge() {
-   print("nom nom")
-}
-munge()
-print("HERE:", p)
 
 for k,v in p {
    print("${k} => ${v}")

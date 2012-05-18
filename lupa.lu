@@ -503,11 +503,9 @@ object Grammar {
    }
    function make_trait_decl(c,n,p,w,b) {
       var decl = '__env.trait(__env,%q,{%s},%s,function(__env,self,%s)%s end);'
+      a = '...'
       if p.len > 0 {
          a = p.concat(',')
-      }
-      else {
-         a = '...'
       }
       if s == 'lexical' {
          decl = 'local %s='+decl
@@ -593,7 +591,7 @@ object Grammar {
       { %s* '#!' (!nl .)* %s* }? s
       <enter>
       ({`'__env'`} <ctx> -> static_define)
-      {`'local __env=_G.setmetatable({},{__index=_G.require("lupa.predef")});'`}
+      {`'local __env=require("lupa.predef").environ();'`}
       <stmt_list>? s
       (<ctx> -> function(ctx) {
          for k,v in ctx.resolve {
@@ -808,7 +806,7 @@ object Grammar {
       {~ <name> (hs* "," s <name>)* ~}
    }
    rule type_name {
-      {~ <ident> ("::" -> "." <name>)* ~}
+      {~ <ident> (hs* "." s <name>)* ~}
    }
    rule type_term {
       {~ <type_name> ("[" s <type_term_list> s "]" -> ":of(%1)")? ~}
@@ -1472,12 +1470,12 @@ var run = function(...a) {
          outc.close()
       }
       else {
-         var main_env = setmetatable({ }, { ['__index'] = require('lupa.predef') })
-         var good, err = pcall(main, main_env, opt['file'], ...a)
-         if !good {
-            io#stderr.write(tostring(err),"\n")
+         var main_env  = require('lupa.predef')#environ()
+         REGISTRY#[main] = { name = 'main', body = main, item = main }
+         xpcall(main, function(err) {
+            io#stderr.write(debug#traceback(tostring(err)),"\n")
             os#exit(1)
-         }
+         }, main_env, opt['file'], ...a)
       }
    }
 }
