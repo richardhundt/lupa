@@ -22,6 +22,17 @@ class Mammal {
    has blood = "warm"
 }
 
+guard NumArray(a : Array) {
+   for i, v : Number in a { a[i] = v }
+   return a
+}
+try {
+   var a : NumArray = [ "1", 2, "three" ]
+}
+catch (e) {
+   print("caught: ${e}")
+}
+
 class Dog from Mammal with Guide[String], Pet {
    has legs : Int = 4
    has name : String = 'anon'

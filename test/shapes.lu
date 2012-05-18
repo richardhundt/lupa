@@ -18,4 +18,5 @@ class Point3D from Point {
 }
 
 var answer = 42
-var cheese = "Chutney"
+our cheese = "Chutney"
+

@@ -169,15 +169,6 @@ object Grammar {
    }
 
    var binops = {
-      /*
-      ["<="] = "(%s)<=(%s)",
-      [">="] = "(%s)>=(%s)",
-      ["<"] = "(%s)<(%s)",
-      [">"] = "(%s)>(%s)",
-      ["=="] = "(%s)==(%s)",
-      ["!="] = "(%s)~=(%s)",
-      */
-
       ['can'] = false,
       ['is'] = false,
       ['as'] = false,
@@ -1203,7 +1194,6 @@ object Grammar {
    }
 
    // binding expression rules
-
    rule bind_stmt {
       {~ (<bind_expr> | <bind_binop_expr>) -> '%1;' ~}
    }
@@ -1401,9 +1391,6 @@ object Compiler {
       for k,v in global {
          ctx.define(k, { base = '__env' })
       }
-      for k,v in main {
-         ctx.define(k, { base = '__env' })
-      }
       var lua = Grammar.match(lupa, 1, ctx)
       ctx.leave()
       assert(ctx.scope.outer == nil, "scope is unbalanced")
@@ -1534,6 +1521,5 @@ var LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu"
    })
 }
 
-arg = rawget(global, 'arg') && [ unpack(arg) ] || [ ]
-if arg[1] { run(unpack(arg)) }
+if global#arg#[1] { run(global#unpack(arg)) }
 

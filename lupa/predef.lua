@@ -1,5 +1,6 @@
 local __env = setmetatable({ }, { __index = _G })
 setfenv(1, __env)
+for k,v in pairs(_G) do __env[k] = v end
 package.cpath = ';;./lib/?.so;'..package.cpath
 
 local bit = require("bit")
@@ -85,7 +86,7 @@ function environ(outer)
    })
 end
 
-local function newindexer(slots)
+local function lookup(slots)
    return function(self, key)
       local val = slots[key]
       if val == nil then
@@ -132,7 +133,7 @@ function class(into, name, from, with, body)
 
    class.__rules = setmetatable(rules, { __index = from.__rules })
    class.__slots = setmetatable(slots, { __index = from.__slots })
-   class.__index = newindexer(slots)
+   class.__index = lookup(slots)
 
    for k,v in pairs(Meta) do
       class[k] = v
@@ -150,9 +151,6 @@ function class(into, name, from, with, body)
    local inner = environ(into)
 
    inner[name] = class
-   class[mangle"::"] = function(self, name)
-      return class.__slots[name] or inner[name]
-   end
 
    if with then
       for i=1,#with do
@@ -161,11 +159,21 @@ function class(into, name, from, with, body)
    end
 
    body(inner, class, from.__slots)
+
    for k,v in pairs(class.__need) do
       if class.__slots[k] == nil then
          throw(ComposeError:new("'"..tostring(k).."' is needed"), 2)
       end
    end
+
+   for k,v in pairs(inner) do
+      if type(v) == 'function' then
+         class[k] = function(_, ...) return v(...) end
+      else
+         class[k] = function() return v end
+      end
+   end
+
    return class
 end
 
@@ -196,7 +204,8 @@ end
 function has(into, key, type, ctor, meta) 
    local idx
    if meta then
-      idx = key
+      into[#into + 1] = key
+      idx = #into
    else
       into.__size = into.__size + 1
       idx = into.__size
@@ -310,41 +319,41 @@ do
        return Pattern.__div(_patt.Ct(patt), make_capt_array(init))
    end
 
-   local predef = { }
+   local def = { }
 
-   predef.nl  = _patt.P("\n")
-   predef.pos = _patt.Cp()
+   def.nl  = _patt.P("\n")
+   def.pos = _patt.Cp()
 
    local any=_patt.P(1)
-   _patt.locale(predef)
+   _patt.locale(def)
 
-   predef.a = predef.alpha
-   predef.c = predef.cntrl
-   predef.d = predef.digit
-   predef.g = predef.graph
-   predef.l = predef.lower
-   predef.p = predef.punct
-   predef.s = predef.space
-   predef.u = predef.upper
-   predef.w = predef.alnum
-   predef.x = predef.xdigit
-   predef.A = any - predef.a
-   predef.C = any - predef.c
-   predef.D = any - predef.d
-   predef.G = any - predef.g
-   predef.L = any - predef.l
-   predef.P = any - predef.p
-   predef.S = any - predef.s
-   predef.U = any - predef.u
-   predef.W = any - predef.w
-   predef.X = any - predef.x
+   def.a = def.alpha
+   def.c = def.cntrl
+   def.d = def.digit
+   def.g = def.graph
+   def.l = def.lower
+   def.p = def.punct
+   def.s = def.space
+   def.u = def.upper
+   def.w = def.alnum
+   def.x = def.xdigit
+   def.A = any - def.a
+   def.C = any - def.c
+   def.D = any - def.d
+   def.G = any - def.g
+   def.L = any - def.l
+   def.P = any - def.p
+   def.S = any - def.s
+   def.U = any - def.u
+   def.W = any - def.w
+   def.X = any - def.x
 
-   _patt.predef = predef
+   _patt.def = def
    _patt.Def = function(id)
-      if predef[id] == nil then
+      if def[id] == nil then
          throw("No predefined pattern '"..tostring(id).."'", 2)
       end
-      return predef[id]
+      return def[id]
    end
 end
 
@@ -357,18 +366,21 @@ function import(into, from, what, dest)
    if what then
       if dest then
          into[dest] = setmetatable({ }, {
-            __index = newindexer({ });
+            __index = lookup({ });
             __tostring = function(self)
                return dest
             end
          })
          into = into[dest]
-         into[mangle'::'] = function(self, name) return self[name] end
       end 
       if #what == 0 then
          for key, val in pairs(mod) do
             if dest then
-               into[key] = function() return val end
+               if type(val) == 'function' then
+                  into[key] = function(_, ...) return val(...) end
+               else
+                  into[key] = function() return val end
+               end
             else
                into[key] = val
             end
@@ -381,7 +393,11 @@ function import(into, from, what, dest)
                throw(ImportError:new("'"..tostring(key).."' from '"..tostring(from).."' is nil"), 2)
             end
             if dest then
-               into[key] = function() return val end
+               if type(val) == 'function' then
+                  into[key] = function(_, ...) return val(...) end
+               else
+                  into[key] = function() return val end
+               end
             else
                into[key] = val
             end
@@ -394,7 +410,7 @@ end
 
 function export(from, ...)
    local what = Array:new(...)
-   local exporter = { }
+   local exporter = setmetatable({ }, { __index = lookup({ }) })
    for i = 1, #what do
       local expt = what[i];
       local key, val = expt[1], expt[2]
@@ -457,19 +473,20 @@ Any.__name = "Any"
 Any.__from = { }
 Any.__with = { }
 Any.__size = 0
+Any.__rules = { }
 Any.__slots = { }
-Any.__index = newindexer(Any.__slots)
+Any.__index = lookup(Any.__slots)
 Any.__slots._ba_eq = function(a, b) return a ~= b end
 Any.__slots._eq_eq = function(a, b) return a == b end
 Any.__slots.coerce = function(self, that)
    if that:is(self) then
       return that
    else
-      error("TypeError: "..tostring(that).." is not a "..tostring(self), 2)
+      throw(TypeError:new(tostring(that).." is not a "..tostring(self)), 2)
    end
 end
 Any.__slots.apply = function(self)
-   error(tostring(self).." "..type(self).." is not callable", 2)
+   error(tostring(self).." is not callable", 2)
 end
 Any.__slots.init = function(self, ...)
    local spec = ... or Table:new{ }
@@ -504,14 +521,15 @@ Type.new = function(class, name)
    type.__from = Any
    type.__with = { }
    type.__size = 0
+   type.__rules = { }
    type.__slots = setmetatable({ }, { __index = Any.__slots })
-   type.__index = newindexer(type.__slots)
+   type.__index = lookup(type.__slots)
    type.toString = function() return '<type '..name..'>' end
    for k,v in pairs(Meta) do type[k] = v end
    return setmetatable(type, class)
 end
 Type.__slots = setmetatable({ }, { __index = Any.__slots })
-Type.__index = newindexer(Type.__slots)
+Type.__index = lookup(Type.__slots)
 for k,v in pairs(Meta) do Type[k] = v end
 
 local function newtype(name)
@@ -519,7 +537,7 @@ local function newtype(name)
 end
 
 Guard = newtype"Guard"
-Guard.__index = newindexer(Guard.__slots)
+Guard.__index = lookup(Guard.__slots)
 Guard.__slots.coerce = function(self, ...)
    return self:__body(...)
 end
@@ -532,7 +550,7 @@ function guard(name, body)
 end
 
 Class = newtype"Class"
-Class.__index = newindexer(Class.__slots)
+Class.__index = lookup(Class.__slots)
 Class.__slots[mangle"::"] = function(obj, key)
    return obj.__slots[key]
 end
@@ -541,13 +559,13 @@ Class.__slots.toString = function(self)
 end
 
 Trait = newtype"Trait"
-Trait.__index = newindexer(Trait.__slots)
+Trait.__index = lookup(Trait.__slots)
 Trait.__slots.toString = function(self)
    return "<trait "..tostring(self.__name)..">"
 end
 Trait.__slots.coerce = function(self, ...)
    if that.__with[self.__body] == nil then
-      error("TypeError: "..tostring(that).." does not compose "..tostring(self), 2)
+      throw(TypeError:new(tostring(that).." does not compose "..tostring(self)), 2)
    end
    return that
 end
@@ -555,7 +573,7 @@ Trait.__slots.of = function(self, ...)
    local args = { ... }
    local want = self.__want - #args
    if want ~= 0 then
-      error("TypeError: trait "..tostring(self.__name).." takes "..tostring(self.__want).." parameters but got "..tostring(#args), 2)
+      throw(TypeError:new("trait "..tostring(self.__name).." takes "..tostring(self.__want).." parameters but got "..tostring(#args)), 2)
    end
    local copy = trait(nil, self.__name, self.__with, want, self.__body)
    local make = self.make
@@ -566,7 +584,7 @@ Trait.__slots.of = function(self, ...)
 end
 Trait.__slots.make = function(self, into, recv, ...) 
    if self.__want ~= 0 then
-      error("TypeError: trait "..tostring(self.__name).." takes "..tostring(self.__want).." parameters", 2)
+      throw(TypeError:new("trait "..tostring(self.__name).." takes "..tostring(self.__want).." parameters"), 2)
    end
    for i = 1, #self.__with, 1 do
       self.__with[i]:make(into, recv)
@@ -583,15 +601,17 @@ end
 Array.apply = function(self, ...)
    return setmetatable({ ... }, self)
 end
-Array.coerce = function(self, that)
-   if not that:is(self) then
-      error("TypeError: not an array", 2)
-   end
-   return that
-end
 Array.__index = Array.__slots
 Array.__slots.len = function(self)
    return #self
+end
+Array.__slots.apply = function(self, ...)
+   local recv = self[1]
+   local args = { unpack(self, 2) }
+   for i=1, select('#', ...) do
+      args[#args + 1] = select(i, ...)
+   end
+   return self[1](unpack(args))
 end
 Array.__slots.toString = function(self)
    local buf = { }
@@ -607,6 +627,11 @@ end
 Array.__each = ipairs
 Array.__slots[mangle'_[]'] = rawget
 Array.__slots[mangle'_[]='] = rawset
+Array.__slots[mangle'+'] = function(a, b)
+   local c = Array:new(unpack(a))
+   for i=1, #b do c[#c + 1] = b[i] end
+   return c
+end
 Array.__slots.unpack = unpack
 Array.__slots.insert = table.insert
 Array.__slots.remove = table.remove
@@ -682,14 +707,22 @@ Array.__slots.reverse = function(self)
    return out
 end
 
-Table = newtype"Array"
+Table = newtype"Table"
 Table.new = function(self, table)
    return setmetatable(table or { }, self)
 end
 Table.apply = function(self, ...)
    return self:new(...)
 end
+Table.MODE = { k = { }, v = { }, kv = { } } 
 Table.__index = Table.__slots
+Table.__slots.weak = function(self, mode)
+   if mode == 'k' or mode == 'kv' or mode == 'v' then
+      debug.setmetatable(self, Table.MODE[mode])
+      return self
+   end
+   error("invalid weak mode '"..tostring(mode).."', must be 'k', 'kv' or 'v'", 2)
+end
 Table.__slots.toString = function(self)
    local buf = { }
    for k,v in pairs(self) do
@@ -716,9 +749,16 @@ Table.__slots[mangle"_[]"] = rawget
 Table.__slots[mangle"_[]="] = rawset
 
 for k,v in pairs(table) do Table.__slots[k] = v end
+for m,t in pairs(Table.MODE) do
+   t.__mode = m
+   t.__from = Table
+   for k,v in pairs(Table) do
+      t[k] = v
+   end
+end
 
 Range = newtype"Range"
-Range.apply = function(self, min, max, inc) 
+Range.new = function(self, min, max, inc) 
    min = assert(tonumber(min), "range min is not a number")
    max = assert(tonumber(max), "range max is not a number")
    inc = assert(tonumber(inc or 1), "range inc is not a number")
@@ -760,6 +800,16 @@ Nil.__slots.coerce = function(self, val)
 end
 debug.setmetatable(nil, Nil)
 
+Comparable = trait(__env, "Comparable",{},0,function(__env,self)
+   method(self, mangle'<=>', function(a, b)
+      return (a < b and -1) or (a > b and 1) or 0
+   end)
+   method(self, mangle'>',  function(a, b) return a:_lt_eq_gt(b) == 1 end)
+   method(self, mangle'<',  function(a, b) return a:_lt_eq_gt(b) ==-1 end)
+   method(self, mangle'>=', function(a, b) return a:_lt_eq_gt(b) >= 0 end)
+   method(self, mangle'<=', function(a, b) return a:_lt_eq_gt(b) <= 0 end)
+end)
+
 Number = newtype"Number"
 Number.coerce = function(self, val)
    local v = tonumber(val)
@@ -783,12 +833,7 @@ Number.__slots._pl = function(a, b) return a + b end
 Number.__slots._mi = function(a, b) return a - b end
 Number.__slots._ba = function(a) return not a end
 Number.__slots._st_st = function(a, b) return a ^ b end
-Number.__slots._gt = function(a, b) return a > b end
-Number.__slots._lt = function(a, b) return a < b end
-Number.__slots._gt_eq = function(a, b) return a >= b end
-Number.__slots._lt_eq = function(a, b) return a <= b end
-Number.__slots._ba_eq = function(a, b) return a ~= b end
-Number.__slots._eq_eq = function(a, b) return a == b end
+Comparable:make(__env,Number)
 debug.setmetatable(0, Number)
 
 String = newtype"String"
@@ -804,14 +849,11 @@ for k,v in pairs(string) do
 end
 String.__slots.toString = function(self) return self end
 String.__slots._pl = function(a, b) return a .. tostring(b) end
-String.__slots._gt = function(a, b) return a > b end
-String.__slots._lt = function(a, b) return a < b end
-String.__slots._gt_eq = function(a, b) return a >= b end
-String.__slots._lt_eq = function(a, b) return a <= b end
-String.__slots._ba_eq = function(a, b) return a ~= b end
-String.__slots._eq_eq = function(a, b) return a == b end
 String.__slots[mangle"~~"] = function(a, p)
    return _patt.P(p):match(a)
+end
+String.__slots[mangle'_[]'] = function(self, idx)
+   return self:sub(idx, idx + 1)
 end
 String.__slots.split = function(str, sep, max)
    if not str:find(sep) then
@@ -840,6 +882,7 @@ end
 String.__slots.len = function(self)
    return #self
 end
+Comparable:make(__env, String)
 debug.setmetatable("", String)
 
 Boolean = newtype"Boolean"
@@ -853,6 +896,7 @@ debug.setmetatable(true, Boolean)
 Function = newtype"Function"
 Function.__call = nil
 Function.__tostring = nil
+Function.__slots.dump = string.dump
 Function.__slots.coerce = function(self, ...)
    return self(...)
 end
@@ -891,7 +935,7 @@ Pattern.__name = "Pattern"
 Pattern.__from = Any
 Pattern.__with = { }
 Pattern.__slots = setmetatable(Pattern.__index, { __index = Any.__slots })
-Pattern.__index = newindexer(Pattern.__slots)
+Pattern.__index = lookup(Pattern.__slots)
 Pattern.toString = function() return '<type '..name..'>' end
 for k,v in pairs(Meta) do
    Pattern[k] = v
@@ -968,7 +1012,14 @@ do
    end
 end
 
-__env.global = _G
-__env.main = __env
+__env.global = __env
+__env.predef = setmetatable({ }, { __index = lookup({ }) })
+for k,v in pairs(__env) do
+   if type(v) == 'function' then
+      __env.predef[k] = function(_, ...) return v(...) end
+   else
+      __env.predef[k] = function() return v end
+   end
+end
 return __env
 

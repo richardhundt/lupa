@@ -1,12 +1,10 @@
-class A from Array {
-   method >>+<<(b) {
-      var c = [ ]
-      for i=1, self.len {
-         c[i] = self[i] + (b[i] || 0)
-      }
-      c
-   }
-}
+var a = [1, 2, 3] + [4, 5, 6]
+
+print("A => ", a)
+
+var a = [ print, "Hello" ]
+a("World!")
+
 var a = [ 1, 2, 3, 4, 5, 6, 7, 8, 9 ]
 for i=1, 10_000_000 {
     a.push(i)
@@ -14,11 +12,3 @@ for i=1, 10_000_000 {
 }
 print(a)
 
-var a1 = A.new
-var a2 = A.new
-a1.push(1)
-a1.push(2)
-a2.push(1)
-a2.push(2)
-
-print(a1 >>+<< a2)

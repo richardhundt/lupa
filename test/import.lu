@@ -11,6 +11,16 @@ print("the answer:", answer)
 print("cheese?:", cheese)
 
 class Point3D from shapes.Point {
-
+   print("life, the universe and everything? ${shapes.answer}!")
+   static has DEBUG = true
+   our MODE = 'funky'
+   class Inner {
+      method greet() {
+         print("Hi globe!", Inner.new, Point3D.new)
+      }
+   }
 }
+
+Point3D.Inner.new.greet
+print(Point3D.MODE)
 
