@@ -1,9 +1,0 @@
-function doit(block) {
-    print(block())
-}
-
-doit => { 42 }
-doit(function(x) { 42 })
-
-var a = (x) => { x + x }
-

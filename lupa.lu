@@ -227,16 +227,16 @@ object Grammar {
       return a2.format(oper.format(a1,b))
    }
 
+   var name_patt =  / "__env." ? { (%alnum | "_")+ } hs* "=" /
+
    function make_bind_expr(ctx, l, s1, s2, r) {
       if l.len == 1 {
-         var name = l[1].match('([%w_]+)%s*=') // XXX: this is nasty
+         var name = name_patt.match(l[1])
          if name {
             var info = ctx.lookup(name)
-            if info {
-               if info['type'] {
-                  var type = info['type']
-                  r[1] = (type+':coerce(%s)').format(r[1])
-               }
+            if info && info['type'] {
+               var type = info['type']
+               r[1] = (type+':coerce(%s)').format(r[1])
             }
          }
          return l[1].format(s2 + r.concat(','))
@@ -244,10 +244,10 @@ object Grammar {
       var t = [ ]
       for i = 1, l.len {
          t.push(genid())
-         var name = l[i].match('([%w_]+)%s*=') // XXX: this is nasty
+         var name = name_patt.match(l[i])
          if name {
             var info = ctx.lookup(name)
-            if info['type'] {
+            if info && info['type'] {
                var type = info['type']
                t[i] = (type+':coerce(%s)').format(t[i])
             }

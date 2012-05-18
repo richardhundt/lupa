@@ -2,6 +2,8 @@ class Point {
    has x : Number = 0
    has y : Number = 0
 
+   our MODE : String = 'cool'
+
    static has DEBUG : Boolean = false
 
    static method apply() {
@@ -9,7 +11,8 @@ class Point {
    }
 
    method init() {
-      print("HELLS BELLS", self, Point3D)
+      MODE = 'awesome!'
+      print("HELLS BELLS, this is ${MODE}", self, Point3D)
    }
    method move(x = 0, y = 0) : Void {
       .x = x

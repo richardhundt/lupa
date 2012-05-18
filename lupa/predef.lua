@@ -90,7 +90,7 @@ local function lookup(slots)
    return function(self, key)
       local val = slots[key]
       if val == nil then
-         throw(TypeError:new("no such member '"..tostring(key).."' in "..tostring(getmetatable(self)).." at "..trace()), 2)
+         throw(TypeError:new("no such member '"..tostring(key).."' in "..tostring(getmetatable(self)).." at "..debug.traceback()), 2)
       end
       return val
    end
