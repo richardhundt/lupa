@@ -110,7 +110,7 @@ trait Named {
    has name = error("A pet needs a name!")
 }
  
-// multiple inheritance with C3 resolution order and trait mixins
+// single inheritance with trait mixins
 class Hamster from Mammal with Pet[Number], Named {
 
    // default initializer
