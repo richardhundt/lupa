@@ -1,4 +1,5 @@
-if true {
+our a = 1
+if a != 0 {
     print("good")
 }
 else {

@@ -15,7 +15,7 @@ trait Pet {
 }
 
 guard Int(i : Number) {
-   return math#floor(i)
+   return math::floor(i)
 }
 
 class Mammal {
@@ -26,6 +26,7 @@ guard NumArray(a : Array) {
    for i, v : Number in a { a[i] = v }
    return a
 }
+
 try {
    var a : NumArray = [ "1", 2, "three" ]
 }

@@ -1101,7 +1101,6 @@ object Grammar {
       | <func>
       | <short_func>
       | <pattern>
-      | &"::" {`'self'`}
       | <ident>
       | <symbol>
       | &"." {`'self'`}
@@ -1120,9 +1119,8 @@ object Grammar {
       {~
       | ("." -> ":") s <opname> (&( hs* (<paren_expr>)) | {`'()'`})
       | "[" {~ s <expr> s ~} "]" -> ":${mangle('_[]')}(%1)"
-      | ("#" -> '') hs* "[" s <expr> s "]"
-      | ("#" -> ".") hs* {~ <name> -> demangle ~}
-      | ("::" -> ":${mangle('::')}") s (<name> -> '("%1")')
+      | ("::" -> '') hs* "[" s <expr> s "]"
+      | ("::" -> ".") hs* {~ <name> -> demangle ~}
       ~}
    }
 
@@ -1158,7 +1156,10 @@ object Grammar {
    }
 
    rule infix_expr {
-      {~ <expr_1> ~}
+      {~ <expr_0> ~}
+   }
+   rule expr_0 {
+      <{ make_infix_expr(/ !keyword word idsafe /, /<expr_1>/) }>
    }
    rule expr_1 {
       <{ make_infix_expr(/"|" punct* /, /<expr_2>/) }>
@@ -1173,7 +1174,7 @@ object Grammar {
       <{ make_infix_expr(/("<"|">") punct* /, /<expr_5>/) }>
    }
    rule expr_5 {
-      <{ make_infix_expr(/"in" idsafe|("="|"!") punct+ /, /<expr_6>/) }>
+      <{ make_infix_expr(/("="|"!") punct+ /, /<expr_6>/) }>
    }
    rule expr_6 {
       <{ make_infix_expr(/(":"|"?") punct* /, /<expr_7>/) }>
@@ -1185,7 +1186,7 @@ object Grammar {
       <{ make_infix_expr(/("*"|"/"!('/'|'*')|"%") punct* /, /<expr_9>/) }>
    }
    rule expr_9 {
-      <{ make_infix_expr(/ !keyword word idsafe /, /<prefix_expr>/) }>
+      <{ make_infix_expr(/"#" punct* /, /<prefix_expr>/) }>
    }
 
    rule prefix_expr {
@@ -1228,10 +1229,9 @@ object Grammar {
    rule bind_suffix {
       {~
       | "." {hs*} <opname> ->":%1%2${mangle('=')}(%%s)"
-      | "#" {hs*} {~ <name> -> demangle ~} -> '.%1%2=%%s'
       | "[" {~ s <expr> s ~} "]" -> ":${mangle('_[]=')}(%1,%%s)"
-      | "#" {hs*} "[" {~ s <expr> s ~} "]" -> '%1[%2]=%%s'
-      | ("::" -> ":${mangle('::=')}") ({hs*} <name> -> '("%2",%1%%s)')
+      | "::" {hs*} {~ <name> -> demangle ~} -> '.%1%2=%%s'
+      | "::" {hs*} "[" {~ s <expr> s ~} "]" -> '%1[%2]=%%s'
       ~}
    }
 
@@ -1409,8 +1409,8 @@ object Compiler {
 
       var eenv = newtable()
       var meta = newtable()
-      meta#__index = global#require("lupa.predef")
-      global#setmetatable(eenv, meta)
+      meta::__index = global::require("lupa.predef")
+      global::setmetatable(eenv, meta)
 
       return eval(eenv)
    }
@@ -1451,10 +1451,10 @@ var run = function(...a) {
    if a.len == 0 {
       var repl = require("lupa.repl")
       repl.run()
-      os#exit(0)
+      os::exit(0)
    }
    var opt = getopt(...a)
-   var sfh = assert(io#open(opt['file']))
+   var sfh = assert(io::open(opt['file']))
    var src = sfh.read('*a')
    sfh.close()
 
@@ -1464,15 +1464,15 @@ var run = function(...a) {
    }
    catch (e) {
       print(tostring(e))
-      os#exit(-1)
+      os::exit(-1)
    }
    if opt['l'] {
-      io#stdout.write(lua, "\n")
-      os#exit(0)
+      io::stdout.write(lua, "\n")
+      os::exit(0)
    }
 
    if opt['o'] {
-      var outc = io#open(opt['o'], "w+")
+      var outc = io::open(opt['o'], "w+")
       outc.write(lua)
       outc.close()
    }
@@ -1480,16 +1480,16 @@ var run = function(...a) {
       lua = lua.gsub("^%s*#![^\n]*",'')
       var main = assert(loadstring(lua,'='+opt['file']))
       if opt['b'] {
-         var outc = io#open(opt.b, "wb+")
-         outc.write(String#dump(main))
+         var outc = io::open(opt.b, "wb+")
+         outc.write(Function::dump(main))
          outc.close()
       }
       else {
-         var main_env  = require('lupa.predef')#environ()
-         REGISTRY#[main] = { name = 'main', body = main, item = main }
+         var main_env  = require('lupa.predef')::environ()
+         REGISTRY::[main] = { name = 'main', body = main, item = main }
          xpcall(main, function(err) {
-            io#stderr.write(debug#traceback(tostring(err)),"\n")
-            os#exit(1)
+            io::stderr.write(debug::traceback(tostring(err)),"\n")
+            os::exit(1)
          }, main_env, opt['file'], ...a)
       }
    }
@@ -1497,12 +1497,12 @@ var run = function(...a) {
 
 var LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu"
 {
-   table#insert(package#loaders, function(modname) {
+   table::insert(package::loaders, function(modname) {
       var filename = modname.gsub("%.", "/")
       for path in LUPA_PATH.gmatch("([^;]+)") {
          if path != "" {
             var filepath = path.gsub("?", filename)
-            var file = io#open(filepath, "r")
+            var file = io::open(filepath, "r")
             if file {
                var src = file.read("*a")
                return function(...args) {
@@ -1521,5 +1521,5 @@ var LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu"
    })
 }
 
-if global#arg#[1] { run(global#unpack(arg)) }
+if global::arg::[1] { run(global::unpack(arg)) }
 

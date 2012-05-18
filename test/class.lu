@@ -69,5 +69,5 @@ catch (e : TypeError) {
 }
 
 var h = { }
-h#__index = h
+h::__index = h
 
