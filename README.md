@@ -33,6 +33,13 @@ an object which implements a `coerce` method. For lexical variables,
 this is invoked for each operation which updates the binding. For
 example:
 
+Lupa to Lua source translation is done without the use of abstract
+syntax trees in a single pass, using essentially a big substitution
+capture with LPeg. This limits static checks and early binding
+across source files, but compilation is fast and within a given
+compilation unit we can still perform some checks. It also allows
+us to call from Lupa into Lua.
+
 ```ActionScript
 var a : Number = 42
 a = 69       // ok

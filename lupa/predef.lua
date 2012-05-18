@@ -518,6 +518,19 @@ local function newtype(name)
    return Type:new(name)
 end
 
+Guard = newtype"Guard"
+Guard.__index = newindexer(Guard.__slots)
+Guard.__slots.coerce = function(self, ...)
+   return self:__body(...)
+end
+function guard(name, body)
+   local guard = setmetatable({
+      __name = name;
+      __body = body;
+   }, Guard)
+   return guard
+end
+
 Class = newtype"Class"
 Class.__index = newindexer(Class.__slots)
 Class.__slots[mangle"::"] = function(obj, key)

@@ -157,10 +157,10 @@ object Grammar {
    var keyword = / (
       | "var" | "function" | "class" | "with" | "like" | "in" | "our"
       | "nil" | "true" | "false" | "typeof" | "return" | "as" | "static"
-      | "for" | "throw" | "method" | "has" | "from" | "break"
+      | "for" | "throw" | "method" | "has" | "from" | "break" | "guard"
       | "switch" | "case" | "default" | "do" | "while" | "needs"
       | "continue" | "import" | "export" | "try" | "catch" | "super"
-      | "default" | "finally" | "if" | "else" | "yield" | "rule"
+      | "default" | "finally" | "if" | "else" | "rule"
    ) idsafe /
 
    var unrops = {
@@ -516,6 +516,22 @@ object Grammar {
       return decl.format(n,n,w,p.len,a,b)
    }
 
+   function make_guard_decl(c,n,p,b,s) {
+      p.unshift('self')
+      c.define('self', { })
+      var p, h = make_params(c, p)
+      var decl = '__env.guard(%q,function(%s)%s %s end)'
+      if s == 'lexical' {
+         c.scope.outer.define(n)
+         decl = "local %s="+decl
+      }
+      else {
+         c.scope.outer.define(n, { base = '__env' })
+         decl = "__env.%s="+decl
+      }
+      return decl.format(n,n,p,h,b)
+   }
+
    function make_try_stmt(s,ctx, try_body, catch_blocks, loopy) {
       var args = [ ]
       if loopy {
@@ -641,6 +657,7 @@ object Grammar {
       | <func_decl>
       | <class_decl>
       | <trait_decl>
+      | <guard_decl>
       | <object_decl>
       | <import_decl>
       | <export_decl>
@@ -899,6 +916,17 @@ object Grammar {
             ) <sep>? ~}
          )
       ) -> make_func ~} <leave>
+   }
+
+   rule guard_decl {
+      {~ (
+         "guard" idsafe hs+ <ctx> <name> s
+         <enter>
+         ("(" s <param_list> s <{ expect(")") }> s | {`[]`})
+         <type_list>? s "{"
+         {~ s <func_body> s ~}
+         <{ expect("}") }>
+      ) -> make_guard_decl ~} <leave>
    }
 
    rule class_decl {

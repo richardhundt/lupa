@@ -14,12 +14,16 @@ trait Pet {
    }
 }
 
+guard Int(i : Number) {
+   return math#floor(i)
+}
+
 class Mammal {
    has blood = "warm"
 }
 
 class Dog from Mammal with Guide[String], Pet {
-   has legs : Number = 4
+   has legs : Int = 4
    has name : String = 'anon'
 
    method greet(mesg : Array = [ 'asdfas' ]) {
@@ -33,7 +37,8 @@ var d : Dog = Dog.new
 d.walk("walkies!")
 d.greet
 d.wooz
-d.legs = 4
+d.legs = 4.2
+print("LEGS:", d.legs)
 d.name = "Fido"
 
 print(d is Dog)
