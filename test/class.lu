@@ -2,6 +2,12 @@ class Point {
    has x : Number = 0
    has y : Number = 0
 
+   static has DEBUG : Boolean = false
+
+   static method apply() {
+      self.new
+   }
+
    method init() {
       print("HELLS BELLS", self, Point3D)
    }
@@ -28,6 +34,9 @@ class Point3D from Point {
 
 var a = [ ]
 a.map(function() { })
+
+var o = Point()
+print("APPLY:", o)
 
 var p = Point.new
 var p = Point3D.new

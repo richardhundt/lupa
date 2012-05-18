@@ -1,43 +1,39 @@
 
-trait Guide(M) {
-    method walk() { print(M) }
+trait Guide[T] {
+   method walk(m : T) {
+      print(m)
+   }
 }
 
-trait Pet(N) {
-    has size = N
-    needs legs
-    method wooz() {
-        var x = 42
-        print(x)
-    }
+trait Pet {
+   has size : Number = 4
+   needs legs
+   method wooz() {
+      var x = 42
+      print(x)
+   }
 }
 
 class Mammal {
-    has blood = "warm"
+   has blood = "warm"
 }
 
-guard ?Number(v) {
-   if v == nil { return v }
-   return Number.coerce(v)
-}
+class Dog from Mammal with Guide[String], Pet {
+   has legs : Number = 4
+   has name : String = 'anon'
 
-class Dog from Mammal with Guide("guiding"), Pet(42) {
-    has legs : ?Number
-    has name : String
-
-    method greet(mesg : Array = [ 'asdfas' ]) {
-        print("woof!")
-        print("Size => ", self.size)
-        print("BLOOD => ", self.blood)
-    }
+   method greet(mesg : Array = [ 'asdfas' ]) {
+      print("woof!")
+      print("Size => ", self.size)
+      print("BLOOD => ", self.blood)
+   }
 }
 
 var d : Dog = Dog.new
-d.walk
+d.walk("walkies!")
 d.greet
 d.wooz
 d.legs = 4
-d.legs = nil
 d.name = "Fido"
 
 print(d is Dog)

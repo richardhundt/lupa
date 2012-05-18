@@ -10,7 +10,61 @@ Lupa - multi-paradigm object oriented, dynamic language
 
 *NOTE:* This is alpha software and is therefore very likey to change
 
-Lupa is a language which translates to Lua. The aim to provide a language which is fast and lean, can seamlessly call into existing Lua code and libraries, while providing a little more safety and features for programming in the large than stock Lua does.
+Lupa is a language which translates to Lua. So, bowing to the
+mandatory justification of "why yet another language", here's the
+reasoning. LuaJIT2 is fast. Very fast. I like fast in a language
+runtime. LuaJIT2 also has a low memory footprint. Which is also
+nice.
+
+However, although a beautiful language, Lua is also very minimal.
+I want a language with a bit more meat. More than that though,
+I want a language which gives me the most syntactic and semantic
+flexibility possible, while allowing me to write code which is
+run-time safe. Not type safe, but rather constraint safe.
+
+For syntactic and semantic flexibility, Lupa borrows an idea from
+Scala in that infix and prefix operators are method calls.
+
+For safety, Lupa provides compile-time symbol checks to catch typos,
+and for the rest we have guard expressions.
+
+Guard expressions are simply ordinary expressions which evaluate to
+an object which implements a `coerce` method. For lexical names,
+this is invoked for each operation which updates the binding. For
+example:
+
+```ActionScript
+var a : Number = 42
+a = 69       // ok
+a = 'cheese' // error cannot coerce 'cheese' to number
+```
+
+The compiler inserts calls to `Number#coerce` whenever it sees
+an assignment to `a`. The same applies to function/method parameters
+and return values. For example:
+
+```ActionScript
+function add(a : Number, b : Number) : Number {
+    return a + b
+}
+var c = add(40, 2)
+```
+
+```ActionScript
+class A {
+    method >>+<<(a) {
+        print("funky operator on: "+a)
+    }
+}
+
+var a1 = A.new
+var a2 = A.new
+a1 >>+<< a2
+```
+
+Lupa borrows ideas from Scala in that (almost all) infix and prefix
+operators are method calls, and supports single inheritance with
+trait composition. For constraints, Lupa supports guard expressions.
 
 Most of Lua's semantics shine through, such as Lua's for loops, 1-based arrays and string pattern matching.
 

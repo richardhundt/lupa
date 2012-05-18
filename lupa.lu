@@ -7,7 +7,7 @@ class Scope {
       .outer = outer
    }
    method lookup(name) {
-      if name in .entries {
+      if .entries[name] {
          return .entries[name]
       }
       else if .outer {
@@ -86,7 +86,14 @@ object Grammar {
    }
 
    function define(name, ctx, base, type, expr) {
-      ctx.define(name, { base = base, type = type, expr = expr })
+      if name is Array {
+         for i=1, name.len {
+            ctx.define(name[i], { base = base, type = type, expr = expr })
+         }
+      }
+      else {
+         ctx.define(name, { base = base, type = type, expr = expr })
+      }
       return name
    }
    function static_define(name, ctx, ...a) {
@@ -101,7 +108,6 @@ object Grammar {
       ctx.leave()
       return
    }
-
    function lookup(pos, name, ctx) {
       var info = ctx.lookup(name)
       if info {
@@ -119,7 +125,6 @@ object Grammar {
    function update(pos, name, ctx) {
       var info = ctx.lookup(name)
       if !info {
-         define(name, ctx, '__env')
          ctx.resolve[name] = pos
          return '__env.'+name+'=%s'
       }
@@ -150,8 +155,8 @@ object Grammar {
    var word    = / ((%alpha | "_") (%alnum | "_")*) /
 
    var keyword = / (
-      | "var" | "function" | "class" | "with" | "like" | "in" | "guard"
-      | "nil" | "true" | "false" | "typeof" | "return" | "as"
+      | "var" | "function" | "class" | "with" | "like" | "in" | "our"
+      | "nil" | "true" | "false" | "typeof" | "return" | "as" | "static"
       | "for" | "throw" | "method" | "has" | "from" | "break"
       | "switch" | "case" | "default" | "do" | "while" | "needs"
       | "continue" | "import" | "export" | "try" | "catch" | "super"
@@ -159,32 +164,20 @@ object Grammar {
    ) idsafe /
 
    var unrops = {
-      /*
-      ["#"] = "#(%s)",
-      ["-"] = "-(%s)",
-      */
       ["!"] = "not(%s)",
       ["typeof"] = "__env.typeof(%s)",
    }
 
    var binops = {
       /*
-      ["**"] = "(%s)^(%s)",
-      ["*"] = "(%s)*(%s)",
-      ["/"] = "(%s)/(%s)",
-      ["%"] = "(%s)%%(%s)",
-      ["+"] = "(%s)+(%s)",
-      ["-"] = "(%s)-(%s)",
-      ["~"] = "(%s)..(%s)",
-      */
       ["<="] = "(%s)<=(%s)",
       [">="] = "(%s)>=(%s)",
       ["<"] = "(%s)<(%s)",
       [">"] = "(%s)>(%s)",
       ["=="] = "(%s)==(%s)",
       ["!="] = "(%s)~=(%s)",
+      */
 
-      // XXX Type member leakage
       ['can'] = false,
       ['is'] = false,
       ['as'] = false,
@@ -194,7 +187,6 @@ object Grammar {
       ["!=="] = "(%s)~=(%s)",
       ["&&"] = "(%s)and(%s)",
       ["||"] = "(%s)or(%s)",
-      ["in"] = "__env._in(%s,%s)",
    }
 
    var mangles = {
@@ -246,7 +238,7 @@ object Grammar {
 
    function make_bind_expr(ctx, l, s1, s2, r) {
       if l.len == 1 {
-         var name = l[1].match('^([%w_]+)%s*=')
+         var name = l[1].match('([%w_]+)%s*=') // XXX: this is nasty
          if name {
             var info = ctx.lookup(name)
             if info {
@@ -261,7 +253,7 @@ object Grammar {
       var t = [ ]
       for i = 1, l.len {
          t.push(genid())
-         var name = l[i].match('^([%w_]+)%s*=')
+         var name = l[i].match('([%w_]+)%s*=') // XXX: this is nasty
          if name {
             var info = ctx.lookup(name)
             if info['type'] {
@@ -328,13 +320,21 @@ object Grammar {
       / (({~ term (&(hs+ oper) hs+)? ~} {: hs* {oper} {~ s term ~} :}*) ~> fold_infix) /
    }
 
-   function make_var_decl(ctx, lhs, rhs) {
+   function make_var_decl(ctx, kind, lhs, rhs) {
       rhs = rhs || [ ]
       var tmp = [ ]
       var buf = [ ]
 
       if rhs.len == 0 {
-         return lhs.concat()
+         if kind == nil {
+            return 'local '+lhs.concat()
+         }
+         else {
+            for i=1, lhs.len {
+               lhs[i] = '__env.'+lhs[i]+'=nil'
+            }
+            return lhs.concat(';')
+         }
       }
 
       if lhs.len == 1 {
@@ -344,10 +344,15 @@ object Grammar {
             var type = info['type']
             var tyid = genid()
             info['type'] = tyid
-            head = '%s=%s;local '.format(tyid,type)
+            head = 'local %s=%s;'.format(tyid,type)
             rhs[1] = (tyid+':coerce(%s)').format(rhs[1] || '')
          }
-         return "%s%s=%s;".format(head, lhs[1], rhs[1] || 'nil')
+         if kind == nil {
+            return "%slocal %s=%s;".format(head, lhs[1], rhs[1] || 'nil')
+         }
+         else {
+            return "%s__env.%s=%s;".format(head, lhs[1], rhs[1] || 'nil')
+         }
       }
 
       for i = 1, lhs.len {
@@ -355,10 +360,13 @@ object Grammar {
       }
 
       if rhs.len > 0 {
-         buf.push('%s=%s'.format(tmp.concat(','), rhs.concat(',')))
+         buf.push('local %s=%s'.format(tmp.concat(','), rhs.concat(',')))
       }
 
       var head = [ ]
+      if kind == nil {
+         head.push('local ')
+      }
       for i=1, lhs.len {
          var info = ctx.lookup(lhs[i])
          if info['type'] {
@@ -368,22 +376,22 @@ object Grammar {
             head.push('%s=%s;'.format(tyid,type))
             tmp[i] = (tyid+':coerce(%s)').format(tmp[i])
          }
-      }
-      if head.len > 0 {
-         head.push('')
+         if kind != nil {
+            lhs[i] = '__env.'+lhs[i]
+         }
       }
 
-      buf.push('%slocal %s=%s;'.format(head.concat(''), lhs.concat(','), tmp.concat(',')))
+      buf.push('%s%s=%s;'.format(head.concat(''), lhs.concat(','), tmp.concat(',')))
       return buf.concat(';')
    }
 
 
-   function make_has_decl(ctx, name, type, body, scope) {
+   function make_has_decl(ctx, name, type, body, scope, attr) {
       define(name, ctx, scope, type, body)   
       if !type {
          type = 'nil'
       }
-      return '__env.has(self,"%s",%s,function(self) return %s end);'.format(name,type,body)
+      return '__env.has(self,"%s",%s,function(self) return %s end,%s);'.format(name,type,body,attr)
    }
 
    function make_params(ctx, list) {
@@ -415,10 +423,10 @@ object Grammar {
                   var type = info['type']
                   var tyid = genid()
                   info['type'] = tyid
-                  head.push(('local %s=%s;local %s=__env.Array(...):inject(function(...) return %s:coerce(...) end)').format(tyid,type,name,tyid))
+                  head.push(('local %s=%s;local %s=__env.Array:new(...):inject(function(...) return %s:coerce(...) end)').format(tyid,type,name,tyid))
                }
                else {
-                  head.push("local %s=__env.Array(...)".format(name))
+                  head.push("local %s=__env.Array:new(...)".format(name))
                }
             }
          }
@@ -435,11 +443,11 @@ object Grammar {
       return 'for %s=%s,%s,%s do %s%s end'.format(name, init, last, step, head, body)
    }
 
-   function make_return_stmt(ctx, is_lex, expr_list, ret_guard) {
+   function make_return_stmt(ctx, is_lex, expr_list, ret_type) {
       expr_list = expr_list || [ ]
-      if ret_guard {
-         for i=1, ret_guard.len {
-            var type = ret_guard[i]
+      if ret_type {
+         for i=1, ret_type.len {
+            var type = ret_type[i]
             var expr = expr_list[i] || ''
             expr_list[i] = (type+":coerce(%s)".format(expr))
          }
@@ -468,10 +476,10 @@ object Grammar {
       }
    }
 
-   function make_meth_decl(c,n,p,b,s) {
+   function make_meth_decl(c,n,p,b,s,a) {
       p.unshift('self')
       var p, h = make_params(c,p)
-      return "__env.method(self,%q,function(%s)%s %s end);".format(n,p,h,b)
+      return "__env.method(self,%q,function(%s)%s %s end,%s);".format(n,p,h,b,a)
    }
    function make_class_decl(c,n,f,w,b,s) {
       var decl = '__env.class(__env,%q,%s,{%s},function(__env,self,super) %s end);'
@@ -494,32 +502,20 @@ object Grammar {
       return decl.format(n,n,f,w,b)
    }
    function make_trait_decl(c,n,p,w,b) {
-      var a, h = make_params(c, p)
-      var decl = '__env.trait(__env,%q,{%s},%s,function(__env,self,%s)%s %s end);'
-      var l = p.len
-      var p = p.concat(',')
+      var decl = '__env.trait(__env,%q,{%s},%s,function(__env,self,%s)%s end);'
+      if p.len > 0 {
+         a = p.concat(',')
+      }
+      else {
+         a = '...'
+      }
       if s == 'lexical' {
          decl = 'local %s='+decl
       }
       else {
          decl = "__env.%s="+decl
       }
-      return decl.format(n,n,w,l,a,h,b)
-   }
-   function make_guard_decl(c,n,p,b,s) {
-      p.unshift('self')
-      c.define('self', { })
-      var p, h = make_params(c, p)
-      var decl = '__env.guard("%s",function(%s)%s %s end)'
-      if s == 'lexical' {
-         c.scope.outer.define(n)
-         decl = "local %s="+decl
-      }
-      else {
-         c.scope.outer.define(n, { base = '__env' })
-         decl = "__env.%s="+decl
-      }
-      return decl.format(n,n,p,h,b)
+      return decl.format(n,n,w,p.len,a,b)
    }
 
    function make_try_stmt(s,ctx, try_body, catch_blocks, loopy) {
@@ -572,7 +568,7 @@ object Grammar {
             qnames[i] = quote(names[i])
          }
       }
-      return "__env.import(__env,%q,{%s},%s);".format(path, qnames.concat(','), dest)
+      return "__env:import(%q,{%s},%s);".format(path, qnames.concat(','), dest)
    }
    function make_export_decl(c,n) {
       var b = [ ]
@@ -591,7 +587,7 @@ object Grammar {
    }
    rule unit {
       {:set_return: {`false`} :}
-      {:ret_guard: {`nil`} :}
+      {:ret_type: {`nil`} :}
       {:scope: {`'__env'`} :}
       {:loopy: {`false`} :}
       { %s* '#!' (!nl .)* %s* }? s
@@ -602,7 +598,7 @@ object Grammar {
       (<ctx> -> function(ctx) {
          for k,v in ctx.resolve {
             if !ctx.lookup(k) {
-               throw SyntaxError(
+               throw SyntaxError.new(
                   "symbol '${k}' was never defined on"+
                   " line: ${error_line(ctx.source,v)}"+
                   " near: ${error_near(ctx.source,v)}",
@@ -612,18 +608,18 @@ object Grammar {
          var buf = [ ]
          for k,v in ctx.exports {
             if !ctx.lookup(k) {
-               throw SyntaxError("export '${k}' was never defined", 2)
+               throw SyntaxError.new("export '${k}' was never defined", 2)
             }
             buf.push('{%q,%s}'.format(k,lookup(0, k, ctx)))
          }
-         return " return __env.export(${buf.concat(',')});"
+         return " return __env:export(${buf.concat(',')});"
       })
       <leave>
    }
    rule eval {
       {~ 
          {:set_return: {`false`} :}
-         {:ret_guard: {`nil`} :}
+         {:ret_type: {`nil`} :}
          {:scope: {`'lexical'`} :}
          {:loopy: {`false`} :}
          {`'local __env=...;'`}
@@ -645,7 +641,6 @@ object Grammar {
    rule decl_stmt {
       | <var_decl>
       | <func_decl>
-      | <guard_decl>
       | <class_decl>
       | <trait_decl>
       | <object_decl>
@@ -676,7 +671,7 @@ object Grammar {
       {~ "return" -> '' idsafe s (
          <ctx>
          =set_return ((<expr> (s "," s <expr>)*)? -> [ ])
-         =ret_guard
+         =ret_type
          -> make_return_stmt)
       ~}
    }
@@ -702,20 +697,6 @@ object Grammar {
          {~ s <enter> <stmt_list>? <leave> s ~}
       '}') -> 'local _break; repeat %3 until true; if _break then break end' ~}
    }
-   /*
-   rule import_decl {
-      {~ (
-         "import" idsafe s {~ word ("." word)* ~} (
-            | ".{" s {~ <import_term> (s "," s <import_term>)* ~} s "}"
-            | {`''`}
-         )
-      ) -> '__env.import(__env,"%1",{%2})' ~}
-   }
-   rule import_term {
-      | ((word -> quote) s "=>" s (word -> quote)) -> '[%2]=%1'
-      | (word -> quote) -> '[%1]=%1'
-   }
-   */
    rule import_decl {
       {~ (
          "import" idsafe s
@@ -730,7 +711,7 @@ object Grammar {
       ~}
    }
    rule for_name {
-      <name> <ctx> {`nil`} (s <guard_expr>)? -> define
+      <name> <ctx> {`nil`} (s <type_expr>)? -> define
    }
    rule for_in_stmt {
       {~ "for" idsafe s <enter> <ctx>
@@ -813,7 +794,7 @@ object Grammar {
    rule catch_stmt {
       {~
          "catch" idsafe <ctx> <enter> {s}
-         "(" {s} (<name> <ctx> {`nil`} (hs* <guard_expr> | {`nil`}) -> define)
+         "(" {s} (<name> <ctx> {`nil`} (hs* <type_expr> | {`nil`}) -> define)
          ")" {s} "{" {~ s <lambda_body> s ~} "}"
          =loopy -> make_catch_stmt <leave>
       ~}
@@ -823,32 +804,44 @@ object Grammar {
       <block_body>
    }
 
-   rule guard_term {
-      {~ <ident> ("[" s <expr_list> s "]" -> ":of(%1)")? ~}
+   rule name_list {
+      {~ <name> (hs* "," s <name>)* ~}
    }
-   rule guard_expr {
-      ":" s <expr>
+   rule type_name {
+      {~ <ident> ("::" -> "." <name>)* ~}
    }
-   rule guard_list {
-      ":" s {:ret_guard: (<expr> (s "," s <expr>)* -> [ ]) :}
+   rule type_term {
+      {~ <type_name> ("[" s <type_term_list> s "]" -> ":of(%1)")? ~}
+   }
+   rule type_term_list {
+      <type_term> (hs* "," s <type_term>)*
+   }
+   rule type_expr {
+      ":" s <type_term>
+   }
+   rule type_list {
+      ":" s {:ret_type: (<type_term> (s "," s <type_term>)* -> [ ]) :}
    }
 
    rule var_decl {
-      {~ "var" idsafe -> "local" s ({:
-         <ctx> (<var_list> -> [ ])
-         (s "=" s (<expr> (s "," s <expr>)* -> [ ]))?
-      :} -> make_var_decl) ~}
+      {:kind: ("var" {`nil`} | "our" {`'__env'`}) idsafe :} hs* {:
+         <ctx> =kind (<var_list> -> [ ])
+         (hs* "=" ({~ s <expr> ~} {~ s ("," -> '') s <expr> ~}* -> [ ]))?
+      :} -> make_var_decl
    }
    rule var_list {
-      (<name> <ctx> {`nil`} (s <guard_expr>)? -> define)
-      (s "," s (<name> <ctx> {`nil`} (s <guard_expr>)? -> define))*
+      (<name> <ctx> =kind (s <type_expr>)? -> define)
+      (s "," s (<name> <ctx> =kind (s <type_expr>)? -> define))*
    }
 
+   rule attr {
+      {:attr: {~ "static" idsafe hs* -> 'true' ~} | {`'false'`} :}
+   }
    rule has_decl {
-      {~ ("has" idsafe s <ctx> <name>
-            (s <guard_expr> | {`nil`})
+      {~ (<attr> "has" idsafe s <ctx> <name>
+            (s <type_expr> | {`nil`})
             (s "=" s <expr> | {`""`})
-            =scope
+            =scope =attr
       ) -> make_has_decl ~}
    }
 
@@ -857,21 +850,21 @@ object Grammar {
    }
 
    rule meth_decl {
-      {~ ("method" idsafe <ctx> s
+      {~ (<attr> "method" idsafe <ctx> s
       ({~ {"_[]=" | "_[]"} -> mangle ~} | <opname> ("=" -> mangle)?) s
       <enter>
       ({`'self'`} <ctx> -> static_define)
       ("(" s <param_list> s <{ expect(")") }> s | {`[]`})
-      <guard_list>? s
+      <type_list>? s
       "{" {~ s <func_body> s ~} <{ expect("}") }>
-      =scope) -> make_meth_decl ~} <leave>
+      =scope =attr) -> make_meth_decl ~} <leave>
    }
 
    rule func_decl {
       {~ ("function" idsafe <ctx> s <name> s
       <enter>
       ("(" s <param_list> s <{ expect(")") }> s | {`[]`})
-      <guard_list>? s
+      <type_list>? s
       "{" {~ s <func_body> s ~} <{ expect("}") }>
       ) -> make_func_decl ~} <leave>
    }
@@ -884,58 +877,44 @@ object Grammar {
    rule func_stmt {
       | ((&(<expr> s "}") <ctx> // last expr implies return
         =set_return (<expr> -> [ ])
-        =ret_guard) -> make_return_stmt)
+        =ret_type) -> make_return_stmt)
       | <stmt>
    }
    rule func {
       {~ (
          "function" idsafe s <enter>
-         "(" s <ctx> <param_list> s <{ expect(")") }> (s <guard_list>)? s "{"
+         "(" s <ctx> <param_list> s <{ expect(")") }> (s <type_list>)? s "{"
          {~ s <func_body> s ~}
          <{ expect("}") }>
       ) -> make_func ~} <leave>
    }
    rule short_func {
       {~ (
-         ("(" s <enter> <ctx> <param_list> s ")" (s <guard_list>)? s
+         ("(" s <enter> <ctx> <param_list> s ")" (s <type_list>)? s
          | <enter> <ctx> {`[]`})
-         '=>' s "{" {~ s <func_body> s ~} <{ expect("}") }>
+         '=>' s (
+            | "{" {~ s <func_body> s ~} <{ expect("}") }>
+            | (
+               <ctx>
+               =set_return (<expr> -> [ ])
+               =ret_type -> make_return_stmt
+            ) <sep>?
+         )
       ) -> make_func ~} <leave>
    }
 
-   rule guard_decl {
-      {~ (
-         "guard" idsafe hs+ <ctx> <name> s
-         <enter>
-         ("(" s <param_list> s <{ expect(")") }> s | {`[]`})
-         <guard_list>? s "{"
-         {~ s <func_body> s ~}
-         <{ expect("}") }>
-      ) -> make_guard_decl ~} <leave>
-   }
-
    rule class_decl {
-      "class" idsafe s <ctx> {~ <name> <ctx> {`'__env'`} -> define ~} s
+      "class" idsafe s <ctx> {~ <name> <ctx> {`'__env'`} {`'Trait'`} -> define ~} s
       (<class_from> | {`"nil"`}) s
       (<class_with> | {`""`}) s
       "{" {~ s <class_body> s ~} <{ expect("}") }>
       =scope
       -> make_class_decl
    }
-
-   rule name_decl {
-      <name> <ctx> {`nil`} -> define
-   }
-   rule name_list_decl {
-      <name_decl> (s "," <name_decl>)*
-   }
-   rule name_list {
-      <ident> (s "," <ident>)*
-   }
    rule trait_decl {
-      "trait" idsafe s <ctx> {~ <name> <ctx> {`'__env'`} -> define ~} s
+      "trait" idsafe s <ctx> {~ <name> <ctx> {`'__env'`} {`'Class'`} -> define ~} s
       <enter>
-      ("(" s <param_list> s ")" | {`['...']`}) s
+      ("[" hs* ((<name_list> -> [ ]) <ctx> -> define) hs* "]" | {`[]`}) s
       (<class_with> | {`""`}) s
       "{" {~ s <trait_body> s ~} <{ expect("}") }>
       -> make_trait_decl <leave>
@@ -963,13 +942,10 @@ object Grammar {
       <leave>
    }
    rule class_from {
-      "from" idsafe s {~ <expr> ~}
+      "from" idsafe {~ hs* <type_term> ~}
    }
    rule class_with {
-      "with" idsafe s {~ <expr> (s "," s <expr>)* ~}
-   }
-   rule with_term {
-      <ident> {~ "[" s <name_list> s "]" -> ":of(%1)" ~}?
+      "with" idsafe {~ hs* <type_term> (hs* "," s <type_term>)* ~}
    }
 
    rule class_body_stmt {
@@ -983,7 +959,10 @@ object Grammar {
       <class_body_stmt> | <needs_decl>
    }
    rule rest {
-      {~ {'...'} (<name> <ctx> {`nil`} (s <guard_expr> | {`nil`}) &(s ")") -> define) ~}
+      {~
+         {'...'} (<name> <ctx> {`nil`}
+         (hs* <type_expr> | {`nil`}) &(s ")") -> define)
+      ~}
    }
    rule param_list {
       (
@@ -1000,7 +979,7 @@ object Grammar {
       {~ %pos <name> <ctx> -> lookup ~}
    }
    rule param {
-      <name> <ctx> {`nil`} (s <guard_expr> | {`nil`}) (s "=" s <expr>)? -> define
+      <name> <ctx> {`nil`} (s <type_expr> | {`nil`}) (s "=" s <expr>)? -> define
    }
    rule name {
       {~ !keyword (
@@ -1065,12 +1044,12 @@ object Grammar {
    rule range {
       {~ (
          "[" s <expr> s ";" s <expr> ( s ";" s <expr> | {`"1"`} ) s "]"
-      ) -> "__env.Range(%1,%2,%3)" ~}
+      ) -> "__env.Range:new(%1,%2,%3)" ~}
    }
 
    rule array {
       {~
-         ("[" -> "__env.Array(") s
+         ("[" -> "__env.Array:new(") s
          (<array_elements> | {`""`}) s
          ("]" -> ")" | <{syntax_error("expected ']'")}>)
       ~}
@@ -1081,7 +1060,7 @@ object Grammar {
 
    rule table {
       {~
-         ("{" -> "__env.Table({") s
+         ("{" -> "__env.Table:new({") s
          (<table_elems> | {`""`}) s
          ("}" -> "})" | <{syntax_error("expected '}'")}>)
       ~}
@@ -1529,6 +1508,6 @@ var LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu"
    })
 }
 
-arg = "arg" in global && [ unpack(arg) ] || [ ]
+arg = rawget(global, 'arg') && [ unpack(arg) ] || [ ]
 if arg[1] { run(unpack(arg)) }
 
