@@ -14,11 +14,9 @@ class Point {
       MODE = 'awesome!'
       print("HELLS BELLS, this is ${MODE}", self, Point3D)
    }
-   method move(x = 0, y = 0) : Void {
+   method move(x = 0, y = 0) {
       .x = x
       .y = y
-      class Hidden { }
-      print(Hidden.new)
    }
 }
 
@@ -31,7 +29,7 @@ class Point3D from Point {
    method >>+<<(b) {
       print("funny operator:", b)
    }
-   method move(x = 0, y = 0, z = 0) : Void {
+   method move(x = 0, y = 0, z = 0) {
       super.move(x, y)
       .z = z
    }
