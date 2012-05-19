@@ -63,27 +63,11 @@ __env[mangle"::"] = function(self, name)
    return self[name]
 end
 
-REGISTRY = setmetatable({ }, { __mode = 'k' })
-
 function environ(outer)
    if not outer then
       outer = __env
    end
-   return setmetatable({ }, {
-      __index = outer;
-      __newindex = function(env, key, val)
-         rawset(env, key, val)
-         if typeof(val) == Function then
-            REGISTRY[val] = { name = key, body = val, item = val }
-         elseif typeof(val) == Class then
-            local body = rawget(val, '__body')
-            REGISTRY[body] = { name = key, body = body, item = val }
-         elseif typeof(val) == Trait then
-            local body = rawget(val, '__body')
-            REGISTRY[body] = { name = key, body = body, item = val }
-         end
-      end;
-   })
+   return setmetatable({ }, { __index = outer })
 end
 
 local function lookup(slots)
@@ -94,25 +78,6 @@ local function lookup(slots)
       end
       return val
    end
-end
-
-function trace(level)
-   level = (level or 1) + 1
-   local idx = level
-   local buf = { 'trace:' }
-   while true do
-      local info = debug.getinfo(idx, 'nSlf')
-      if not info then
-         break
-      end
-      local func = info.func
-      local item = REGISTRY[func]
-      if item ~= nil then
-         buf[#buf + 1] = string.format("%s:%s in %s", info.short_src, info.currentline, demangle(item.name))
-      end
-      idx = idx + 1
-   end
-   return table.concat(buf, "\n\t")
 end
 
 function class(into, name, from, with, body)
@@ -162,7 +127,7 @@ function class(into, name, from, with, body)
 
    for k,v in pairs(class.__need) do
       if class.__slots[k] == nil then
-         throw(ComposeError:new("'"..tostring(k).."' is needed"), 2)
+         throw(ComposeError:new("'"..tostring(k).."' is needed in "..name), 2)
       end
    end
 
@@ -235,7 +200,6 @@ function has(into, key, type, ctor, meta)
 end
 
 function method(into, name, code, meta) 
-   REGISTRY[code] = { name = name, body = code, item = into }
    if meta then
       into[name] = code
    else
@@ -261,7 +225,6 @@ function rule(into, name, patt)
       return rule
    end
 
-   REGISTRY[get] = { name = name, body = get, item = into }
    into.__slots[name] = get
    into.__rules[name] = patt
 end
@@ -947,25 +910,29 @@ Pattern.__slots[mangle"~~"] = function(patt, subj)
    return patt:match(subj)
 end
 
-Error = class(__env, "Error", nil, {}, function(__env,self)
-   has(self, "level",   nil, function(self) return 1 end)
-   has(self, "message", nil, function(self) return "unknown" end)
+StaticBuilder = trait(__env, "StaticBuilder",{},0,function(__env,self)
+   method(self,'apply', function(self, ...)
+      return self:new(...)
+   end, true)
+end)
 
-   method(self,'init',function(self,message,level)
-      self:message_eq(demangle(message))
-      self:level_eq(level)
+Error = class(__env, "Error", nil, {StaticBuilder}, function(__env,self)
+   has(self, "trace", nil, function(self) return end)
+   method(self,'init',function(self, message, level)
+      if not level then level = 1 end
+      self:trace_eq(debug.traceback(message, level + 1))
    end)
    method(self,'toString',function(self)
-      return tostring(typeof(self).__name)..": "..tostring(self:message())
+      return tostring(typeof(self).__name)..": "..tostring(self:trace())
    end)
 end)
 
-SyntaxError  = class(__env, "SyntaxError",  Error, { }, function() end)
-AccessError  = class(__env, "AccessError",  Error, { }, function() end)
-ImportError  = class(__env, "ImportError",  Error, { }, function() end)
-ExportError  = class(__env, "ExportError",  Error, { }, function() end)
-TypeError    = class(__env, "TypeError",    Error, { }, function() end)
-ComposeError = class(__env, "ComposeError", Error, { }, function() end)
+SyntaxError  = class(__env, "SyntaxError",  Error, {StaticBuilder}, function() end)
+AccessError  = class(__env, "AccessError",  Error, {StaticBuilder}, function() end)
+ImportError  = class(__env, "ImportError",  Error, {StaticBuilder}, function() end)
+ExportError  = class(__env, "ExportError",  Error, {StaticBuilder}, function() end)
+TypeError    = class(__env, "TypeError",    Error, {StaticBuilder}, function() end)
+ComposeError = class(__env, "ComposeError", Error, {StaticBuilder}, function() end)
 
 function evaluate(lua)
    local main = assert(loadstring(lua))

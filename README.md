@@ -28,17 +28,18 @@ Scala in that infix and prefix operators are method calls.
 For safety, Lupa provides compile-time symbol checks to catch typos,
 and for the rest we have guard expressions.
 
-Guard expressions are lexical or environment names which evaluate to
-an object which implements a `coerce` method. For lexical variables,
-this is invoked for each operation which updates the binding. For
-example:
-
 Lupa to Lua source translation is done without the use of abstract
 syntax trees in a single pass, using essentially a big substitution
 capture with LPeg. This limits static checks and early binding
 across source files, but compilation is fast and within a given
 compilation unit we can still perform some checks. It also allows
 us to call from Lupa into Lua.
+
+Guard expressions are lexical or environment names which evaluate to
+an object which implements a `coerce` method. For lexical variables,
+this is invoked for each operation which updates the binding. For
+example:
+
 
 ```ActionScript
 var a : Number = 42
@@ -150,7 +151,9 @@ rudy.count(5)
 
 ## Variables
 
-Lexical variables are introduced with the `var` keyword, followed by a comma separated list of identifiers, and an optional `=` followed by a list of expressions.
+Lexical variables are introduced with the `var` keyword, followed
+by a comma separated list of identifiers, and an optional `=`
+followed by a list of expressions.
 
 ```ActionScript
 var a, b         // declare only
@@ -173,6 +176,21 @@ The above statement (loosely) translates to the following Lua snippet:
 
 ```Lua
 local s = String:coerce("first")
+```
+
+Classes and traits, as well as built-in types `Number`, `String`,
+`Boolean`, `Array`, `Table` and `Function` can be used as guards.
+
+Custom guards can also be created using a `guard` declaration:
+
+```ActionScript
+guard Size(sample : Number) {
+    if !sample > 0 {
+        throw TypeError new "${sample} does not pass Size constraint"
+    }
+    return sample
+}
+var size : Size = 4.2
 ```
 
 ## Assignment
