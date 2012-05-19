@@ -17,6 +17,8 @@ class Point {
    method move(x = 0, y = 0) : Void {
       .x = x
       .y = y
+      class Hidden { }
+      print(Hidden.new)
    }
 }
 
@@ -28,7 +30,6 @@ class Point3D from Point {
 
    method >>+<<(b) {
       print("funny operator:", b)
-      print("TRACE:", trace())
    }
    method move(x = 0, y = 0, z = 0) : Void {
       super.move(x, y)

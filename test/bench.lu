@@ -1,15 +1,15 @@
 class Point {
-    has x = 0
-    has y = 0
-    method move(x, y) {
+    has x : Number = 0
+    has y : Number = 0
+    method move(x : Number, y : Number) {
         self.x = x
         self.y = y
     }
 }
 
 class Point3D from Point {
-    has z = 0
-    method move(x, y, z) {
+    has z : Number = 0
+    method move(x : Number, y : Number, z : Number) {
         super.move(x, y)
         self.z = z
     }

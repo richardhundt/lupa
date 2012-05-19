@@ -31,11 +31,19 @@ export XCFLAGS
 
 #cc -I./deps/libuv/include -undefined dynamic_lookup -shared -o ./lib/libuv.so ./deps/libuv/uv/*.o
 
-all: ${BINDIR}/luajit ${BUILDDIR}/lupa ${LIBDIR}/lpeg.so ${LIBDIR}/llthreads.so ${LIBDIR}/marshal.so ${LIBDIR}/libuv.so
+all: ${BINDIR}/luajit ${BUILDDIR}/bin/lupa ${LIBDIR}/lpeg.so ${LIBDIR}/marshal.so ${LIBDIR}/libuv.so
 
-${BUILDDIR}/lupa:
-	mkdir -p ${BUILDDIR}
-	${CC} ${CFLAGS} -I${LUADIR}/src -L${LUADIR}/src -o ${BUILDDIR}/lupa ./src/lupa.c ${LIBDIR}/libluajit.a ${LDFLAGS}
+${BUILDDIR}/bin/lupa: ${BUILDDIR}/lupa/predef.lua ${BUILDDIR}/lupa/compiler.lua
+	mkdir -p ${BUILDDIR}/bin
+	${CC} ${CFLAGS} -I${LUADIR}/src -L${LUADIR}/src -o ${BUILDDIR}/bin/lupa ./src/lupa.c ${LIBDIR}/libluajit.a ${LDFLAGS}
+
+${BUILDDIR}/lupa/predef.lua:
+	mkdir -p ${BUILDDIR}/lupa
+	${BINDIR}/luajit -b ./lupa/predef.lua ${BUILDDIR}/lupa/predef.lua
+
+${BUILDDIR}/lupa/compiler.lua:
+	mkdir -p ${BUILDDIR}/lupa
+	${BINDIR}/lupa ./lupa/compiler.lu -b ${BUILDDIR}/lupa/compiler.lua
 
 ${LIBDIR}/lpeg.so:
 	${MAKE} -C ${LPEGDIR} lpeg.so
@@ -58,12 +66,6 @@ ${LIBDIR}/libluajit.a:
 	${MAKE} -C ${LUADIR}
 	cp ${LUADIR}/src/libluajit.a ${LIBDIR}/libluajit.a
 
-${LIBDIR}/llthreads.so:
-	git submodule update --init ${LLTDIR}
-	mkdir -p ${LLTDIR}/build
-	cd ${LLTDIR}/build && cmake .. && ${MAKE}
-	cp ${LLTDIR}/build/llthreads.so ${LIBDIR}/llthreads.so
-
 ${BINDIR}/luajit: ${LIBDIR}/libluajit.a
 	mkdir -p ${BINDIR}
 	cp ${LUADIR}/src/luajit ${BINDIR}/luajit
@@ -73,13 +75,13 @@ clean:
 	${MAKE} -C ${LPEGDIR} clean
 	${MAKE} -C ${LMARDIR} clean
 	${MAKE} -C ${UVDIR} clean
-	${MAKE} -C ${DEPSDIR}/llthreads/build clean
-	rm -f ${BUILDDIR}/lupa
+	rm -f ${BUILDDIR}/lupa/*
+	rm -f ${BUILDDIR}/bin/*
 	rm -f ${LIBDIR}/*.so
 	rm -f ${LIBDIR}/*.a
 
 bootstrap: all
-	${BUILDDIR}/lupa lupa.lu -o ${BUILDDIR}/lupa.lua
+	${BINDIR}/lupa lupa.lu -o ${BUILDDIR}/lupa.lua
 	mv ./src/lupa.h ./src/lupa.h.bak
 	${LUADIR}/src/luajit -b ${BUILDDIR}/lupa.lua ./src/lupa.h
 

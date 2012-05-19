@@ -1,7 +1,6 @@
-function double(x : Number > 0) {
-   return x * 2
+function double(x : Number) : Number, Void {
+   return x * 2, "cheese"
 }
-print(Number)
 
 double(10)
 double(-1)

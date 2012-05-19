@@ -186,7 +186,7 @@ Custom guards can also be created using a `guard` declaration:
 ```ActionScript
 guard Size(sample : Number) {
     if !sample > 0 {
-        throw TypeError new "${sample} does not pass Size constraint"
+        throw TypeError.new("${sample} does not pass Size constraint")
     }
     return sample
 }
