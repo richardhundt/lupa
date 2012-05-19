@@ -847,12 +847,17 @@ object Grammar {
    }
 
    rule needs_decl {
-      {~ "needs" idsafe hs* <opname> -> '__env.needs(self,"%1")' ~}
+      {~
+         "needs" idsafe hs* <meth_name> -> '__env.needs(self,"%1")'
+      ~}
+   }
+
+   rule meth_name {
+      {~ {"_[]=" | "_[]"} -> mangle ~} | <opname> ("=" -> mangle)?
    }
 
    rule meth_decl {
-      {~ (<attr> "method" idsafe <ctx> s
-      ({~ {"_[]=" | "_[]"} -> mangle ~} | <opname> ("=" -> mangle)?) s
+      {~ (<attr> "method" idsafe hs* <ctx> <meth_name> s
       <enter>
       ({`'self'`} <ctx> -> static_define)
       ("(" s <param_list> s <{ expect(")") }> s | {`[]`})
