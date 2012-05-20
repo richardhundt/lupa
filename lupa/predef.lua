@@ -1,13 +1,42 @@
 local __env = setmetatable({ }, { __index = _G })
 setfenv(1, __env)
 for k,v in pairs(_G) do __env[k] = v end
-package.cpath = ';;./lib/?.so;'..package.cpath
 
 local bit = require("bit")
 local ffi = require('ffi')
 
+package.path  = ';;./lib/?.lua;'..package.path
+package.cpath = ';;./lib/?.so;'..package.cpath
+
+LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu"
+table.insert(package.loaders, function(modname)
+   local filename = modname:gsub("%.", "/")
+   for path in LUPA_PATH:gmatch("([^;]+)") do
+      if path ~= "" then
+         local Compiler = require("lupa.compiler").Compiler
+         local filepath = path:gsub("?", filename)
+         local file = io.open(filepath, "r")
+         if file then
+            local src = file:read("*a")
+            return function(...)
+               local args = { ... }
+               local ok, er = pcall(function()
+                  local lua  = Compiler:compile(src)
+                  local main = assert(loadstring(lua, '='..filepath))
+                  return main(unpack(args))
+               end)
+               if not ok then
+                  throw("failed to load "..modname..": "..tostring(e), 2)
+               end
+            end
+         end
+      end
+   end
+end)
+
 function newtable(...) return { ... } end
 local rawget, rawset = rawget, rawset
+rawtype = _G.type
 
 local mangles = {
    ["["] = "_lb",
@@ -45,7 +74,7 @@ local function mangle(name)
    end)
 end
 function demangle(name)
-   return String(name):gsub('(_%w%w)', function(o)
+   return tostring(name):gsub('(_%w%w)', function(o)
       if demangles[o] then
          return demangles[o]
       else
@@ -74,7 +103,7 @@ local function lookup(slots)
    return function(self, key)
       local val = slots[key]
       if val == nil then
-         throw(TypeError:new("no such member '"..tostring(key).."' in "..tostring(getmetatable(self)).." at "..debug.traceback()), 2)
+         throw(TypeError:new("no such member '"..tostring(key).."' in "..tostring(self), 2))
       end
       return val
    end
@@ -83,6 +112,10 @@ end
 function class(into, name, from, with, body)
    if from == nil then
       from = Any
+   else
+      if typeof(from) ~= Class and typeof(from) ~= Type then
+         throw(TypeError:new("Cannot extend "..tostring(from), 2))
+      end
    end
 
    local class = { }
@@ -126,13 +159,19 @@ function class(into, name, from, with, body)
    body(inner, class, from.__slots)
 
    for k,v in pairs(class.__need) do
-      if class.__slots[k] == nil then
-         throw(ComposeError:new("'"..tostring(k).."' is needed in "..name), 2)
+      if v == true then
+         if rawget(class, k) == nil then
+            throw(ComposeError:new("static '"..tostring(k).."' is needed in "..name), 2)
+         end
+      else
+         if class.__slots[k] == nil then
+            throw(ComposeError:new("'"..tostring(k).."' is needed in "..name), 2)
+         end
       end
    end
 
    for k,v in pairs(inner) do
-      if type(v) == 'function' then
+      if rawtype(v) == 'function' then
          class[k] = function(_, ...) return v(...) end
       else
          class[k] = function() return v end
@@ -151,13 +190,13 @@ function trait(into, name, with, want, body)
    setmetatable(trait, Trait)
    return trait
 end
-function needs(into, name)
-   into.__need[name] = true
+function needs(into, name, meta)
+   into.__need[name] = meta
 end
 
 function object(into, name, from, with, body)
    if from ~= nil then
-      if getmetatable(from[i]) ~= Class then
+      if getmetatable(from) ~= Class then
          from = getmetatable(from)
       end
    end
@@ -339,7 +378,7 @@ function import(into, from, what, dest)
       if #what == 0 then
          for key, val in pairs(mod) do
             if dest then
-               if type(val) == 'function' then
+               if rawtype(val) == 'function' then
                   into[key] = function(_, ...) return val(...) end
                else
                   into[key] = function() return val end
@@ -356,7 +395,7 @@ function import(into, from, what, dest)
                throw(ImportError:new("'"..tostring(key).."' from '"..tostring(from).."' is nil"), 2)
             end
             if dest then
-               if type(val) == 'function' then
+               if rawtype(val) == 'function' then
                   into[key] = function(_, ...) return val(...) end
                else
                   into[key] = function() return val end
@@ -387,7 +426,7 @@ end
 
 function __load(from)
    local path = from
-   if type(from) == "table" then
+   if rawtype(from) == "table" then
       path = table.concat(from, ".")
    end
    local mod = require(path)
@@ -419,7 +458,7 @@ typeof = getmetatable
 throw  = error
 
 function _each(a, ...)
-   if type(a) == "function" then
+   if rawtype(a) == "function" then
       return a, ...
    end
    local mt = getmetatable(a)
@@ -432,6 +471,7 @@ end
 
 Any = setmetatable({ }, Meta)
 Any.coerce = function(self, ...) return ...  end
+Any.check  = function(self, ...) return true end
 Any.__name = "Any"
 Any.__from = { }
 Any.__with = { }
@@ -441,21 +481,8 @@ Any.__slots = { }
 Any.__index = lookup(Any.__slots)
 Any.__slots._ba_eq = function(a, b) return a ~= b end
 Any.__slots._eq_eq = function(a, b) return a == b end
-Any.__slots.coerce = function(self, that)
-   if that:is(self) then
-      return that
-   else
-      throw(TypeError:new(tostring(that).." is not a "..tostring(self)), 2)
-   end
-end
 Any.__slots.apply = function(self)
    error(tostring(self).." is not callable", 2)
-end
-Any.__slots.init = function(self, ...)
-   local spec = ... or Table:new{ }
-   for k,v in pairs(spec) do
-      self[k..'_eq'](self, v)
-   end
 end
 Any.__slots.toString = function(self)
    local meta = getmetatable(self)
@@ -465,9 +492,7 @@ Any.__slots.toString = function(self)
    return '<object '..tostring(getmetatable(self).__name).."@"..addr..'>'
 end
 Any.__slots.is = function(self, that)
-   if that == Any then return true end
-   local meta = getmetatable(self)
-   return meta == that or (meta.__from and (meta.__from == that))
+   return that:check(self)
 end
 Any.__slots.can = function(self, key)
    return getmetatable(self).__slots[key] ~= nil
@@ -476,40 +501,69 @@ Any.__slots.does = function(self, that)
    return getmetatable(self).__with[that.__body] ~= nil
 end
 
-Type = { }
+Type = setmetatable({ }, Meta)
 Type.__name  = "Type"
-Type.new = function(class, name)
+Type.new = function(meta, name)
    local type = { }
    type.__name = name
    type.__from = Any
+   type.__need = { }
    type.__with = { }
    type.__size = 0
    type.__rules = { }
-   type.__slots = setmetatable({ }, { __index = Any.__slots })
+   type.__slots = setmetatable({ }, { __index = Type.__slots })
    type.__index = lookup(type.__slots)
    type.toString = function() return '<type '..name..'>' end
+
    for k,v in pairs(Meta) do type[k] = v end
-   return setmetatable(type, class)
+   return setmetatable(type, meta)
 end
+Type.toString = function() return '<type Type>' end
 Type.__slots = setmetatable({ }, { __index = Any.__slots })
 Type.__index = lookup(Type.__slots)
+Type.__slots.check = function(self, that)
+   local type = typeof(that)
+   while type do
+      if type == self then
+         return true
+      end
+      type = type.__from
+   end
+   return false
+end
+Type.__slots.coerce = function(self, ...)
+   if not self:check(...) then
+      throw(TypeError:new("cannot coerce "..tostring(...).." to "..tostring(self), 2))
+   end
+   return ...
+end
+Type.__slots[mangle'|'] = function(self, that)
+   local union = Type:new(self.__name..'|'..that.__name)
+   union.coerce = function(this, value)
+      if self:check(value) then
+         return self:coerce(value)
+      elseif that:check(value) then
+         return that:coerce(value)
+      end
+      throw(TypeError:new("cannot coerce "..tostring(typeof(value)).." to "..tostring(this), 2))
+   end
+   return union
+end
 for k,v in pairs(Meta) do Type[k] = v end
+
+function guard(name, body)
+   local guard = Type:new(name)
+   guard.coerce = function(self, ...)
+      return body(self, ...)
+   end
+   guard.check = function(self, ...)
+      return (pcall(body, self, ...))
+   end
+   return guard
+end
 
 local function newtype(name)
    return Type:new(name)
-end
-
-Guard = newtype"Guard"
-Guard.__index = lookup(Guard.__slots)
-Guard.__slots.coerce = function(self, ...)
-   return self:__body(...)
-end
-function guard(name, body)
-   local guard = setmetatable({
-      __name = name;
-      __body = body;
-   }, Guard)
-   return guard
 end
 
 Class = newtype"Class"
@@ -526,13 +580,13 @@ Trait.__index = lookup(Trait.__slots)
 Trait.__slots.toString = function(self)
    return "<trait "..tostring(self.__name)..">"
 end
-Trait.__slots.coerce = function(self, ...)
-   if that.__with[self.__body] == nil then
-      throw(TypeError:new(tostring(that).." does not compose "..tostring(self)), 2)
-   end
-   return that
+Trait.__slots.check = function(self, that)
+   return that.__with[self.__body] ~= nil
 end
-Trait.__slots.of = function(self, ...)
+Trait.__slots.coerce = function(self, that)
+
+end
+Trait.__slots[mangle'_[]'] = function(self, ...)
    local args = { ... }
    local want = self.__want - #args
    if want ~= 0 then
@@ -553,7 +607,7 @@ Trait.__slots.make = function(self, into, recv, ...)
       self.__with[i]:make(into, recv)
    end
    self.__body(into, recv, ...)
-   recv.__with[self.__body] = true
+   recv.__with[self.__body] = self
    return into
 end
 
@@ -579,7 +633,7 @@ end
 Array.__slots.toString = function(self)
    local buf = { }
    for i = 1, #self do
-      if type(self[i]) == "string" then
+      if rawtype(self[i]) == "string" then
          buf[#buf + 1] = string.format("%q", self[i])
       else
          buf[#buf + 1] = tostring(self[i])
@@ -686,16 +740,28 @@ Table.__slots.weak = function(self, mode)
    end
    error("invalid weak mode '"..tostring(mode).."', must be 'k', 'kv' or 'v'", 2)
 end
+Table.__slots[mangle'like_'] = function(self)
+   local like = Type:new('like '..tostring(self))
+   like.coerce = function(this, that)
+      for k, v in pairs(self) do
+         if not (that:can(k) and that[k](that):is(v)) then
+            throw(TypeError:new(tostring(that).." is not like "..tostring(self), 2))
+         end
+      end
+      return that
+   end
+   return like
+end
 Table.__slots.toString = function(self)
    local buf = { }
    for k,v in pairs(self) do
       local _v
-      if type(v) == "string" then
+      if rawtype(v) == "string" then
          _v = string.format("%q", v)
       else
          _v = tostring(v)
       end
-      if type(k) == "string" then
+      if rawtype(k) == "string" then
          buf[#buf + 1] = k.."=".._v
       else
          buf[#buf + 1] = "["..tostring(k).."]="..tostring(_v)
@@ -745,11 +811,8 @@ Range.__slots.each = function(self, block)
 end
 
 Void = newtype"Void"
-Void.apply = function(self, ...)
-   if select("#", ...) ~= 0 then
-      throw(TypeError:new("value in Void"), 2)
-   end 
-   return ...
+Void.check = function(self, ...)
+   return select("#", ...) == 0
 end
 
 Nil = newtype"Nil"
@@ -757,16 +820,14 @@ Nil.__tostring = nil
 Nil.__slots.apply = function(self)
    throw(TypeError:new("attempt to call a nil value"), 2)
 end
-Nil.__slots.coerce = function(self, val)
-   if val == nil then return val end
-   throw(TypeError:new("attempt to coerce "..tostring(val).." to nil"), 2)
+Nil.check = function(self, val)
+   if val == nil then return true end
 end
 debug.setmetatable(nil, Nil)
 
-Comparable = trait(__env, "Comparable",{},0,function(__env,self)
-   method(self, mangle'<=>', function(a, b)
-      return (a < b and -1) or (a > b and 1) or 0
-   end)
+Comparable = trait(__env,"Comparable",{},0,function(__env,self)
+   needs(self, mangle'<=>')
+
    method(self, mangle'>',  function(a, b) return a:_lt_eq_gt(b) == 1 end)
    method(self, mangle'<',  function(a, b) return a:_lt_eq_gt(b) ==-1 end)
    method(self, mangle'>=', function(a, b) return a:_lt_eq_gt(b) >= 0 end)
@@ -774,9 +835,12 @@ Comparable = trait(__env, "Comparable",{},0,function(__env,self)
 end)
 
 Number = newtype"Number"
+Number.check = function(self, val)
+   return rawtype(val) == 'number'
+end
 Number.coerce = function(self, val)
    local v = tonumber(val)
-   if v == nil then
+   if not self:check(v) then
       throw(TypeError:new("cannot coerce '"..tostring(val).."' to Number"), 2)
    end
    return v
@@ -796,13 +860,16 @@ Number.__slots._pl = function(a, b) return a + b end
 Number.__slots._mi = function(a, b) return a - b end
 Number.__slots._ba = function(a) return not a end
 Number.__slots._st_st = function(a, b) return a ^ b end
+Number.__slots[mangle'<=>'] = function(a, b)
+   return (a < b and -1) or (a > b and 1) or 0
+end
 Comparable:make(__env,Number)
 debug.setmetatable(0, Number)
 
 String = newtype"String"
 String.__tostring = nil
-String.apply = function(self, val)
-   return tostring(val)
+String.check  = function(self, that)
+   return rawtype(that) == 'string'
 end
 String.coerce = function(self, that)
    return tostring(that)
@@ -845,11 +912,17 @@ end
 String.__slots.len = function(self)
    return #self
 end
+String.__slots[mangle'<=>'] = function(a, b)
+   return (a < b and -1) or (a > b and 1) or 0
+end
 Comparable:make(__env, String)
 debug.setmetatable("", String)
 
 Boolean = newtype"Boolean"
 Boolean.__tostring = nil
+Boolean.check = function(self, that)
+   return rawtype(that) == 'boolean'
+end
 Boolean.coerce = function(v)
    return not(not(v))
 end
@@ -860,24 +933,29 @@ Function = newtype"Function"
 Function.__call = nil
 Function.__tostring = nil
 Function.__slots.dump = string.dump
+Function.check = function(self, that)
+   return rawtype(that) == 'function'
+end
+Function.__slots.__name = '<function>'
+Function.__slots.toString = function(self) return tostring(self) end
 Function.__slots.coerce = function(self, ...)
    return self(...)
 end
-Function.coerce = function(self, that)
-   if type(that) ~= 'function' then
-      throw(TypeError:new("cannot coerce "..tostring(that).." to Function"), 2)
-   end
-   return that
+Function.__slots.check = function(self, ...)
+   return (pcall(self, ...))
 end
-Function.__slots.toString = function(self) return tostring(self) end
 debug.setmetatable(function() end, Function)
 
 Thread = newtype"Thread"
 Thread.__tostring = nil
 Thread.yield = coroutine.yield
 Thread.wrap  = coroutine.wrap
+Thread.check = function(self, that)
+   return rawtype(that) == 'thread'
+end
 Thread.coerce = function(self, code)
-   if type(code) ~= "function" then
+   if self:check(code) then return code end
+   if rawtype(code) ~= "function" then
       throw(TypeError:new("cannot coerce "..tostring(code).." to Thread"), 2)
    end
    return coroutine.wrap(code)
@@ -920,7 +998,7 @@ Error = class(__env, "Error", nil, {StaticBuilder}, function(__env,self)
    has(self, "trace", nil, function(self) return end)
    method(self,'init',function(self, message, level)
       if not level then level = 1 end
-      self:trace_eq(debug.traceback(message, level + 1))
+      self:trace_eq(demangle(debug.traceback(message, level + 1)))
    end)
    method(self,'toString',function(self)
       return tostring(typeof(self).__name)..": "..tostring(self:trace())
@@ -982,7 +1060,7 @@ end
 __env.global = __env
 __env.predef = setmetatable({ }, { __index = lookup({ }) })
 for k,v in pairs(__env) do
-   if type(v) == 'function' then
+   if rawtype(v) == 'function' then
       __env.predef[k] = function(_, ...) return v(...) end
    else
       __env.predef[k] = function() return v end

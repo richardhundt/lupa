@@ -2,6 +2,7 @@ export Compiler, Grammar, Context
 
 class Scope {
    has entries = { }
+   has hoists  = [ ]
    has outer
    method init(outer) {
       .outer = outer
@@ -17,6 +18,13 @@ class Scope {
    method define(name, info) {
       .entries[name] = info || { }
    }
+   method unhoist(sep) {
+      var code = .hoists.concat(sep)
+      if hoists.len > 0 {
+         .hoists = [ ]
+      }
+      return code
+   }
 }
 
 class Context {
@@ -29,6 +37,9 @@ class Context {
       .scope = Scope.new(.scope)
    }
    method leave() {
+      if .scope.hoists.len > 0 {
+         error("unhoisted code: ${.scope.hoists}", 2)
+      }
       var outer = .scope.outer
       if outer != nil {
          .scope = outer
@@ -137,6 +148,19 @@ object Grammar {
       return name+"=%s"
    }
 
+   function hoist(lvl) {
+      lvl ||= 1
+      return function(ctx, expr) {
+         var curr = ctx.scope
+         for i=1, lvl {
+            curr = curr.outer
+         }
+         var tyid = genid()
+         curr.hoists.push('local %s=%s;'.format(tyid, expr))
+         return tyid
+      }
+   }
+
    function quote(c) { return "%q".format(c) }
 
    var nl      = / "\n" /
@@ -155,7 +179,7 @@ object Grammar {
    var word    = / ((%alpha | "_") (%alnum | "_")*) /
 
    var keyword = / (
-      | "var" | "function" | "class" | "with" | "like" | "in" | "our"
+      | "var" | "function" | "class" | "with" | "in" | "our"
       | "nil" | "true" | "false" | "typeof" | "return" | "as" | "static"
       | "for" | "throw" | "method" | "has" | "from" | "break" | "guard"
       | "switch" | "case" | "default" | "do" | "while" | "needs"
@@ -164,7 +188,7 @@ object Grammar {
    ) idsafe /
 
    var unrops = {
-      ["!"] = "not(%s)",
+      ["!"]      = "not(%s)",
       ["typeof"] = "__env.typeof(%s)",
    }
 
@@ -290,12 +314,7 @@ object Grammar {
          return binops[o].format(a, b)
       }
       else if cmpops[o] {
-         if o == "!=" {
-            return "not(%s:${mangle('==')}(%s))".format(a, b)
-         }
-         else {
-            return "%s:${mangle(o)}(%s)".format(a, b)
-         }
+         return "%s:${mangle(o)}(%s)".format(a, b)
       }
       else if o.match('.=$') {
          var m = mangle(o.match('^(.-)=$'))
@@ -315,16 +334,16 @@ object Grammar {
       rhs = rhs || [ ]
       var tmp = [ ]
       var buf = [ ]
-
+      var hoist = ctx.scope.unhoist()
       if rhs.len == 0 {
          if kind == nil {
-            return 'local '+lhs.concat()
+            return '%slocal %s'.format(hoist, lhs.concat())
          }
          else {
             for i=1, lhs.len {
                lhs[i] = '__env.'+lhs[i]+'=nil'
             }
-            return lhs.concat(';')
+            return '%s%s'.format(hoist,lhs.concat(';'))
          }
       }
 
@@ -335,10 +354,10 @@ object Grammar {
             rhs[1] = (type+':coerce(%s)').format(rhs[1] || '')
          }
          if kind == nil {
-            return "local %s=%s;".format(lhs[1], rhs[1] || 'nil')
+            return "%slocal %s=%s;".format(hoist, lhs[1], rhs[1] || 'nil')
          }
          else {
-            return "__env.%s=%s;".format(lhs[1], rhs[1] || 'nil')
+            return "%s__env.%s=%s;".format(hoist, lhs[1], rhs[1] || 'nil')
          }
       }
 
@@ -347,7 +366,7 @@ object Grammar {
       }
 
       if rhs.len > 0 {
-         buf.push('local %s=%s'.format(tmp.concat(','), rhs.concat(',')))
+         buf.push('%slocal %s=%s'.format(hoist, tmp.concat(','), rhs.concat(',')))
       }
 
       var head = ''
@@ -415,18 +434,20 @@ object Grammar {
 
    function make_for_in_stmt(ctx, name_list, expr, body) {
       var list, head = make_params(ctx, name_list)
-      return 'for %s in __env._each(%s) do %s%s end'.format(list, expr, head, body)
+      var hoist = ctx.scope.unhoist()
+      return '%sfor %s in __env._each(%s) do %s%s end'.format(hoist, list, expr, head, body)
    }
    function make_for_stmt(ctx, name, init, last, step, body) {
       var list, head = make_params(ctx, [ name ])
-      return 'for %s=%s,%s,%s do %s%s end'.format(name, init, last, step, head, body)
+      var hoist = ctx.scope.unhoist()
+      return '%sfor %s=%s,%s,%s do %s%s end'.format(hoist, name, init, last, step, head, body)
    }
 
-   function make_return_stmt(ctx, is_lex, expr_list, ret_type) {
+   function make_return_stmt(ctx, is_lex, expr_list, type_list) {
       expr_list = expr_list || [ ]
-      if ret_type {
-         for i=1, ret_type.len {
-            var type = ret_type[i]
+      if type_list {
+         for i=1, type_list.len {
+            var type = type_list[i]
             var expr = expr_list[i] || ''
             expr_list[i] = (type+":coerce(%s)".format(expr))
          }
@@ -440,25 +461,28 @@ object Grammar {
 
    function make_func(c,p,b) {
       var p, h = make_params(c, p)
-      return "function(%s) %s%s end".format(p,h,b)
+      var t = c.scope.unhoist()
+      return "(function()%s return function(%s) %s%s end end)()".format(t,p,h,b)
    }
 
    function make_func_decl(c,n,p,b,s) {
       var p, h = make_params(c, p)
+      var t = c.scope.outer.unhoist()
       if s == 'lexical' {
          c.scope.outer.define(n)
-         return "local function %s(%s)%s %s end".format(n,p,h,b)
+         return "%slocal function %s(%s)%s %s end".format(t,n,p,h,b)
       }
       else {
          c.scope.outer.define(n, { base = '__env' })
-         return "function __env.%s(%s)%s %s end".format(n,p,h,b)
+         return "%sfunction __env.%s(%s)%s %s end".format(t,n,p,h,b)
       }
    }
 
    function make_meth_decl(c,n,p,b,s,a) {
       p.unshift('self')
       var p, h = make_params(c,p)
-      return "__env.method(self,%q,function(%s)%s %s end,%s);".format(n,p,h,b,a)
+      var t = c.scope.outer.unhoist()
+      return "%s__env.method(self,%q,function(%s)%s %s end,%s);".format(t,n,p,h,b,a)
    }
    function make_class_decl(c,n,f,w,b,s) {
       var decl = '__env.class(__env,%q,%s,{%s},function(__env,self,super) %s end);'
@@ -503,18 +527,18 @@ object Grammar {
 
    function make_guard_decl(c,n,p,b,s) {
       p.unshift('self')
-      c.define('self', { })
       var p, h = make_params(c, p)
       var decl = '__env.guard(%q,function(%s)%s %s end)'
+      var hoist = c.scope.outer.unhoist()
       if s == 'lexical' {
          c.scope.outer.define(n)
-         decl = "local %s="+decl
+         decl = "%slocal %s="+decl
       }
       else {
          c.scope.outer.define(n, { base = '__env' })
-         decl = "__env.%s="+decl
+         decl = "%s__env.%s="+decl
       }
-      return decl.format(n,n,p,h,b)
+      return decl.format(hoist,n,n,p,h,b)
    }
 
    function make_try_stmt(s,ctx, try_body, catch_blocks, loopy) {
@@ -587,7 +611,7 @@ object Grammar {
    }
    rule unit {
       {:set_return: {`false`} :}
-      {:ret_type: {`nil`} :}
+      {:type_list: {`nil`} :}
       {:scope: {`'__env'`} :}
       {:loopy: {`false`} :}
       { %s* '#!' (!nl .)* %s* }? s
@@ -619,7 +643,7 @@ object Grammar {
    rule eval {
       {~ 
          {:set_return: {`false`} :}
-         {:ret_type: {`nil`} :}
+         {:type_list: {`nil`} :}
          {:scope: {`'lexical'`} :}
          {:loopy: {`false`} :}
          {`'local __env=...;'`}
@@ -672,7 +696,7 @@ object Grammar {
       {~ "return" -> '' idsafe s (
          <ctx>
          =set_return ((<expr> (s "," s <expr>)*)? -> [ ])
-         =ret_type
+         =type_list
          -> make_return_stmt)
       ~}
    }
@@ -712,7 +736,7 @@ object Grammar {
       ~}
    }
    rule for_name {
-      <name> <ctx> {`nil`} (s <type_expr>)? -> define
+      <name> <ctx> {`nil`} (s <ctx> <type_expr> -> hoist(0))? -> define
    }
    rule for_in_stmt {
       {~ "for" idsafe s <enter> <ctx>
@@ -809,7 +833,8 @@ object Grammar {
       {~ <name> (hs* "," s <name>)* ~}
    }
    rule type_name {
-      {~ <ident> (hs* ("." -> ':') s <name> {`'()'`})* ~}
+      //{~ <ident> (hs* ("." -> ':') s <name> {`'()'`})* ~}
+      {~ <expr> ~}
    }
    rule type_term {
       {~ <type_name> ("[" s <type_term_list> s "]" -> ":of(%1)")? ~}
@@ -821,7 +846,10 @@ object Grammar {
       ":" hs* <type_term>
    }
    rule type_list {
-      ":" hs* {:ret_type: (<type_term> (s "," s <type_term>)* -> [ ]) :}
+      ":" hs* {:type_list: (<hoist_type_term> (s "," s <hoist_type_term>)* -> [ ]) :}
+   }
+   rule hoist_type_term {
+      <ctx> <type_term> -> hoist(2)
    }
 
    rule var_decl {
@@ -831,8 +859,8 @@ object Grammar {
       :} -> make_var_decl
    }
    rule var_list {
-      (<name> <ctx> =kind (s <type_expr>)? -> define)
-      (hs* "," s (<name> <ctx> =kind (s <type_expr>)? -> define))*
+      (<name> <ctx> =kind (s (<ctx> <type_expr> -> hoist(0)))? -> define)
+      (hs* "," s (<name> <ctx> =kind (s (<ctx> <type_expr> -> hoist(0)))? -> define))*
    }
 
    rule attr {
@@ -848,7 +876,7 @@ object Grammar {
 
    rule needs_decl {
       {~
-         "needs" idsafe hs* <meth_name> -> '__env.needs(self,"%1")'
+         <attr> "needs" idsafe hs* <meth_name> =attr -> '__env.needs(self,"%2",%3)'
       ~}
    }
 
@@ -883,7 +911,7 @@ object Grammar {
    rule func_stmt {
       | ((&(<expr> s "}") <ctx> // last expr implies return
         =set_return (<expr> -> [ ])
-        =ret_type) -> make_return_stmt)
+        =type_list) -> make_return_stmt)
       | <stmt>
    }
    rule func {
@@ -902,9 +930,9 @@ object Grammar {
             | "{" {~ s <func_body> s ~} <{ expect("}") }>
             | {~ (
                <ctx>
-               =set_return (<expr> -> [ ])
-               =ret_type -> make_return_stmt
-            ) <sep>? ~}
+               =set_return (<expr_stmt> -> [ ])
+               =type_list -> make_return_stmt
+            ) (s <sep>)? ~}
          )
       ) -> make_func ~} <leave>
    }
@@ -913,6 +941,7 @@ object Grammar {
       {~ (
          "guard" idsafe hs+ <ctx> <name> s
          <enter>
+         ({`'self'`} <ctx> -> static_define)
          ("(" s <param_list> s <{ expect(")") }> s | {`[]`})
          <type_list>? s "{"
          {~ s <func_body> s ~}
@@ -996,12 +1025,14 @@ object Grammar {
       {~ %pos <name> <ctx> -> lookup ~}
    }
    rule param {
-      <name> <ctx> {`nil`} (s <type_expr> | {`nil`}) (s "=" s <expr>)? -> define
+      <name> <ctx> {`nil`} (s
+         <ctx> <type_expr> -> hoist(1) | {`nil`}
+      ) (s "=" s <expr>)? -> define
    }
    rule name {
       {~ !keyword (
          | { ('end' | 'elseif' | 'then' | 'local' | 'repeat' | 'until' | "do") idsafe } -> '%1_'
-         | { (%alpha | "_" | "$" | "?") (%alnum | "_" | "$")* "!"? } -> mangle
+         | { (%alpha | "_" | "$") (%alnum | "_" | "$")* } -> mangle
       ) ~}
    }
    rule opname {
@@ -1144,7 +1175,7 @@ object Grammar {
       {~ (
          | <super_expr>
          | <primary> (hs* <suffix_expr>)+
-         | (<expr> -> 'local _=%1')
+         | <expr>
          ) (&(s ';') | {`';'`})
       ~}
    }
@@ -1190,7 +1221,7 @@ object Grammar {
    }
 
    rule prefix_expr {
-      | {: { "..."|"$"|"@"|"!"|"#"|"-"|"~"|"*"|"typeof"idsafe } {~ hs* <term> ~} :} -> fold_prefix
+      | {: { "..."|"$"|"@"|"!"|"#"|"-"|"~"|"*"|"?"|("typeof"|"like")idsafe } {~ hs* <term> ~} :} -> fold_prefix
       | {~ <term> ~}
    }
 

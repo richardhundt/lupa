@@ -78,31 +78,5 @@ var run = function(...a) {
    }
 }
 
-var LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu"
-{
-   table::insert(package::loaders, function(modname) {
-      var filename = modname.gsub("%.", "/")
-      for path in LUPA_PATH.gmatch("([^;]+)") {
-         if path != "" {
-            var filepath = path.gsub("?", filename)
-            var file = io::open(filepath, "r")
-            if file {
-               var src = file.read("*a")
-               return function(...args) {
-                  try {
-                     var lua  = Compiler.compile(src)
-                     var main = assert(loadstring(lua, '='+filepath))
-                     return main(...args)
-                  }
-                  catch (e) {
-                     throw ImportError.new("failed to load ${modname}: ${e}")
-                  }
-               }
-            }
-         }
-      }
-   })
-}
-
 if global::arg::[1] { run(global::unpack(arg)) }
 
