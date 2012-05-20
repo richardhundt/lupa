@@ -19,15 +19,15 @@ table.insert(package.loaders, function(modname)
          if file then
             local src = file:read("*a")
             return function(...)
-               local args = { ... }
-               local ok, er = pcall(function()
+               local ok, rv = pcall(function(...)
                   local lua  = Compiler:compile(src)
                   local main = assert(loadstring(lua, '='..filepath))
-                  return main(unpack(args))
-               end)
+                  return main(...)
+               end, ...)
                if not ok then
-                  throw("failed to load "..modname..": "..tostring(e), 2)
+                  throw("failed to load "..modname..": "..tostring(rv), 2)
                end
+               return rv
             end
          end
       end
@@ -432,8 +432,15 @@ function __load(from)
    local mod = require(path)
    if mod == true then
       mod = _G
-      for i = 1, #from do
-         mod= mod[from[i]]
+      if rawtype(from) == 'string' then
+         local orig = from
+         from = { }
+         for frag in orig:gmatch('([^%.]+)') do
+            from[#from + 1] = frag
+         end
+      end
+      for i = 1, #from do -- FIXME: hack!
+         mod = rawget(mod or { }, from[i])
       end
    end
    return mod
