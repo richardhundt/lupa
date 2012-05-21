@@ -36,9 +36,9 @@ ${BINDIR}/lupa:
 	mkdir -p ${BINDIR}
 	${CC} ${CFLAGS} -I${LUADIR}/src -L${LUADIR}/src -o ${BINDIR}/lupa ./src/lupa.c ${LIBDIR}/libluajit.a ${LDFLAGS}
 
-${BUILDIR}/lupa:
+${BUILDDIR}/bin/lupa:
 	mkdir -p ${BUILDDIR}/bin
-	${CC} ${CFLAGS} -I${LUADIR}/src -L${LUADIR}/src -o ${BUILDIR}/bin/lupa ./src/lupa.c ${LIBDIR}/libluajit.a ${LDFLAGS}
+	${CC} ${CFLAGS} -I${LUADIR}/src -L${LUADIR}/src -o ${BUILDDIR}/bin/lupa ./src/lupa.c ${LIBDIR}/libluajit.a ${LDFLAGS}
 
 ${BUILDDIR}/lupa/predef.lua:
 	mkdir -p ${BUILDDIR}/lupa
