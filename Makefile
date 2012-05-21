@@ -39,11 +39,11 @@ ${BUILDDIR}/bin/lupa: ${BUILDDIR}/lupa/predef.lua ${BUILDDIR}/lupa/compiler.lua
 
 ${BUILDDIR}/lupa/predef.lua:
 	mkdir -p ${BUILDDIR}/lupa
-	${BINDIR}/luajit -b ./lupa/predef.lua ${BUILDDIR}/lupa/predef.lua
+	${BINDIR}/luajit -b ./src/lupa/predef.lua ${BUILDDIR}/lupa/predef.lua
 
 ${BUILDDIR}/lupa/compiler.lua:
 	mkdir -p ${BUILDDIR}/lupa
-	${BINDIR}/lupa ./lupa/compiler.lu -b ${BUILDDIR}/lupa/compiler.lua
+	${BINDIR}/lupa ./src/lupa/compiler.lu -b ${BUILDDIR}/lupa/compiler.lua
 
 ${LIBDIR}/lpeg.so:
 	${MAKE} -C ${LPEGDIR} lpeg.so
@@ -81,9 +81,12 @@ clean:
 	rm -f ${LIBDIR}/*.a
 
 bootstrap: all
-	${BINDIR}/lupa lupa.lu -o ${BUILDDIR}/lupa.lua
+	${BINDIR}/lupa ./src/lupa.lu -o ${BUILDDIR}/lupa.lua
 	mv ./src/lupa.h ./src/lupa.h.bak
 	${LUADIR}/src/luajit -b ${BUILDDIR}/lupa.lua ./src/lupa.h
+	mkdir -p lupa
+	cp -r ${BUILDDIR}/lupa/* ./lupa/
+	cp ${BUILDDIR}/bin/lupa ./bin/
 
 .PHONY: all clean bootstrap
 

@@ -6,7 +6,7 @@ Lupa - multi-paradigm object oriented, dynamic language
 
     lupa <file> [options]
 
-# OVERVIEW
+# INTRODUCTION
 
 *NOTE:* This is alpha software and is therefore very likey to change
 
@@ -17,10 +17,11 @@ runtime. LuaJIT2 also has a low memory footprint. Which is also
 nice.
 
 However, although a beautiful language, Lua is also very minimal.
-I want a language with a bit more meat. More than that though,
-I want a language which gives me the most syntactic and semantic
+I want a language with a bit more meat. More than that though, I
+want a language which gives me the most syntactic and semantic
 flexibility possible, while allowing me to write code which is
-run-time safe. Not type safe, but rather constraint safe.
+run-time safe. Not type safe, neccessarily, but more generally,
+constraint safe, where a constraint may be a type check.
 
 For syntactic and semantic flexibility, Lupa borrows an idea from
 Scala in that infix and prefix operators are method calls.
@@ -35,71 +36,52 @@ across source files, but compilation is fast and within a given
 compilation unit we can still perform some checks. It also allows
 us to call from Lupa into Lua.
 
-Guard expressions are lexical or environment names which evaluate to
-an object which implements a `coerce` method. For lexical variables,
-this is invoked for each operation which updates the binding. For
-example:
-
-
-```ActionScript
-var a : Number = 42
-a = 69       // ok
-a = 'cheese' // error cannot coerce 'cheese' to number
-```
-
-The compiler inserts calls to `Number#coerce` whenever it sees
-an assignment to `a`. The same applies to function/method parameters
-and return values. For example:
-
-```ActionScript
-function add(a : Number, b : Number) : Number {
-    return a + b
-}
-var c = add(40, 2)
-```
-
-```ActionScript
-class A {
-    method >>+<<(a) {
-        print("funky operator on: "+a)
-    }
-}
-
-var a1 = A.new
-var a2 = A.new
-a1 >>+<< a2
-```
+## Features
 
 Lupa borrows ideas from Scala in that (almost all) infix and prefix
 operators are method calls, and supports single inheritance with
 trait composition. For constraints, Lupa supports guard expressions.
 
 Most of Lua's semantics shine through, such as Lua's for loops,
-1-based arrays and string pattern matching.
+1-based arrays, first-class functions, and late binding.
 
 However, Lupa adds several features, such as:
 
 * classes with single inheritance
-* parameterisable traits and mixins
-* arithmetic assignment expressions
-* switch-case statement
+* parameterisable traits and mixin composition
+* everything-is-an-object semantics
+* static symbol resolution
+* type guards and assertions
 * language integrated grammars (via LPeg)
-* bitwise operators
+* operators as method calls
 * continue statement
 * string interpolation
-* Array literals
+* builtin Array type
 * short function literals
-* try-catch blocks
-
-## Dependencies
-
-Lupa depends on LPeg, and either LuaJIT2, or Lua + LuaBitop (LJ2 has a bit library included)
+* switch-case statement
+* try-catch statement
+* and more...
 
 # LANGUAGE
 
 Syntactically Lupa belongs to the C family of languages, in that
 it has curly braces delimiting blocks and includes familiar constructs
 such as switch statements and while loops.
+
+## Tutorial
+
+To introduce the language, we start with a tutorial, where we
+implement a naive List type which simply wraps an Array. Our first
+attempt might look as follows:
+
+```ActionScript
+class List {
+    has data : Array = [ ]
+    method init(data) {
+        .data = data || [ ]
+    }
+}
+```
 
 ## Sample
 
@@ -149,6 +131,77 @@ rudy.greet("Jack")
 rudy.count(5)
 ```
 
+## Scoping
+
+Lupa has two kinds of scopes. The first is simple lexical scoping,
+which is seen in function and class bodies, and control structures.
+
+The second kind of scope is the environment scope, which is modeled
+after Lua 5.2's `_ENV` idea, where symbols which are not declared in
+a compilation unit, are looked up in a special `__env` table, which
+delegates to Lua's `_G` global table.
+
+At the top level of a script, class, object, trait and function
+declarations are bound to `__env`, while variable declarations
+remain lexical.
+
+Inside class, object and trait bodies, only function declarations
+bind to `__env`. Method and property declarations bind to `self`
+(the class or object).
+
+Inside function bodies, function declarations are lexical and are
+*not* hoisted to the top of the scope, meaning they are only visible
+after they are declared.
+
+Variable declarations declared as `var` are always lexical. To declare
+a variable bound to the environment, use `our`:
+
+```ActionScript
+var answer = 42  // ordinary lexical
+our DEBUG = true // bound to environment
+```
+
+```ActionScript
+// bound to the environment (__env.envfunc)
+function envfunc() {
+    // ...
+}
+// a lexical function
+var localfunc = function() {
+    // ...
+}
+class MyClass {
+    // this function is only visible in this block
+    function hidden() {
+        // ...
+    }
+    method munge() {
+        hidden()
+    }
+}
+```
+
+Nested function declarations are also lexical, however the differ
+from function literals in that inside a function declaration, the
+function itself is always visible, so can be called recursively:
+
+```ActionScript
+function outer() {
+
+    // inner function is lexical
+    function inner() {
+        // inner itself is visible here
+    }
+
+    // not quite the same thing
+    var inner = function() {
+        // inner itself is not visible here
+    }
+}
+```
+
+Lupa has two kinds of lexical scopes. 
+
 ## Variables
 
 Lexical variables are introduced with the `var` keyword, followed
@@ -158,6 +211,44 @@ followed by a list of expressions.
 ```ActionScript
 var a, b         // declare only
 var c, d = 1, 2  // declare and assign
+```
+
+Variables are introduced
+
+## Expressions
+A guard expression is a lexical or environment name which evaluates to
+an object which implements a `coerce` method. For lexical variables,
+this is invoked for each operation which updates the binding. For
+example:
+
+
+```ActionScript
+var a : Number = 42
+a = 69       // ok
+a = 'cheese' // error cannot coerce 'cheese' to number
+```
+
+The compiler inserts calls to `Number#coerce` whenever it sees
+an assignment to `a`. The same applies to function/method parameters
+and return values. For example:
+
+```ActionScript
+function add(a : Number, b : Number) : Number {
+    return a + b
+}
+var c = add(40, 2)
+```
+
+```ActionScript
+class A {
+    method >>+<<(a) {
+        print("funky operator on: "+a)
+    }
+}
+
+var a1 = A.new
+var a2 = A.new
+a1 >>+<< a2
 ```
 
 ## Guards
@@ -356,75 +447,6 @@ print(Macro.text(s))
 
 The Lupa grammar is self bootstrapped, so hopefully that can serve
 as a reference until I finish this document. ;)
-
-## Scoping
-
-Lupa has two kinds of scopes. The first is simple lexical scoping,
-which is seen in function and class bodies, and control structures.
-
-The second kind of scope is the environment scope, which is modeled
-after Lua 5.2's _ENV idea, where symbols which are not declared in
-a compilation unit, are looked up in a special `__env` table, which
-delegates to Lua's `_G` global table.
-
-At the top level of a script, class, object, trait and function
-declarations are bound to `__env`, while variable declarations
-remain lexical.
-
-Inside class, object and trait bodies, only function declarations
-bind to `__env`. Method and property declarations bind to `self`
-(the class or object).
-
-Inside function bodies, function declarations are lexical and are
-*not* hoisted to the top of the scope, meaning they are only visible
-after they are declared.
-
-Variable declarations declared as `var` are always lexical. To declare
-a variable bound to the environment, use `our`:
-
-```ActionScript
-var answer = 42  // ordinary lexical
-our DEBUG = true // bound to environment
-```
-
-```ActionScript
-// bound to the environment (__env.envfunc)
-function envfunc() {
-    // ...
-}
-// a lexical function
-var localfunc = function() {
-    // ...
-}
-class MyClass {
-    // this function is only visible in this block
-    function hidden() {
-        // ...
-    }
-    method munge() {
-        hidden()
-    }
-}
-```
-
-Nested function declarations are also lexical, however the differ
-from function literals in that inside a function declaration, the
-function itself is always visible, so can be called recursively:
-
-```ActionScript
-function outer() {
-
-    // inner function is lexical
-    function inner() {
-        // inner itself is visible here
-    }
-
-    // not quite the same thing
-    var inner = function() {
-        // inner itself is not visible here
-    }
-}
-```
 
 ## Modules
 

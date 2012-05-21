@@ -1,5 +1,8 @@
 import Compiler from lupa.compiler
 
+package::path  = ";;./lib/?.lua;${package::path}"
+package::cpath = ";;./lib/?.so;${package::cpath}"
+
 var getopt = function(...args) {
    var opt = { }
    var idx = 0

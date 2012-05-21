@@ -478,11 +478,12 @@ object Grammar {
       }
    }
 
-   function make_meth_decl(c,n,p,b,s,a) {
-      p.unshift('self')
+   function make_meth_decl(c,n,p,b,s,a,l) {
+      p = [ 'self', ...p ]
       var p, h = make_params(c,p)
       var t = c.scope.outer.unhoist()
-      return "%s__env.method(self,%q,function(%s)%s %s end,%s);".format(t,n,p,h,b,a)
+      l ||= ''
+      return "%s__env.method(self,%q,function(%s)%s %s end,%s,{%s});".format(t,n,p,h,b,a,l)
    }
    function make_class_decl(c,n,f,w,b,s) {
       var decl = '__env.class(__env,%q,%s,{%s},function(__env,self,super) %s end);'
@@ -508,6 +509,10 @@ object Grammar {
       }
       return decl.format(n,n,f,w,b)
    }
+   function make_obj(c,f,w,b,s) {
+      var decl = '__env.object(__env,%q,%s,{%s},function(__env,self,super) %s end)'
+      return decl.format("t${genid()}",f,w,b)
+   }
    function make_trait_decl(c,n,p,w,b) {
       var decl = '__env.trait(__env,%q,{%s},%s,function(__env,self,%s)%s end);'
       a = '...'
@@ -526,7 +531,7 @@ object Grammar {
    }
 
    function make_guard_decl(c,n,p,b,s) {
-      p.unshift('self')
+      p = [ 'self', ...p ]
       var p, h = make_params(c, p)
       var decl = '__env.guard(%q,function(%s)%s %s end)'
       var hoist = c.scope.outer.unhoist()
@@ -891,7 +896,7 @@ object Grammar {
       ("(" s <param_list> s <{ expect(")") }> s | {`[]`})
       <type_list>? s
       "{" {~ s <func_body> s ~} <{ expect("}") }>
-      =scope =attr) -> make_meth_decl ~} <leave>
+      =scope =attr =type_list) -> make_meth_decl ~} <leave>
    }
 
    rule func_decl {
@@ -972,6 +977,14 @@ object Grammar {
       "{" {~ s <class_body> s ~} <{ expect("}") }>
       =scope
       -> make_obj_decl
+   }
+   rule object_expr {
+      "object" idsafe s <ctx>
+      (<class_from> | {`"nil"`}) s
+      (<class_with> | {`""`}) s
+      "{" {~ s <class_body> s ~} <{ expect("}") }>
+      =scope
+      -> make_obj
    }
    rule class_body {
       {:scope: {`'self'`} :}
@@ -1131,6 +1144,7 @@ object Grammar {
       | <array>
       | <func>
       | <short_func>
+      | <object_expr>
       | <pattern>
       | <ident>
       | <symbol>

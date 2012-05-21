@@ -13,11 +13,11 @@ print(p.x, p.y)
 p.move(11,22)
 print(p.x, p.y)
 print(Point.x, Point.y)
-for i=1, 10000000 {
+for i=1, 10_000_000 {
     p.move(i, i+1)
 }
 
-object Point3D extends Point {
+object Point3D from typeof Point {
     has z = 0
     method greet() {
         print("Hi!")
@@ -27,4 +27,16 @@ object Point3D extends Point {
 var p2 = Point3D
 print(p2.x,p2.y,p2.z)
 p2.greet()
+
+var o2 = object {
+   has x : Number = 0
+   has y : Number = 0
+   method move(x, y) {
+      .x = x
+      .y = y
+   }
+}
+
+o2.move(12,34)
+print(o2.x, o2.y)
 
