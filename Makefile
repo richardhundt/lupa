@@ -28,13 +28,17 @@ XCFLAGS+=-DLUAJIT_ENABLE_LUA52COMPAT
 XCFLAGS+=-DLUA_USE_APICHECK
 export XCFLAGS
 
-#cc -I./deps/libuv/include -undefined dynamic_lookup -shared -o ./lib/libuv.so ./deps/libuv/uv/*.o
+BUILD= ${BUILDDIR}/bin/lupa ${BUILDDIR}/lupa/predef.lua ${BUILDDIR}/lupa/compiler.lua
 
-all: ${BINDIR}/luajit ${BUILDDIR}/bin/lupa ${LIBDIR}/lpeg.so ${LIBDIR}/marshal.so ${LIBDIR}/libuv.so
+all: ${BINDIR}/luajit ${BINDIR}/lupa ${LIBDIR}/lpeg.so ${LIBDIR}/marshal.so ${LIBDIR}/libuv.so ${BUILD}
 
-${BUILDDIR}/bin/lupa: ${BUILDDIR}/lupa/predef.lua ${BUILDDIR}/lupa/compiler.lua
+${BINDIR}/lupa:
+	mkdir -p ${BINDIR}
+	${CC} ${CFLAGS} -I${LUADIR}/src -L${LUADIR}/src -o ${BINDIR}/lupa ./src/lupa.c ${LIBDIR}/libluajit.a ${LDFLAGS}
+
+${BUILDIR}/lupa:
 	mkdir -p ${BUILDDIR}/bin
-	${CC} ${CFLAGS} -I${LUADIR}/src -L${LUADIR}/src -o ${BUILDDIR}/bin/lupa ./src/lupa.c ${LIBDIR}/libluajit.a ${LDFLAGS}
+	${CC} ${CFLAGS} -I${LUADIR}/src -L${LUADIR}/src -o ${BUILDIR}/bin/lupa ./src/lupa.c ${LIBDIR}/libluajit.a ${LDFLAGS}
 
 ${BUILDDIR}/lupa/predef.lua:
 	mkdir -p ${BUILDDIR}/lupa
@@ -49,14 +53,17 @@ ${LIBDIR}/lpeg.so:
 	cp ${LPEGDIR}/lpeg.so ${LIBDIR}/lpeg.so
 
 ${LIBDIR}/libuv.so:
+	git submodule update --init ${UVDIR}
 	${MAKE} -C ${UVDIR}
 	mkdir -p ${BUILDDIR}/uv
 	cp ${UVDIR}/uv.a ${BUILDDIR}/uv/uv.a
 	cd ${BUILDDIR}/uv/ && ar -x uv.a
+	mkdir -p ${INCDIR}
 	${CC} -I${UVDIR}/include ${UVDIR}/include/uv.h -E | grep -v '#' >${INCDIR}/uv.h
 	${CC} -I${UVDIR}/include -undefined dynamic_lookup -shared -o ${LIBDIR}/libuv.so ${BUILDDIR}/uv/*.o
 
 ${LIBDIR}/marshal.so:
+	git submodule update --init ${LMARDIR}
 	${MAKE} -C ${LMARDIR} marshal.so
 	cp ${LMARDIR}/marshal.so ${LIBDIR}/marshal.so
 
