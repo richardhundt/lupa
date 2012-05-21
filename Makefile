@@ -7,7 +7,6 @@ BUILDDIR=./build
 LPEGDIR=${DEPSDIR}/lpeg
 LMARDIR=${DEPSDIR}/lua-marshal
 LUADIR=${DEPSDIR}/luajit
-LLTDIR=${DEPSDIR}/llthreads
 UVDIR=${DEPSDIR}/libuv
 
 OS_NAME=$(shell uname -s)
