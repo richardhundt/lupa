@@ -1461,3 +1461,9 @@ object Compiler {
    }
 }
 
+package::loaded::['lupa.compiler'] = {
+   Compiler = Compiler,
+   Grammar  = Grammar,
+   Context  = Context,
+}
+

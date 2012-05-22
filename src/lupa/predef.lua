@@ -1,4 +1,5 @@
 local __env = setmetatable({ }, { __index = _G })
+package.loaded['lupa.predef'] = __env
 setfenv(1, __env)
 for k,v in pairs(_G) do __env[k] = v end
 

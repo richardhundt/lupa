@@ -7,20 +7,26 @@
 #include "lualib.h"
 #include "lauxlib.h"
 
+#include "predef.h"
+#include "compiler.h"
 #include "lupa.h"
 
 static int lupa_run(lua_State *L) {
-    int nargs, loadok;
+    int nargs;
     nargs = lua_gettop(L);
-    loadok = luaL_loadbuffer(L, luaJIT_BC_lupa, luaJIT_BC_lupa_SIZE, "=lupa");
 
-    if (loadok == 0) {
-        lua_call(L, nargs, LUA_MULTRET);
-        return 0;
-    }
+    if (luaL_loadbuffer(L, luaJIT_BC_predef, luaJIT_BC_predef_SIZE, "=predef")) return 1;
+    if (lua_pcall(L, 0, LUA_MULTRET, 0)) return 1;
 
-    return 1;
+    if (luaL_loadbuffer(L, luaJIT_BC_compiler, luaJIT_BC_compiler_SIZE, "=compiler")) return 1;
+    if (lua_pcall(L, 0, LUA_MULTRET, 0)) return 1;
+
+    if (luaL_loadbuffer(L, luaJIT_BC_lupa, luaJIT_BC_lupa_SIZE, "=lupa")) return 1;
+    if (lua_pcall(L, nargs, LUA_MULTRET, 0)) return 1;
+
+    return 0;
 }
+
 
 int main(int argc, char *argv[]) {
     lua_State *L;
