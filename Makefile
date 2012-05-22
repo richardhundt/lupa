@@ -28,7 +28,7 @@ XCFLAGS+=-DLUAJIT_ENABLE_LUA52COMPAT
 XCFLAGS+=-DLUA_USE_APICHECK
 export XCFLAGS
 
-BUILD= ${BUILDDIR}/bin/lupa ${BUILDDIR}/lupa/predef.lua ${BUILDDIR}/lupa/compiler.lua
+BUILD= ${BUILDDIR}/bin/lupa
 
 all: ${BINDIR}/luajit ${BINDIR}/lupa ${LIBDIR}/lpeg.so ${LIBDIR}/marshal.so ${LIBDIR}/libuv.so ${BUILD}
 
@@ -39,14 +39,6 @@ ${BINDIR}/lupa:
 ${BUILDDIR}/bin/lupa:
 	mkdir -p ${BUILDDIR}/bin
 	${CC} ${CFLAGS} -I${LUADIR}/src -L${LUADIR}/src -o ${BUILDDIR}/bin/lupa ./src/lupa.c ${LIBDIR}/libluajit.a ${LDFLAGS}
-
-${BUILDDIR}/lupa/predef.lua:
-	mkdir -p ${BUILDDIR}/lupa
-	${BINDIR}/luajit -b ./src/lupa/predef.lua ${BUILDDIR}/lupa/predef.lua
-
-${BUILDDIR}/lupa/compiler.lua:
-	mkdir -p ${BUILDDIR}/lupa
-	${BINDIR}/lupa ./src/lupa/compiler.lu -b ${BUILDDIR}/lupa/compiler.lua
 
 ${LIBDIR}/lpeg.so:
 	${MAKE} -C ${LPEGDIR} lpeg.so
@@ -81,18 +73,22 @@ clean:
 	${MAKE} -C ${LPEGDIR} clean
 	${MAKE} -C ${LMARDIR} clean
 	${MAKE} -C ${UVDIR} clean
-	rm -f ${BUILDDIR}/lupa/*
-	rm -f ${BUILDDIR}/bin/*
+	rm -rf ${BUILDDIR}
 	rm -f ${LIBDIR}/*.so
 	rm -f ${LIBDIR}/*.a
 
 bootstrap: all
 	${BINDIR}/lupa ./src/lupa.lu -o ${BUILDDIR}/lupa.lua
+	${BINDIR}/lupa ./src/lupa/compiler.lu -o ${BUILDDIR}/compiler.lua
+	cp ./src/lupa/predef.lua ${BUILDDIR}/predef.lua
 	mv ./src/lupa.h ./src/lupa.h.bak
+	mv ./src/predef.h ./src/predef.h.bak
+	mv ./src/compiler.h ./src/compiler.h.bak
+	mv ${BINDIR}/lupa ${BINDIR}/lupa.bak
 	${LUADIR}/src/luajit -b ${BUILDDIR}/lupa.lua ./src/lupa.h
-	mkdir -p lupa
-	cp -r ${BUILDDIR}/lupa/* ./lupa/
-	cp ${BUILDDIR}/bin/lupa ./bin/
+	${LUADIR}/src/luajit -b ${BUILDDIR}/predef.lua ./src/predef.h
+	${LUADIR}/src/luajit -b ${BUILDDIR}/compiler.lua ./src/compiler.h
+	cp ${BUILDDIR}/bin/lupa ${BINDIR}
 
 .PHONY: all clean bootstrap
 
