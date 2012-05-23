@@ -1,8 +1,7 @@
+# FIXMEs
+* super calls
+
 # Must haves
-* fix optional semicolons as statement terminators
-* vararg in try { } blocks to reference outer ...
-* resty return guards
-* prefer .new() to .__apply()
 * better SyntaxError emissions
 * whitespace retention audit
 * unpolluted _G

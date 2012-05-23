@@ -17,7 +17,7 @@ for i=1, 10_000_000 {
     p.move(i, i+1)
 }
 
-object Point3D from typeof Point {
+object Point3D from Point {
     has z = 0
     method greet() {
         print("Hi!")
@@ -39,4 +39,6 @@ var o2 = object {
 
 o2.move(12,34)
 print(o2.x, o2.y)
+
+assert(typeof(o2) == o2)
 

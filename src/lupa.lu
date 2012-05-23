@@ -1,4 +1,4 @@
-import Compiler from lupa.compiler
+import Compiler from lupa.lang
 
 package::path  = ";;./lib/?.lua;${package::path}"
 package::cpath = ";;./lib/?.so;${package::cpath}"

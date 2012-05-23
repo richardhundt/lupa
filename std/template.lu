@@ -1,39 +1,46 @@
 export Template
 
-object Markup {
-   rule match {
-      {@ (<const> (<code> <const>)*) @} -> function(a) { a.concat() }
+import Grammar, Context, Compiler from lupa.lang in lupa
+
+object Grammar from typeof lupa.Grammar {
+   rule markup {
+      <{super.preamble}>
+      {~ (<const> (<code> <const>)*) ~}
+      (!. | (ofs, src) => {
+         throw Error.new("invalid syntax")
+      }
    }
    rule code {
       <intrp> | <logic>
    }
    rule intrp {
-      "<%=" %s* {~ { (!(%s* "%>") .)+ } -> function(s) {
-         return "__out.push(%s);".format(s)
+      "<%=" %s* {~ <func_body> ~} -> function(s) {
+         return "__out:push(%s);".format(s)
       } ~} %s* "%>"
    }
    rule logic {
-      "<%" %s* { (!"%>" .)+ } "%>" %s*
+      "<%" {~ %s*  <func_body> %s* ~} "%>" %s* -> '%1'
    }
    rule const {
       {~ { (!<code> .)* } -> function(s) {
          if s != "" {
-            return "__out.push(%q);".format(s)
+            return "__out:push(%q);".format(s)
          }
       } ~}
    }
 }
 
-object Compiler {
+object Compiler from typeof lupa.Compiler {
 
     var CACHE = { }
 
-    method compile(source) {
+    method compile(source, environ) {
         if CACHE[source] {
             return CACHE[source]
         }
-        var code = Markup.match(source)
-        var luac = Function(code, '__out', '__env')
+        var code = Grammar.markup.match(source)
+        self.predef(environ)
+        var luac = super.compile(source
         CACHE[source] = luac
         return luac
     }
@@ -46,15 +53,13 @@ object Compiler {
 import open from io
 
 class Template {
-    has _base = "."
+    has base = "."
 
-    var Environment = { __index = _G }
-
-    method __init(base) {
-        self._base = base
+    method init(base) {
+        self.base = base
     }
     method process_file(path, vars) {
-        var path = self._base ~ '/' ~ path
+        var path = self.base + '/' + path
         var file = assert(open(path, "r"))
         var data = file.read("*a")
         file.close()
@@ -63,14 +68,12 @@ class Template {
     method process(src, vars, name) {
         var code = Compiler.compile(src)
         var out = [ ] 
-        var env = { } as Environment
-
+        var env = { }
         if vars {
            for k,v in vars { env[k] = v }
         }
 
         code(out, env)
-
         return out.concat()
     }
 }

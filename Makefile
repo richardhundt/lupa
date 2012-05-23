@@ -85,9 +85,9 @@ bootstrap: all
 	mv ./src/predef.h ./src/predef.h.bak
 	mv ./src/compiler.h ./src/compiler.h.bak
 	mv ${BINDIR}/lupa ${BINDIR}/lupa.bak
-	${LUADIR}/src/luajit -b ${BUILDDIR}/lupa.lua ./src/lupa.h
-	${LUADIR}/src/luajit -b ${BUILDDIR}/predef.lua ./src/predef.h
-	${LUADIR}/src/luajit -b ${BUILDDIR}/compiler.lua ./src/compiler.h
+	${LUADIR}/src/luajit -b -g ${BUILDDIR}/lupa.lua ./src/lupa.h
+	${LUADIR}/src/luajit -b -g ${BUILDDIR}/predef.lua ./src/predef.h
+	${LUADIR}/src/luajit -b -g ${BUILDDIR}/compiler.lua ./src/compiler.h
 	cp ${BUILDDIR}/bin/lupa ${BINDIR}
 
 .PHONY: all clean bootstrap

@@ -14,7 +14,7 @@ table.insert(package.loaders, function(modname)
    local filename = modname:gsub("%.", "/")
    for path in LUPA_PATH:gmatch("([^;]+)") do
       if path ~= "" then
-         local Compiler = require("lupa.compiler").Compiler
+         local Compiler = require("lupa.lang").Compiler
          local filepath = path:gsub("?", filename)
          local file = io.open(filepath, "r")
          if file then
@@ -114,7 +114,9 @@ function class(into, name, from, with, body)
    if from == nil then
       from = Any
    else
-      if typeof(from) ~= Class and typeof(from) ~= Type then
+      if  typeof(from) ~= from  -- object
+      and typeof(from) ~= Class
+      and typeof(from) ~= Type then
          throw(TypeError:new("Cannot extend "..tostring(from), 2))
       end
    end
@@ -130,9 +132,13 @@ function class(into, name, from, with, body)
    class.__need = { }
    class.__body = body
 
-   class.__rules = setmetatable(rules, { __index = from.__rules })
    class.__slots = setmetatable(slots, { __index = from.__slots })
    class.__index = lookup(slots)
+
+   class.__rules = { }
+   for k,v in pairs(from.__rules) do
+      class.__rules[k] = v
+   end
 
    for k,v in pairs(Meta) do
       class[k] = v
@@ -196,13 +202,9 @@ function needs(into, name, meta)
 end
 
 function object(into, name, from, with, body)
-   if from ~= nil then
-      if getmetatable(from) ~= Class then
-         from = getmetatable(from)
-      end
-   end
-   local anon = class(into, "#"..name, from, with, body)
-   local inst = setmetatable({ }, anon)
+   local inst = class(into, name, from, with, body)
+   inst.new = nil
+   setmetatable(inst, inst)
    return inst
 end
 
@@ -268,7 +270,6 @@ function has(into, name, type, ctor, meta)
       end
       return val
    end
-
 
    if meta then
       into[name] = get
@@ -639,8 +640,8 @@ end
 
 Class = newtype"Class"
 Class.__index = lookup(Class.__slots)
-Class.__slots[mangle"::"] = function(obj, key)
-   return obj.__slots[key]
+Class.__slots[mangle"::"] = function(class, key)
+   return class.__slots[key]
 end
 Class.__slots.toString = function(self) 
    return "<class "..tostring(self.__name)..">"

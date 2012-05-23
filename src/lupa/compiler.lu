@@ -560,7 +560,7 @@ object Grammar {
       var stmt = [ ]
       stmt.push("do${s}")
       stmt.push("local _return;__env.try(${args.concat(',')});")
-      stmt.push('if _return then return unpack(_return) end')
+      stmt.push('if _return then return __env.unpack(_return) end')
       if loopy {
          stmt.push('if _break then break end')
       }
@@ -614,17 +614,8 @@ object Grammar {
    rule script {
       {~ <unit> ~} (!. | <{syntax_error("invalid syntax")}>)
    }
-   rule unit {
-      {:set_return: {`false`} :}
-      {:type_list: {`nil`} :}
-      {:scope: {`'__env'`} :}
-      {:loopy: {`false`} :}
-      { %s* '#!' (!nl .)* %s* }? s
-      <enter>
-      ({`'__env'`} <ctx> -> static_define)
-      {`'local __env=require("lupa.predef").environ();'`}
-      <stmt_list>? s
-      (<ctx> -> function(ctx) {
+   rule verify {
+      <ctx> -> function(ctx) {
          for k,v in ctx.resolve {
             if !ctx.lookup(k) {
                throw SyntaxError.new(
@@ -634,6 +625,23 @@ object Grammar {
                2)
             }
          }
+      }
+   }
+   rule preamble {
+      {:set_return: {`false`} :}
+      {:type_list: {`nil`} :}
+      {:scope: {`'__env'`} :}
+      {:loopy: {`false`} :}
+   }
+   rule unit {
+      <preamble>
+      { %s* '#!' (!nl .)* %s* }?
+      <enter>
+      ({`'__env'`} <ctx> -> static_define)
+      {`'local __env=require("lupa.predef").environ();'`}
+      s <stmt_list>? s
+      <verify>
+      (<ctx> -> function(ctx) {
          var buf = [ ]
          for k,v in ctx.exports {
             if !ctx.lookup(k) {
@@ -886,7 +894,7 @@ object Grammar {
    }
 
    rule meth_name {
-      {~ {"_[]=" | "_[]"} -> mangle ~} | <opname> ("=" -> mangle)?
+      {~ {"_[]=" | "_[]"} -> mangle ~} | {~ <opname> ("=" -> mangle)? ~}
    }
 
    rule meth_decl {
@@ -1174,20 +1182,22 @@ object Grammar {
       | <paren_expr>
    }
    rule term {
-      {~ <primary> (hs* <suffix_expr>)* ~}
+      {~
+      | <super_expr> (hs* <suffix_expr>)*
+      | <primary> (hs* <suffix_expr>)*
+      ~}
    }
    rule super_expr {
       {~
          "super" idsafe hs* "." s <opname> hs* (
             | "(" s (<expr_list> -> 'self,%1')? s ")"
-            | (<table> | <string>) -> "(self,%1)"
             | {`'(self)'`}
          )
       ~}
    }
    rule expr_stmt {
       {~ (
-         | <super_expr>
+         | <super_expr> (hs* <suffix_expr>)*
          | <primary> (hs* <suffix_expr>)+
          | <expr>
          ) (&(s ';') | {`';'`})
@@ -1424,24 +1434,20 @@ object Grammar {
 
 object Compiler {
 
-   method compile(lupa, name, args) {
+   method predef(ctx, env) {
+      for k,v in (env || global)  {
+         ctx.define(k, { base = '__env' })
+      }
+   }
+
+   method compile(lupa, name, env) {
       var ctx = Context.new
       ctx.source = lupa
       ctx.enter()
-      if args {
-         for i=1, args.len {
-            ctx.define(args[i], { })
-         }
-      }
-      for k,v in global {
-         ctx.define(k, { base = '__env' })
-      }
+      self.predef(ctx, env || global)
       var lua = Grammar.match(lupa, 1, ctx)
       ctx.leave()
       assert(ctx.scope.outer == nil, "scope is unbalanced")
-      if args {
-         return "local ${args.concat(',')}=select(2,...);${lua}"
-      }
       return lua
    }
 
@@ -1461,7 +1467,7 @@ object Compiler {
    }
 }
 
-package::loaded::['lupa.compiler'] = {
+package::loaded::['lupa.lang'] = {
    Compiler = Compiler,
    Grammar  = Grammar,
    Context  = Context,

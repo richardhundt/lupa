@@ -18,6 +18,7 @@ class Point {
       .x = x
       .y = y
    }
+   has deep = { hop = 'jump' }
 }
 
 class Point3D from Point {
@@ -30,6 +31,7 @@ class Point3D from Point {
       print("funny operator:", b)
    }
    method move(x = 0, y = 0, z = 0) {
+      var m = super.deep['hop']
       super.move(x, y)
       .z = z
    }
