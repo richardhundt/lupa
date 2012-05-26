@@ -175,7 +175,8 @@ object Grammar {
    var s       = / (comment | %s)* /
    var S       = / (comment | %s)+ /
    var hs      = / !nl %s /
-   var digits  = / (%digit {~ "_" -> '' ~}?)+ /
+   var udigit  = / %digit {~ "_" -> "" ~}? /
+   var digits  = / %digit udigit* /
    var word    = / ((%alpha | "_") (%alnum | "_")*) /
 
    var keyword = / (
@@ -1068,8 +1069,11 @@ object Grammar {
    rule decimal {
       "-"? digits ("." digits)? (("e"|"E") "-"? digits)?
    }
+   rule octal {
+      {~ { "-"? "0" [0-7]+ } -> function(s) { tostring(tonumber(s, 8)) } ~}
+   }
    rule number {
-      {~ <hexadec> | <decimal> ~} -> '(%1)'
+      {~ <hexadec> | <octal> | <decimal> ~} -> '(%1)'
    }
    rule string {
       {~ (<qstring> | <astring>) ~} -> '(%1)'
@@ -1198,8 +1202,7 @@ object Grammar {
    rule expr_stmt {
       {~ (
          | <super_expr> (hs* <suffix_expr>)*
-         | <primary> (hs* <suffix_expr>)+
-         | <expr>
+         | <expr> -> 'local _=%1'
          ) (&(s ';') | {`';'`})
       ~}
    }

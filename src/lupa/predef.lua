@@ -580,7 +580,7 @@ Type.new = function(meta, name)
    type.__with = { }
    type.__size = 0
    type.__rules = { }
-   type.__slots = setmetatable({ }, { __index = Type.__slots })
+   type.__slots = setmetatable({ }, { __index = Any.__slots })
    type.__index = lookup(type.__slots)
    type.toString = function() return '<type '..name..'>' end
 
@@ -609,6 +609,7 @@ Type.__slots.coerce = function(self, ...)
    end
    return ...
 end
+--[[
 Type.__slots[mangle'|'] = function(self, that)
    local union = Type:new(self.__name..'|'..that.__name)
    union.coerce = function(this, value)
@@ -621,6 +622,7 @@ Type.__slots[mangle'|'] = function(self, that)
    end
    return union
 end
+--]]
 for k,v in pairs(Meta) do Type[k] = v end
 
 function guard(name, body)
@@ -950,6 +952,11 @@ Number.__slots._st_st = function(a, b) return a ^ b end
 Number.__slots[mangle'<=>'] = function(a, b)
    return (a < b and -1) or (a > b and 1) or 0
 end
+Number.__slots[mangle'|'] = bit.bor
+Number.__slots[mangle'&'] = bit.band
+Number.__slots[mangle'<<'] = bit.blshift
+Number.__slots[mangle'>>'] = bit.brshift
+Number.__slots[mangle'>>>'] = bit.barshift
 Comparable:make(__env,Number)
 debug.setmetatable(0, Number)
 
@@ -1025,12 +1032,14 @@ Function.check = function(self, that)
 end
 Function.__slots.__name = '<function>'
 Function.__slots.toString = function(self) return tostring(self) end
+--[[
 Function.__slots.coerce = function(self, ...)
    return self(...)
 end
 Function.__slots.check = function(self, ...)
    return (pcall(self, ...))
 end
+--]]
 debug.setmetatable(function() end, Function)
 
 Thread = newtype"Thread"
