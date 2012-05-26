@@ -20,7 +20,7 @@ class Scope {
    }
    method unhoist(sep) {
       var code = .hoists.concat(sep)
-      if hoists.len > 0 {
+      if .hoists.len > 0 {
          .hoists = [ ]
       }
       return code
@@ -338,7 +338,7 @@ object Grammar {
       var hoist = ctx.scope.unhoist()
       if rhs.len == 0 {
          if kind == nil {
-            return '%slocal %s'.format(hoist, lhs.concat())
+            return '%slocal %s'.format(hoist, lhs.concat(','))
          }
          else {
             for i=1, lhs.len {
@@ -390,7 +390,7 @@ object Grammar {
    }
 
    function make_has_decl(ctx, name, type, body, scope, attr) {
-      define(name, ctx, scope, type, body)   
+      define(name, ctx, nil, type, body)
       type ||= 'nil'
       return '__env.has(self,"%s",%s,function(self) return %s end,%s);'.format(name,type,body,attr)
    }
@@ -463,7 +463,12 @@ object Grammar {
    function make_func(c,p,b) {
       var p, h = make_params(c, p)
       var t = c.scope.unhoist()
-      return "(function()%s return function(%s) %s%s end end)()".format(t,p,h,b)
+      if t != '' {
+         return "(function()%s return function(%s) %s%s end end)()".format(t,p,h,b)
+      }
+      else {
+         return 'function(%s) %s%s end'.format(p,h,b)
+      }
    }
 
    function make_func_decl(c,n,p,b,s) {
@@ -1202,7 +1207,7 @@ object Grammar {
    rule expr_stmt {
       {~ (
          | <super_expr> (hs* <suffix_expr>)*
-         | <expr> -> 'local _=%1'
+         | <expr> //-> 'local _=%1'
          ) (&(s ';') | {`';'`})
       ~}
    }

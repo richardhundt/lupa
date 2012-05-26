@@ -205,6 +205,9 @@ function object(into, name, from, with, body)
    local inst = class(into, name, from, with, body)
    inst.new = nil
    setmetatable(inst, inst)
+   if inst.__slots.init then
+      inst.__slots.init(inst)
+   end
    return inst
 end
 
@@ -829,6 +832,7 @@ Table.__slots.weak = function(self, mode)
    end
    error("invalid weak mode '"..tostring(mode).."', must be 'k', 'kv' or 'v'", 2)
 end
+Table.__slots.next = next
 Table.__slots[mangle'like_'] = function(self)
    local like = Type:new('like '..tostring(self))
    like.coerce = function(this, that)
