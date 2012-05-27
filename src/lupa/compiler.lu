@@ -2,18 +2,26 @@ export Compiler, Grammar, Context
 
 class Scope {
    has entries = { }
+   has resolve = { }
    has hoists  = [ ]
+   has inner   = [ ]
    has outer
+
    method init(outer) {
       .outer = outer
+      if outer {
+         outer.inner.push(self)
+      }
    }
-   method lookup(name) {
+   method lookup(name, pos, orig) {
+      orig ||= self
       if .entries[name] {
          return .entries[name]
       }
       else if .outer {
-         return .outer.lookup(name)
+         return .outer.lookup(name, pos, orig)
       }
+      orig.resolve[name] = pos
    }
    method define(name, info) {
       .entries[name] = info || { }
@@ -30,7 +38,6 @@ class Scope {
 class Context {
    has scope   = Scope.new
    has exports = { }
-   has resolve = { }
    has source  = ''
 
    method enter() {
@@ -48,13 +55,10 @@ class Context {
       throw Error.new("no outer scope")
    }
    method define(name, info) {
-      if .resolve[name] {
-         .resolve[name] = nil
-      }
       .scope.define(name, info)
    }
-   method lookup(name) {
-      .scope.lookup(name)
+   method lookup(name, pos) {
+      .scope.lookup(name, pos)
    }
 }
 
@@ -120,7 +124,7 @@ object Grammar {
       return
    }
    function lookup(pos, name, ctx) {
-      var info = ctx.lookup(name)
+      var info = ctx.lookup(name, pos)
       if info {
          if info['base'] {
             if info['base'] == 'self' {
@@ -130,13 +134,11 @@ object Grammar {
          }
          return name
       }
-      ctx.resolve[name] = pos
       return '__env.'+name
    }
    function update(pos, name, ctx) {
-      var info = ctx.lookup(name)
+      var info = ctx.lookup(name, pos)
       if !info {
-         ctx.resolve[name] = pos
          return '__env.'+name+'=%s'
       }
       if info['base'] {
@@ -484,12 +486,11 @@ object Grammar {
       }
    }
 
-   function make_meth_decl(c,n,p,b,s,a,l) {
+   function make_meth_decl(c,n,p,b,s,a) {
       p = [ 'self', ...p ]
       var p, h = make_params(c,p)
       var t = c.scope.outer.unhoist()
-      l ||= ''
-      return "%s__env.method(self,%q,function(%s)%s %s end,%s,{%s});".format(t,n,p,h,b,a,l)
+      return "%s__env.method(self,%q,function(%s)%s %s end,%s);".format(t,n,p,h,b,a)
    }
    function make_class_decl(c,n,f,w,b,s) {
       var decl = '__env.class(__env,%q,%s,{%s},function(__env,self,super) %s end);'
@@ -521,7 +522,7 @@ object Grammar {
    }
    function make_trait_decl(c,n,p,w,b) {
       var decl = '__env.trait(__env,%q,{%s},%s,function(__env,self,%s)%s end);'
-      a = '...'
+      var a = '...'
       if p.len > 0 {
          a = p.concat(',')
       }
@@ -622,13 +623,21 @@ object Grammar {
    }
    rule verify {
       <ctx> -> function(ctx) {
-         for k,v in ctx.resolve {
-            if !ctx.lookup(k) {
-               throw SyntaxError.new(
-                  "symbol '${k}' was never defined on"+
-                  " line: ${error_line(ctx.source,v)}"+
-                  " near: ${error_near(ctx.source,v)}",
-               2)
+         var stack = [ ctx.scope ]
+         while stack.len > 0 {
+            var curr = stack.pop
+            for k,v in curr.resolve {
+               var info = curr.lookup(k)
+               if !(info && info['base'] == '__env') {
+                  throw SyntaxError.new(
+                     "symbol '${k}' was never defined on"+
+                     " line: ${error_line(ctx.source,v)}"+
+                     " near: ${error_near(ctx.source,v)}",
+                  2)
+               }
+            }
+            for i=1, curr.inner.len {
+               stack.push(curr.inner[i])
             }
          }
       }

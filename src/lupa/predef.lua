@@ -651,6 +651,8 @@ end
 Class.__slots.toString = function(self) 
    return "<class "..tostring(self.__name)..">"
 end
+Class.__slots.check  = Type.__slots.check
+Class.__slots.coerce = Type.__slots.coerce
 
 Trait = newtype"Trait"
 Trait.__index = lookup(Trait.__slots)
@@ -779,23 +781,13 @@ Array.__slots.push = function(self, v)
    self[#self + 1] = v
 end
 Array.__slots.pop = function(self)
-   local v = self[#self]
-   self[#self] = nil
-   return v
+   return table.remove(self)
 end
 Array.__slots.shift = function(self)
-   local v = self[1]
-   for i=2, #self do
-      self[i - 1] = self[i]
-   end
-   self[#self] = nil
-   return v
+   return table.remove(self, 1)
 end
 Array.__slots.unshift = function(self, v)
-   for i=#self+1, 1, -1 do
-      self[i] = self[i-1]
-   end
-   self[1] = v
+   table.insert(self, 1, v)
 end
 Array.__slots.splice = function(self, offset, count, ...)
    local args = Array:new(...)
