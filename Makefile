@@ -5,7 +5,6 @@ BINDIR=./bin
 DEPSDIR=./deps
 BUILDDIR=./build
 LPEGDIR=${DEPSDIR}/lpeg
-LMARDIR=${DEPSDIR}/lua-marshal
 LUADIR=${DEPSDIR}/luajit
 UVDIR=${DEPSDIR}/libuv
 
@@ -14,13 +13,16 @@ MH_NAME=$(shell uname -m)
 
 CFLAGS=-O2 -fomit-frame-pointer -Wall -g -fno-stack-protector
 LDFLAGS=-lm -ldl
+LIBFLAGS=-shared
 
 ifeq (${OS_NAME}, Darwin)
 ifeq (${MH_NAME}, x86_64)
 CFLAGS+=-pagezero_size 10000 -image_base 100000000
+LIBFLAGS+=-undefined dynamic_lookup
 endif
 else ifeq (${OS_NAME}, Linux)
 CFLAGS+=-Wl,-E
+LIBFLAGS+=-fPIC
 endif
 
 XCFLAGS=-g
@@ -30,7 +32,7 @@ export XCFLAGS
 
 BUILD= ${BUILDDIR}/bin/lupa
 
-all: ${BINDIR}/luajit ${BINDIR}/lupa ${LIBDIR}/lpeg.so ${LIBDIR}/marshal.so ${LIBDIR}/libuv.so ${BUILD}
+all: ${BINDIR}/luajit ${BINDIR}/lupa ${LIBDIR}/lpeg.so ${LIBDIR}/libuv.so ${BUILD}
 
 ${BINDIR}/lupa:
 	mkdir -p ${BINDIR}
@@ -46,18 +48,10 @@ ${LIBDIR}/lpeg.so:
 
 ${LIBDIR}/libuv.so:
 	git submodule update --init ${UVDIR}
-	${MAKE} -C ${UVDIR}
-	mkdir -p ${BUILDDIR}/uv
-	cp ${UVDIR}/uv.a ${BUILDDIR}/uv/uv.a
-	cd ${BUILDDIR}/uv/ && ar -x uv.a
+	${MAKE} libuv.so -C ${UVDIR}
 	mkdir -p ${INCDIR}
 	${CC} -I${UVDIR}/include ${UVDIR}/include/uv.h -E | grep -v '#' >${INCDIR}/uv.h
-	${CC} -I${UVDIR}/include -undefined dynamic_lookup -shared -o ${LIBDIR}/libuv.so ${BUILDDIR}/uv/*.o
-
-${LIBDIR}/marshal.so:
-	git submodule update --init ${LMARDIR}
-	${MAKE} -C ${LMARDIR} marshal.so
-	cp ${LMARDIR}/marshal.so ${LIBDIR}/marshal.so
+	cp ${UVDIR}/libuv.so ${LIBDIR}/libuv.so
 
 ${LIBDIR}/libluajit.a:
 	git submodule update --init ${LUADIR}
@@ -71,7 +65,6 @@ ${BINDIR}/luajit: ${LIBDIR}/libluajit.a
 clean:
 	${MAKE} -C ${LUADIR} clean
 	${MAKE} -C ${LPEGDIR} clean
-	${MAKE} -C ${LMARDIR} clean
 	${MAKE} -C ${UVDIR} clean
 	rm -rf ${BUILDDIR}
 	rm -f ${LIBDIR}/*.so
