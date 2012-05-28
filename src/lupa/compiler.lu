@@ -1166,7 +1166,10 @@ object Grammar {
       <expr>
    }
    rule table_pair {
-      (<name> | "[" s <expr> s <{ expect("]") }>) s "=" s <expr>
+      (
+      | (<name> -> demangle) -> '["%1"]'
+      | "[" s <expr> s <{ expect("]") }>
+      ) s "=" s <expr>
    }
    rule primary {
       | <range>
