@@ -13,16 +13,17 @@ MH_NAME=$(shell uname -m)
 
 CFLAGS=-O2 -fomit-frame-pointer -Wall -g -fno-stack-protector
 LDFLAGS=-lm -ldl
-LIBFLAGS=-shared
+DEPS=${LIBDIR}/libluajit.a ${LPEGDIR}/lpeg.o
 
 ifeq (${OS_NAME}, Darwin)
 ifeq (${MH_NAME}, x86_64)
 CFLAGS+=-pagezero_size 10000 -image_base 100000000
-LIBFLAGS+=-undefined dynamic_lookup
+DEPS+=-force_load ${UVDIR}/uv.a
+LDFLAGS+=-framework CoreServices
 endif
 else ifeq (${OS_NAME}, Linux)
 CFLAGS+=-Wl,-E
-LIBFLAGS+=-fPIC
+DEPS+=${UVDIR}/uv.a
 endif
 
 XCFLAGS=-g
@@ -32,26 +33,24 @@ export XCFLAGS
 
 BUILD= ${BUILDDIR}/bin/lupa
 
-all: ${BINDIR}/luajit ${BINDIR}/lupa ${LIBDIR}/lpeg.so ${LIBDIR}/libuv.so ${BUILD}
+all: ${BINDIR}/luajit ${BINDIR}/lupa ${LPEGDIR}/lpeg.o ${UVDIR}/uv.a ${BUILD}
 
 ${BINDIR}/lupa:
 	mkdir -p ${BINDIR}
-	${CC} ${CFLAGS} -I${LUADIR}/src -L${LUADIR}/src -o ${BINDIR}/lupa ./src/lupa.c ${LIBDIR}/libluajit.a ${LDFLAGS}
+	${CC} ${CFLAGS} -I${UVDIR}/include -I${LPEGDIR} -I${LUADIR}/src -L${LUADIR}/src -o ${BINDIR}/lupa ./src/lib_init.c ./src/lupa.c ${DEPS} ${LDFLAGS}
 
 ${BUILDDIR}/bin/lupa:
 	mkdir -p ${BUILDDIR}/bin
-	${CC} ${CFLAGS} -I${LUADIR}/src -L${LUADIR}/src -o ${BUILDDIR}/bin/lupa ./src/lupa.c ${LIBDIR}/libluajit.a ${LDFLAGS}
+	${CC} ${CFLAGS} -I${UVDIR}/include -I${LPEGDIR} -I${LUADIR}/src -L${LUADIR}/src -o ${BUILDDIR}/bin/lupa ./src/lib_init.c ./src/lupa.c ${DEPS} ${LDFLAGS}
 
-${LIBDIR}/lpeg.so:
-	${MAKE} -C ${LPEGDIR} lpeg.so
-	cp ${LPEGDIR}/lpeg.so ${LIBDIR}/lpeg.so
+${LPEGDIR}/lpeg.o:
+	${MAKE} -C ${LPEGDIR} lpeg.o
 
-${LIBDIR}/libuv.so:
+${UVDIR}/uv.a:
 	git submodule update --init ${UVDIR}
-	${MAKE} libuv.so -C ${UVDIR}
+	${MAKE} uv.a -C ${UVDIR}
 	mkdir -p ${INCDIR}
 	${CC} -I${UVDIR}/include ${UVDIR}/include/uv.h -E | grep -v '#' >${INCDIR}/uv.h
-	cp ${UVDIR}/libuv.so ${LIBDIR}/libuv.so
 
 ${LIBDIR}/libluajit.a:
 	git submodule update --init ${LUADIR}

@@ -1,7 +1,7 @@
 import Compiler from lupa.lang
 
-package::path  = ";;./lib/?.lua;${package::path}"
-package::cpath = ";;./lib/?.so;${package::cpath}"
+package#path  = ";;./lib/?.lua;${package#path}"
+package#cpath = ";;./lib/?.so;${package#cpath}"
 
 var getopt = function(...args) {
    var opt = { }
@@ -38,10 +38,10 @@ var run = function(...a) {
    if a.len == 0 {
       var repl = require("lupa.repl")
       repl.run()
-      os::exit(0)
+      os#exit(0)
    }
    var opt = getopt(...a)
-   var sfh = assert(io::open(opt['file']))
+   var sfh = assert(io#open(opt['file']))
    var src = sfh.read('*a')
    sfh.close()
 
@@ -51,15 +51,15 @@ var run = function(...a) {
    }
    catch (e) {
       print(tostring(e))
-      os::exit(-1)
+      os#exit(-1)
    }
    if opt['l'] {
-      io::stdout.write(lua, "\n")
-      os::exit(0)
+      io#stdout.write(lua, "\n")
+      os#exit(0)
    }
 
    if opt['o'] {
-      var outc = io::open(opt['o'], "w+")
+      var outc = io#open(opt['o'], "w+")
       outc.write(lua)
       outc.close()
    }
@@ -67,19 +67,19 @@ var run = function(...a) {
       lua = lua.gsub("^%s*#![^\n]*",'')
       var main = assert(loadstring(lua,'='+opt['file']))
       if opt['b'] {
-         var outc = io::open(opt['b'], "wb+")
-         outc.write(string::dump(main))
+         var outc = io#open(opt['b'], "wb+")
+         outc.write(string#dump(main))
          outc.close()
       }
       else {
-         var main_env  = require('lupa.predef')::environ()
+         var main_env  = require('lupa.predef')#environ()
          xpcall(main, function(err) {
-            io::stderr.write(debug::traceback(tostring(err)),"\n")
-            os::exit(1)
+            io#stderr.write(debug#traceback(tostring(err)),"\n")
+            os#exit(1)
          }, main_env, opt['file'], ...a)
       }
    }
 }
 
-if global::arg::[1] { run(global::unpack(arg)) }
+if global#arg#[1] { run(global#unpack(arg)) }
 

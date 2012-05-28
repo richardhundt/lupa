@@ -4,13 +4,13 @@ import Point, answer, cheese from test.shapes
 var p = Point.new
 p.move(1, 2)
 
-var q = shapes.Point.new
+var q = shapes::Point.new
 q.move(1, 2)
 
 print("the answer:", answer)
 print("cheese?:", cheese)
 
-class Point3D from shapes.Point {
+class Point3D from shapes::Point {
    static has DEBUG = true
 
    our MODE = 'funky'
@@ -22,6 +22,6 @@ class Point3D from shapes.Point {
    }
 }
 
-Point3D.Inner.new.greet
-print(Point3D.MODE)
+Point3D::Inner.new.greet
+print(Point3D::MODE)
 

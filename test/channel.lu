@@ -1,0 +1,21 @@
+import Fiber, Channel from std.fiber
+
+var chan = Channel.new(10)
+
+Fiber run => {
+   100 times => { chan put _ }
+}
+
+for i=1, 3 {
+   Fiber run => {
+      while true {
+         var v = chan.get
+         if v == nil { break }
+         print("f${i} - ", v)
+         Fiber.sleep(100)
+      }
+   }
+}
+
+Fiber.dispatch
+

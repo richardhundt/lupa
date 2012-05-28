@@ -135,6 +135,9 @@ function class(into, name, from, with, body)
    class.__slots = setmetatable(slots, { __index = from.__slots })
    class.__index = lookup(slots)
 
+   class.__inner = environ(into)
+   class.__inner[name] = class
+
    class.__rules = { }
    for k,v in pairs(from.__rules) do
       class.__rules[k] = v
@@ -143,19 +146,7 @@ function class(into, name, from, with, body)
    for k,v in pairs(Meta) do
       class[k] = v
    end
-
-   class.new = function(self, ...)
-      local obj = setmetatable({ }, self)
-      if self.__slots.init then
-         self.__slots.init(obj, ...)
-      end
-      return obj
-   end
    setmetatable(class, Class)
-
-   local inner = environ(into)
-
-   inner[name] = class
 
    if with then
       for i=1,#with do
@@ -163,7 +154,8 @@ function class(into, name, from, with, body)
       end
    end
 
-   body(inner, class, from.__slots)
+   local super = setmetatable({ }, from)
+   body(class.__inner, class, super)
 
    for k,v in pairs(class.__need) do
       if v == true then
@@ -174,14 +166,6 @@ function class(into, name, from, with, body)
          if class.__slots[k] == nil then
             throw(ComposeError:new("'"..tostring(k).."' is needed in "..name), 2)
          end
-      end
-   end
-
-   for k,v in pairs(inner) do
-      if rawtype(v) == 'function' then
-         class[k] = function(_, ...) return v(...) end
-      else
-         class[k] = function() return v end
       end
    end
 
@@ -209,40 +193,6 @@ function object(into, name, from, with, body)
       inst.__slots.init(inst)
    end
    return inst
-end
-
-Slot = { }
-Slot.new = function(class, name, type, ctor)
-   local self = setmetatable({
-      __name = name,
-      __type = type,
-      __ctor = ctor,
-   }, class)
-
-   local idx = self
-   function self.get(obj)
-      local val = rawget(obj, idx)
-      if val == nil then
-         val = ctor(obj)
-         self.set(obj, val)
-      end
-      return val
-   end
-
-   if type then
-      function self.set(obj, val)
-         rawset(obj, idx, type:coerce(val))
-      end
-   else
-      function self.set(obj, val)
-         rawset(obj, idx, val)
-      end
-   end
-
-   return self
-end
-Slot.__call = function(self, obj)
-   return self.get(obj)
 end
 
 function has(into, name, type, ctor, meta) 
@@ -406,53 +356,28 @@ end
 
 function import(into, from, what, dest) 
    local mod = __load(from)
-   local path = { }
-   for frag in from:gmatch"([^%.]+)" do
-      path[#path + 1] = frag
-   end
    if what then
       if dest then
-         into[dest] = setmetatable({ }, {
-            __index = lookup({ });
-            __tostring = function(self)
-               return dest
+         into[dest] = setmetatable({ }, { __index = lookup({ }) })
+         into[dest][mangle'::'] = function(self, name)
+            local sym = mod[name]
+            if sym == nil then
+               throw(ImportError:new("'"..tostring(name).."' from '"..tostring(from).."' is nil"), 2)
             end
-         })
+            return sym
+         end
          into = into[dest]
       end 
-      if #what == 0 then
-         for key, val in pairs(mod) do
-            if dest then
-               if rawtype(val) == 'function' then
-                  into[key] = function(_, ...) return val(...) end
-               else
-                  into[key] = function() return val end
-               end
-            else
-               into[key] = val
-            end
+      for i=1, #what do
+         local key = what[i]
+         local val = rawget(mod, key)
+         if val == nil then
+            throw(ImportError:new("'"..tostring(key).."' from '"..tostring(from).."' is nil"), 2)
          end
-      else
-         for i=1, #what do
-            local key = what[i]
-            local val = rawget(mod, key)
-            if val == nil then
-               throw(ImportError:new("'"..tostring(key).."' from '"..tostring(from).."' is nil"), 2)
-            end
-            if dest then
-               if rawtype(val) == 'function' then
-                  into[key] = function(_, ...) return val(...) end
-               else
-                  into[key] = function() return val end
-               end
-            else
-               into[key] = val
-            end
-         end
+         into[key] = val
       end
-   else
-      return mod
    end
+   return mod
 end
 
 function export(from, ...)
@@ -646,13 +571,20 @@ end
 Class = newtype"Class"
 Class.__index = lookup(Class.__slots)
 Class.__slots[mangle"::"] = function(class, key)
-   return class.__slots[key]
+   return class.__slots[key] or class.__inner[key]
 end
 Class.__slots.toString = function(self) 
    return "<class "..tostring(self.__name)..">"
 end
 Class.__slots.check  = Type.__slots.check
 Class.__slots.coerce = Type.__slots.coerce
+Class.__slots.new = function(self, ...)
+   local obj = setmetatable({ }, self)
+   if self.__slots.init then
+      self.__slots.init(obj, ...)
+   end
+   return obj
+end
 
 Trait = newtype"Trait"
 Trait.__index = lookup(Trait.__slots)

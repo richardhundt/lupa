@@ -40,6 +40,9 @@ class Context {
    has exports = { }
    has source  = ''
 
+   method init(source = '') {
+      .source = source
+   }
    method enter() {
       .scope = Scope.new(.scope)
    }
@@ -1190,8 +1193,10 @@ object Grammar {
       {~
       | ("." -> ":") s <opname> (&( hs* (<paren_expr>)) | {`'()'`})
       | "[" {~ s <expr> s ~} "]" -> ":${mangle('_[]')}(%1)"
-      | ("::" -> '') hs* "[" s <expr> s "]"
-      | ("::" -> ".") hs* {~ <name> -> demangle ~}
+      | "::" hs* "[" {~ s <expr> s ~} "]" -> ":${mangle('::')}(%1)"
+      | "::" hs* <opname> -> ":${mangle('::')}('%1')"
+      | ("#" -> '') hs* "[" s <expr> s "]"
+      | ("#" -> ".") hs* {~ <name> -> demangle ~}
       ~}
    }
 
@@ -1216,7 +1221,7 @@ object Grammar {
    rule expr_stmt {
       {~ (
          | <super_expr> (hs* <suffix_expr>)*
-         | <expr> //-> 'local _=%1'
+         | <expr>
          ) (&(s ';') | {`';'`})
       ~}
    }
@@ -1302,8 +1307,8 @@ object Grammar {
       {~
       | "." {hs*} <opname> ->":%1%2${mangle('=')}(%%s)"
       | "[" {~ s <expr> s ~} "]" -> ":${mangle('_[]=')}(%1,%%s)"
-      | "::" {hs*} {~ <name> -> demangle ~} -> '.%1%2=%%s'
-      | "::" {hs*} "[" {~ s <expr> s ~} "]" -> '%1[%2]=%%s'
+      | "#" {hs*} {~ <name> -> demangle ~} -> '.%1%2=%%s'
+      | "#" {hs*} "[" {~ s <expr> s ~} "]" -> '%1[%2]=%%s'
       ~}
    }
 
@@ -1458,8 +1463,7 @@ object Compiler {
    }
 
    method compile(lupa, name, env) {
-      var ctx = Context.new
-      ctx.source = lupa
+      var ctx = Context.new(lupa)
       ctx.enter()
       self.predef(ctx, env || global)
       var lua = Grammar.match(lupa, 1, ctx)
@@ -1477,14 +1481,14 @@ object Compiler {
 
       var eenv = newtable()
       var meta = newtable()
-      meta::__index = global::require("lupa.predef")
-      global::setmetatable(eenv, meta)
+      meta#__index = global#require("lupa.predef")
+      global#setmetatable(eenv, meta)
 
       return eval(eenv)
    }
 }
 
-package::loaded::['lupa.lang'] = {
+package#loaded#['lupa.lang'] = {
    Compiler = Compiler,
    Grammar  = Grammar,
    Context  = Context,

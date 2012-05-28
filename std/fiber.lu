@@ -1,0 +1,292 @@
+export Fiber, Channel, Semaphore
+
+var ffi = require('ffi')
+var uvh = assert(io#open('./include/uv.h'))
+var def = uvh.read('*a')
+ffi#cdef(def)
+var sys = ffi#C //assert(ffi#load('./lib/libuv.so'))
+
+var LOOP = sys#uv_default_loop()
+var NREF = 0
+
+class Timer {
+   has delay = 0
+
+   var ROUSE = { }
+   var TI_CB = ffi#cast('uv_timer_cb', function(req) {
+      var key = tostring(req)
+      if ROUSE[key] {
+         ROUSE[key](req)
+         ROUSE[key] = nil
+      }
+   })
+
+   method init(delay = 0, repeat = 0) {
+      self.delay  = delay
+      self.repeat = repeat
+   }
+
+   method start {
+      var curr = Fiber.self
+      if curr {
+         var key = tostring(ffi#cast('uv_timer_t *', .handle))
+         ROUSE[key] = function(req) { curr.ready }
+         sys#uv_timer_start(.handle, TI_CB, .delay, .repeat)
+         curr.suspend
+      }
+      else {
+         sys#uv_timer_start(.handle, TI_CB, .delay, .repeat)
+         Fiber.dispatch()
+      }
+      if .repeat == 0 {
+         self.cancel
+      }
+   }
+   method handle {
+      if rawget(self,'_handle') {
+         return self#_handle
+      }
+      self#_handle = ffi#new('uv_timer_t')
+      sys#uv_timer_init(LOOP, self#_handle)
+      NREF += 1
+      self#_handle
+   }
+   method handle=(val) {
+      if rawget(self,'_handle') {
+         sys#uv_close(ffi#cast('uv_handle_t *', self#_handle), nil)
+         NREF -= 1
+      }
+      self#_handle = val
+   }
+   method cancel {
+      self.handle = nil
+   }
+   method stop {
+      sys#uv_timer_stop(.handle)
+   }
+   method again {
+      sys#uv_timer_again(.handle)
+   }
+   method repeat=(val) {
+      sys#uv_timer_set_repeat(.handle, val)
+   }
+   method repeat {
+      tonumber(sys#uv_timer_get_repeat(.handle))
+   }
+}
+
+class Fiber {
+   has on_cleanup = [ ]
+
+   var READY = [ ]
+   method init(body, ...args) {
+      self#state = coroutine#create(function() { body(...args) })
+   }   
+
+   var current
+   static method self() {
+      return current
+   }
+
+   static method yield() {
+      if coroutine#running() {
+         coroutine#yield()
+      }
+      else {
+         self.dispatch()
+      }
+   }
+   static method dispatch() {
+      while true {
+         var n = READY.len
+         if n === 0 {
+            while NREF > 0 && READY.len === 0 {
+               sys#uv_run_once(LOOP)
+            }
+            n = READY.len
+            if n === 0 { break }
+         }
+         for i=1, n {
+            current = READY[i]
+            var co = current#state
+            var ok, rv = coroutine#resume(co)
+            current = nil
+            if ok {
+               if rv === 'suspend' || coroutine#status(co) === 'dead' {
+                  READY.remove(i)
+                  break
+               }
+            }
+            else {
+               throw rv
+            }
+         }
+      }
+   }
+   static method run(func) {
+      var fiber = self.new(func)
+      fiber.ready
+      fiber
+   }
+
+   static method sleep(delay) {
+      Timer.new(delay, 0).start
+   }
+
+   method ready() {
+      READY.push(self)
+      self
+   }
+
+   method suspend() {
+      coroutine#yield("suspend")
+      self
+   }
+
+   method terminate() {
+      self.on_cleanup each => { _(self) }
+   }
+
+   method join() {
+      if coroutine#running() {
+         var curr = Fiber.self
+         self.on_cleanup push => { curr.ready() }
+         curr.suspend()
+      }
+      else {
+         Fiber.dispatch()
+      }
+   }
+
+   method status() {
+      return coroutine#status(self#state)
+   }
+}
+
+class Semaphore {
+   has wait = [ ]
+   has count : Number = 1
+
+   method init(count) {
+      if count {
+         self.count = count
+      }
+   }
+   method up {
+      self.count += 1
+      if self.wait.len > 0 {
+         self.wait.shift.ready
+         Fiber.yield
+      }
+   }
+   method down {
+      self.count -= 1
+      while self.count < 0 {
+         var curr = Fiber.self
+         if curr {
+            self.wait.push(curr)
+            curr.suspend
+         }
+         else {
+            Fiber.dispatch
+         }
+      }
+   }
+}
+
+class Channel {
+   method init(size = math#huge) {
+      self#_data = [ ]
+      self#_sget = Semaphore.new(0)
+      self#_sput = Semaphore.new(size)
+   }
+   method put(val) {
+      self#_data.push(val)
+      self#_sget.up
+      self#_sput.down
+   }
+   method get() {
+      self#_sget.down
+      self#_sput.up
+      self#_data.shift
+   }
+}
+
+class File {
+   has fd
+   has ofs = 0
+
+   our O_RDONLY   = 0x0000
+   our O_WRONLY   = 0x0001
+   our O_RDWR     = 0x0002
+   our O_ACCMODE  = 0x0003
+   our O_NONBLOCK = 0x0004
+   our O_APPEND   = 0x0008
+   our O_CREAT    = 0x0200
+   our O_TRUNC    = 0x0400
+   our O_EXCL     = 0x0800
+
+   var FLAGS = {
+      ["r"]  = O_RDONLY,
+      ["r+"] = O_RDWR,
+      ["w"]  = O_CREAT  | O_TRUNC | O_WRONLY,
+      ["w+"] = O_CREAT  | O_TRUNC | O_RDWR,
+      ["a"]  = O_APPEND | O_CREAT | O_WRONLY,
+      ["a+"] = O_APPEND | O_CREAT | O_RDWR,
+   }
+
+   static method open(path, how, mode) {
+      var req  = ffi#new('uv_fs_t[?]', 1)
+      var file = self.new()
+      file.fd = sys#uv_fs_open(LOOP, req, path, FLAGS[how], mode, nil)
+      NREF += 1
+      return file
+   }
+
+   var ROUSE = { }
+   var FS_CB = ffi#cast('uv_fs_cb', function(req) {
+      var key = tostring(req)
+      if ROUSE[key] {
+         ROUSE[key](req)
+         ROUSE[key] = nil
+      }
+   })
+   method write(str : String, ofs : Number = 0) {
+      var req = ffi#new('uv_fs_t[?]', 1)
+      var buf = ffi#cast('void *', str)
+      if Fiber.self {
+         var curr = Fiber.self
+         var key  = tostring(ffi#cast('uv_fs_t *', req))
+         ROUSE[key] = function(req) {
+            sys#uv_fs_req_cleanup(req)
+            curr.ready
+         }
+         sys#uv_fs_write(LOOP, req, .fd, buf, str.len, ofs, FS_CB)
+         curr.suspend
+      }
+      else {
+         sys#uv_fs_write(LOOP, req, .fd, buf, str.len, ofs, nil)
+         sys#uv_fs_req_cleanup(req)
+      }
+   }
+   method close() {
+      var req = ffi#new('uv_fs_t[?]', 1)
+      if Fiber.self {
+         var curr = Fiber.self
+         var key  = tostring(ffi#cast('uv_fs_t *', req))
+         ROUSE[key] = function(req) {
+            sys#uv_fs_req_cleanup(req)
+            NREF -= 1
+            curr.ready
+         }
+         sys#uv_fs_close(LOOP, req, .fd, FS_CB)
+         curr.suspend
+      }
+      else {
+         sys#uv_fs_close(LOOP, req, .fd, nil) 
+         sys#uv_fs_req_cleanup(req)
+         NREF -= 1
+      }
+   }
+}
+
