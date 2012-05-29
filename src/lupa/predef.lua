@@ -9,7 +9,7 @@ local ffi = require('ffi')
 package.path  = ';;./lib/?.lua;'..package.path
 package.cpath = ';;./lib/?.so;'..package.cpath
 
-LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu"
+LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu;/usr/local/lib/lupa/?.lu;/usr/lib/lupa/?.lu;"
 table.insert(package.loaders, function(modname)
    local filename = modname:gsub("%.", "/")
    for path in LUPA_PATH:gmatch("([^;]+)") do

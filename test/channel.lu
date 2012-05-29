@@ -1,6 +1,6 @@
-import Fiber, Channel from std.fiber
+import File, Fiber, Channel from std.system
 
-var chan = Channel.new(10)
+var chan = Channel.new(3)
 
 Fiber run => {
    100 times => { chan put _ }
@@ -12,10 +12,22 @@ for i=1, 3 {
          var v = chan.get
          if v == nil { break }
          print("f${i} - ", v)
-         Fiber.sleep(100)
+         Fiber.yield
       }
    }
 }
 
-Fiber.dispatch
+Fiber run => {
+   var file = File.open('/tmp/bar.txt', 'w', 0666)
+   var offs = 0
+   var mesg = "some data\n"
+   for i=1, 100 {
+      file.write(mesg, offs)
+      print("wrote at", offs)
+      offs += mesg.len
+   }
+   file.close
+}
+
+Fiber.self.join
 
