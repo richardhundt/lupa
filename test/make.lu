@@ -1,9 +1,0 @@
-trait Foo<X,Y> {
-    has a = X
-    has b = Y
-}
-
-var a = { }
-
-var x = a with Foo<1>
-

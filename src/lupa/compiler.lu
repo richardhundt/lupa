@@ -510,11 +510,11 @@ object Grammar {
    function make_obj_decl(c,n,f,w,b,s) {
       var decl = '__env.object(__env,%q,%s,{%s},function(__env,self,super) %s end);'
       if s == 'lexical' {
-         c.define(n, { type = '#'+n })
+         c.define(n, { type = n })
          decl = 'local %s='+decl
       }
       else {
-         c.define(n, { type = '#'+n, base = '__env' })
+         c.define(n, { type = n, base = '__env' })
          decl = "__env.%s="+decl
       }
       return decl.format(n,n,f,w,b)
@@ -861,7 +861,7 @@ object Grammar {
    }
 
    rule name_list {
-      {~ <name> (hs* "," s <name>)* ~}
+      <name> (hs* "," s <name>)*
    }
    rule type_name {
       //{~ <ident> (hs* ("." -> ':') s <name> {`'()'`})* ~}
