@@ -150,7 +150,7 @@ function class(into, name, from, with, body)
 
    if with then
       for i=1,#with do
-         with[i]:make(inner, class)
+         with[i]:make(class.__inner, class)
       end
    end
 
@@ -643,6 +643,14 @@ Array.new = function(self, ...)
 end
 Array.apply = function(self, ...)
    return setmetatable({ ... }, self)
+end
+Array[mangle'_[]'] = function(self, type)
+   return guard('Array['..tostring(type.__name)..']', function(self, samp)
+      for i=1, #samp do
+         samp[i] = type:coerce(samp[i])
+      end
+      return samp
+   end)
 end
 Array.__index = Array.__slots
 Array.__slots.len = function(self)
