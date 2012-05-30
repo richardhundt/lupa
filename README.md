@@ -24,7 +24,8 @@ run-time safe. Not type safe, neccessarily, but more generally,
 constraint safe, where a constraint may be a type check.
 
 For syntactic and semantic flexibility, Lupa borrows an idea from
-Scala in that infix and prefix operators are method calls.
+Scala in that infix and prefix operators are method calls. That's
+probably where the similarity ends. Lupa is a dynamic language.
 
 For safety, Lupa provides compile-time symbol checks to catch typos,
 and for the rest we have guard expressions.
@@ -37,10 +38,6 @@ compilation unit we can still perform some checks. It also allows
 us to call from Lupa into Lua.
 
 ## Features
-
-Lupa borrows ideas from Scala in that (almost all) infix and prefix
-operators are method calls, and supports single inheritance with
-trait composition. For constraints, Lupa supports guard expressions.
 
 Most of Lua's semantics shine through, such as Lua's for loops,
 1-based arrays, first-class functions, and late binding.
@@ -67,21 +64,6 @@ However, Lupa adds several features, such as:
 Syntactically Lupa belongs to the C family of languages, in that
 it has curly braces delimiting blocks and includes familiar constructs
 such as switch statements and while loops.
-
-## Tutorial
-
-To introduce the language, we start with a tutorial, where we
-implement a naive List type which simply wraps an Array. Our first
-attempt might look as follows:
-
-```ActionScript
-class List {
-    has data : Array = [ ]
-    method init(data) {
-        .data = data || [ ]
-    }
-}
-```
 
 ## Sample
 
@@ -130,6 +112,197 @@ var rudy = Hamster.new("Rudy")
 rudy.greet("Jack")
 rudy.count(5)
 ```
+
+## Tutorial
+
+To introduce the language, we start with a tutorial, where we
+implement a naive NumArray type which simply wraps an Array, and
+constrains values to be of type Number. Our first attempt might
+look as follows:
+
+```ActionScript
+class NumArray {
+    // a "public" read-write property with lazy constructor
+    has data = [ ]
+
+    // initializer
+    method init(data) {
+        self.data = data || [ ]
+    }
+
+    method set(index, value) {
+        if !value is Number {
+            throw "${value} is not a Number"
+        }
+        self.data[index] = value
+    }
+
+    method get(index) {
+        return self.data[index]
+    }
+}
+```
+
+This has several problems. One problem is that it doesn't
+implement the same interface as the built-in Array type which
+it is wrapping. Lupa provides postcircumfix operator methods
+which allow us to make this more consistent:
+
+```ActionScript
+class NumArray {
+    has data = [ ]
+    method init(data) {
+        self.data = data || [ ]
+    }
+    method _[]=(index, value) {
+        if !value is Number {
+            throw "${value} is not a Number"
+        }
+        self.data[index] = value
+    }
+    method _[](index) {
+        return self.data[index]
+    }
+}
+```
+
+The `_[]` and `_[]=` methods are called when getting or
+setting a value using array subscript.
+
+A second thing which can make our implementation nicer is
+to use guard annotations instead of explicitly checking
+that our value is a `Number`.
+
+```ActionScript
+class NumArray {
+    has data = [ ]
+    method init(data) {
+        self.data = data || [ ]
+    }
+    method _[]=(index, value : Number) {
+        self.data[index] = value
+    }
+    method _[](index) {
+        return self.data[index]
+    }
+    method len {
+        self.data.len
+    }
+}
+```
+
+The Array class also implements a `len` property which is
+readonly. Properties introduced by `has` are actually just
+sugar for creating a getter/setter method pair. Therefore
+to create a readonly property, simply define the method
+and call it without parameters:
+
+```ActionScript
+class NumArray {
+    has data = [ ]
+    method init(data) {
+        self.data = data || [ ]
+    }
+    method _[]=(index, value : Number) {
+        self.data[index] = value
+    }
+    method _[](index) {
+        return self.data[index]
+    }
+    method len {
+        .data.len
+    }
+}
+```
+
+Note that the `return` keyword is missing from our `len` method.
+This is because the last expression evaluated in a function
+body has an implicit return. Similarly we could have left
+out the `_[]` method's return.
+
+This makes it convenient to use `map` and similar functions
+for transforming list-like objects. More on that later.
+
+We've also left out `self`, which is implied by the leading `.`.
+
+A class body is actually a closure which can have lexical variables
+which are not accessible from outside. This can be used to make our
+inner array private. You could do the following:
+
+```ActionScript
+class NumArray {
+    // create a table with weak keys
+    var private = { } weak 'k'
+
+    method init(data) {
+        private[self] = data || [ ]
+    }
+    method _[]=(index, value : Number) {
+        private[self][index] = value
+    }
+    method _[](index) {
+        private[self][index]
+    }
+    method len {
+        private[self].len
+    }
+}
+```
+
+It's not all that pretty, but then again, Lupa is more interested
+in being flexible than carrying around a shotgun. Another thing
+you could do is to use the low-level direct table access operator `#`.
+
+This operator exists for interop with Lua and Lua libraries (and for
+making hard things possible):
+
+```ActionScript
+class NumArray {
+    method init(data : Array = [ ]) {
+        self#data = data
+    }
+    method _[]=(index, value : Number) {
+        self#data[index] = value
+    }
+    method _[](index) {
+        self#data[index]
+    }
+    method len {
+        self#data.len
+    }
+}
+```
+
+This is also not pretty, but it is noticeable. Which is good. The
+`#` operator is associated with accessing something's private parts
+in that member accesses via `.` are method calls. Names following
+the `#` operator are also not mangled, which is needed for calling
+into Lua and FFI code.
+
+You could, of course, save yourself all the above trouble if you're
+just interested in constraint checking and create a guard:
+
+```ActionScript
+guard NumArray(sample : Array) {
+    // the Number annotation on the value does the coercion
+    for index, value : Number in sample {
+        // in-place, although we could return a copy
+        sample[index] = value
+    }
+    return sample
+}
+
+var foo : NumArray = [ 1, 2, "three" ] // KABOOM! cannot coerce "three" to Number
+```
+
+Alternatively you could save yourself even that much trouble and just say:
+
+```ActionScript
+var foo : Array[Number] = [ 1, 2, 3 ]
+```
+
+This works simply because the Array class itself implements a static
+method `_[]` which constructs a guard on demand and returns it.
 
 ## Scoping
 
@@ -200,8 +373,6 @@ function outer() {
 }
 ```
 
-Lupa has two kinds of lexical scopes. 
-
 ## Variables
 
 Lexical variables are introduced with the `var` keyword, followed
@@ -213,47 +384,20 @@ var a, b         // declare only
 var c, d = 1, 2  // declare and assign
 ```
 
-Variables are introduced
-
-## Expressions
-A guard expression is a lexical or environment name which evaluates to
-an object which implements a `coerce` method. For lexical variables,
-this is invoked for each operation which updates the binding. For
-example:
-
+Variables can also be introduced using the `our` keyword, which, as
+mentioned earlier binds to the environment table:
 
 ```ActionScript
-var a : Number = 42
-a = 69       // ok
-a = 'cheese' // error cannot coerce 'cheese' to number
-```
-
-The compiler inserts calls to `Number#coerce` whenever it sees
-an assignment to `a`. The same applies to function/method parameters
-and return values. For example:
-
-```ActionScript
-function add(a : Number, b : Number) : Number {
-    return a + b
+function life_etc() {
+    print("the answer is ${answer}")
 }
-var c = add(40, 2)
-```
-
-```ActionScript
-class A {
-    method >>+<<(a) {
-        print("funky operator on: "+a)
-    }
-}
-
-var a1 = A.new
-var a2 = A.new
-a1 >>+<< a2
+our answer = 42
+life_etc()
 ```
 
 ## Guards
 
-Variable declarations may also include guard expressions:
+Various declarations may also include guard expressions:
 
 ```ActionScript
 var s : String = "first"
