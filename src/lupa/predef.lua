@@ -243,7 +243,7 @@ end
 
 function rule(into, name, patt) 
    local key = '_'..name
-   local get = function(obj)
+   local get = function(obj, ...)
       local rule = rawget(obj, key)
       if rule == nil then
          local grmr = { }
@@ -255,6 +255,9 @@ function rule(into, name, patt)
          grmr[1] = name
          rule = _patt.P(grmr)
          rawset(obj, key, rule)
+      end
+      if select('#', ...) > 0 then
+         return rule:match(...)
       end
       return rule
    end
@@ -466,10 +469,7 @@ Any.__slots.apply = function(self)
    error(tostring(self).." is not callable", 2)
 end
 Any.__slots.toString = function(self)
-   local meta = getmetatable(self)
-   setmetatable(self, nil)
-   local addr = tostring(self):match(": (.+)$")
-   setmetatable(self, meta)
+   local addr = lupa.refaddr(self)
    return '<object '..tostring(getmetatable(self).__name).."@"..addr..'>'
 end
 Any.__slots.is = function(self, that)

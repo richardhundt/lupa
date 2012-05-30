@@ -27,6 +27,16 @@ static int lupa_run(lua_State *L) {
     return 0;
 }
 
+int lupa_util_refaddr(lua_State* L) {
+    lua_pushfstring(L, "%p", lua_topointer(L,1));
+    return 1;
+}
+
+static struct luaL_Reg lupa_util[] = {
+    { "refaddr", lupa_util_refaddr },
+    { NULL, NULL }
+};
+
 int main(int argc, char *argv[]) {
     lua_State *L;
     int i;
@@ -38,6 +48,8 @@ int main(int argc, char *argv[]) {
     }
 
     luaL_openlibs(L);
+    luaL_register(L, "lupa", lupa_util);
+    lua_pop(L, 1);
 
     lua_createtable(L, argc, 0);
     for (i = 0; i < argc; i++) {
