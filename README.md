@@ -501,7 +501,7 @@ class A {
 ```
 
 Additionally, postcircumfix operators are allowed in certain contexts. Array and
-Table subscripts are actually defined as '_[]' and '_[]=' methods. These
+Table subscripts are actually defined as `_[]` and `_[]=` methods. These
 can be used to implement your own collection:
 
 ```ActionScript
@@ -517,6 +517,9 @@ class NumberArray {
 var nums = NumberArray.new
 nums[1] = 42
 ```
+
+Property assignment is also a bit special, in that `foo.bar = 42` translates
+to `foo.bar_eq(42)`.
 
 ## Identifiers
 
