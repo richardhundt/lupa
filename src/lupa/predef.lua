@@ -903,9 +903,9 @@ Number.__slots[mangle'<=>'] = function(a, b)
 end
 Number.__slots[mangle'|'] = bit.bor
 Number.__slots[mangle'&'] = bit.band
-Number.__slots[mangle'<<'] = bit.blshift
-Number.__slots[mangle'>>'] = bit.brshift
-Number.__slots[mangle'>>>'] = bit.barshift
+Number.__slots[mangle'<<'] = bit.lshift
+Number.__slots[mangle'>>'] = bit.rshift
+Number.__slots[mangle'>>>'] = bit.arshift
 Comparable:make(__env,Number)
 debug.setmetatable(0, Number)
 
