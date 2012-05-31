@@ -1,4 +1,4 @@
-def foo() : ...Num {
+function foo() : ...Number {
     return 'blah', 42
 }
 

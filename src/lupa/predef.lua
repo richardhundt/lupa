@@ -276,7 +276,7 @@ function try(try,...)
          if type == nil then
             return body(er)
          end
-         if __match(er, type) then
+         if er:_ti_ti(type) then
              return body(er)
          end
       end
@@ -419,21 +419,6 @@ function __load(from)
    return mod
 end
 
-function __match(a, b)
-   if b == a then
-      return true
-   end
-   local mt = getmetatable(b)
-   local __match = mt and rawget(mt, "__match")
-   if __match then
-      return __match(b, a)
-   end
-   if a:is(b) then
-      return true
-   end
-   return false
- end
-
 typeof = getmetatable
 throw  = error
 
@@ -498,7 +483,7 @@ Any.__slots[mangle'like_'] = function(self)
          if not (tt:is(vt)) then
             throw(TypeError:new(tostring(that)..' is not '..tostring(self), 2))
          end
-      end 
+      end
       return that
    end
    return like
@@ -579,15 +564,14 @@ local function newtype(name)
 end
 
 Class = newtype"Class"
+Class.__slots = setmetatable({ }, { __index = Type.__slots })
 Class.__index = lookup(Class.__slots)
 Class.__slots[mangle"::"] = function(class, key)
    return class.__slots[key] or class.__inner[key]
 end
-Class.__slots.toString = function(self) 
+Class.__slots.toString = function(self)
    return "<class "..tostring(self.__name)..">"
 end
-Class.__slots.check  = Type.__slots.check
-Class.__slots.coerce = Type.__slots.coerce
 Class.__slots.new = function(self, ...)
    local obj = setmetatable({ }, self)
    if self.__slots.init then
@@ -618,7 +602,7 @@ Trait.__slots[mangle'like_'] = function(self)
          if not (t:can(k) and t.__slots[k].__type == v) then
             throw(TypeError:new(tostring(that)..' is not '..tostring(self), 2))
          end
-      end 
+      end
       return that
    end
 end
@@ -626,18 +610,25 @@ Trait.__slots[mangle'_[]'] = function(self, ...)
    local args = { ... }
    local want = self.__want - #args
    if want ~= 0 then
-      throw(TypeError:new("trait "..tostring(self.__name).." takes "..tostring(self.__want).." parameters but got "..tostring(#args)), 2)
+      throw(TypeError:new(
+         "trait "..tostring(self.__name)..
+         " takes "..tostring(self.__want)..
+         " parameters but got "..tostring(#args)
+      ), 2)
    end
    local copy = trait(nil, self.__name, self.__with, want, self.__body)
    local make = self.make
-   copy.make = function(self, into, recv) 
+   copy.make = function(self, into, recv)
       return make(self, into, recv, unpack(args))
    end
    return copy
 end
-Trait.__slots.make = function(self, into, recv, ...) 
+Trait.__slots.make = function(self, into, recv, ...)
    if self.__want ~= 0 then
-      throw(TypeError:new("trait "..tostring(self.__name).." takes "..tostring(self.__want).." parameters"), 2)
+      throw(TypeError:new(
+         "trait "..tostring(self.__name)..
+         " takes "..tostring(self.__want).." parameters"
+      ), 2)
    end
    for i = 1, #self.__with, 1 do
       self.__with[i]:make(into, recv)

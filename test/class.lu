@@ -31,7 +31,6 @@ class Point3D from Point {
       print("funny operator:", b)
    }
    method move(x = 0, y = 0, z = 0) {
-      var m = super.deep['hop']
       super.move(x, y)
       .z = z
    }
