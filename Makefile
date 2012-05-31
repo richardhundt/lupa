@@ -31,11 +31,11 @@ BUILD= ${BUILDDIR}/bin/lupa
 
 all: ${BINDIR}/luajit ${BINDIR}/lupa ${LPEGDIR}/lpeg.o ${BUILD}
 
-${BINDIR}/lupa:
+${BINDIR}/lupa: ${DEPS}
 	mkdir -p ${BINDIR}
 	${CC} ${CFLAGS} -I${LPEGDIR} -I${LUADIR}/src -L${LUADIR}/src -o ${BINDIR}/lupa ./src/lib_init.c ./src/lupa.c ${DEPS} ${LDFLAGS}
 
-${BUILDDIR}/bin/lupa:
+${BUILDDIR}/bin/lupa: ${DEPS}
 	mkdir -p ${BUILDDIR}/bin
 	${CC} ${CFLAGS} -I${LPEGDIR} -I${LUADIR}/src -L${LUADIR}/src -o ${BUILDDIR}/bin/lupa ./src/lib_init.c ./src/lupa.c ${DEPS} ${LDFLAGS}
 
