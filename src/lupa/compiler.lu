@@ -449,7 +449,7 @@ object Grammar {
       return '%sfor %s=%s,%s,%s do %s%s end'.format(hoist, name, init, last, step, head, body)
    }
 
-   function make_return_stmt(ctx, is_lex, expr_list, type_list) {
+   function make_return_stmt(ctx, is_lex, expr_list, ...type_list) {
       expr_list = expr_list || [ ]
       if type_list {
          for i=1, type_list.len {
@@ -863,12 +863,8 @@ object Grammar {
    rule name_list {
       <name> (hs* "," s <name>)*
    }
-   rule type_name {
-      //{~ <ident> (hs* ("." -> ':') s <name> {`'()'`})* ~}
-      {~ <expr> ~}
-   }
    rule type_term {
-      {~ <type_name> ("[" s <type_term_list> s "]" -> ":of(%1)")? ~}
+      <expr>
    }
    rule type_term_list {
       <type_term> (hs* "," s <type_term>)*
@@ -877,10 +873,10 @@ object Grammar {
       ":" hs* <type_term>
    }
    rule type_list {
-      ":" hs* {:type_list: (<hoist_type_term> (s "," s <hoist_type_term>)* -> [ ]) :}
+      ":" hs* {:type_list: <hoist_type_term> (s "," s <hoist_type_term>)* :}
    }
    rule hoist_type_term {
-      <ctx> <type_term> -> hoist(2)
+      {~ <ctx> <type_term> -> hoist(1) ~}
    }
 
    rule var_decl {
@@ -922,7 +918,7 @@ object Grammar {
       ("(" s <param_list> s <{ expect(")") }> s | {`[]`})
       <type_list>? s
       "{" {~ s <func_body> s ~} <{ expect("}") }>
-      =scope =attr =type_list) -> make_meth_decl ~} <leave>
+      =scope =attr) -> make_meth_decl ~} <leave>
    }
 
    rule func_decl {
