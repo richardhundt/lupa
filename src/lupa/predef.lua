@@ -465,6 +465,12 @@ Any.__slots = { }
 Any.__index = lookup(Any.__slots)
 Any.__slots._ba_eq = function(a, b) return a ~= b end
 Any.__slots._eq_eq = function(a, b) return a == b end
+Any.__slots[mangle'~~'] = function(a, b)
+   if typeof(b) == Class or typeof(b) == Trait or typeof(b) == Type then
+      return b:check(a)
+   end
+   return a[mangle'=='](a, b)
+end
 Any.__slots.apply = function(self)
    error(tostring(self).." is not callable", 2)
 end
@@ -537,6 +543,10 @@ Type.__slots.coerce = function(self, ...)
    end
    return ...
 end
+Type.__slots[mangle'~~'] = function(self, that)
+   return self:check(that)
+end
+
 --[[
 Type.__slots[mangle'|'] = function(self, that)
    local union = Type:new(self.__name..'|'..that.__name)
@@ -678,6 +688,18 @@ end
 Array.__each = ipairs
 Array.__slots[mangle'_[]'] = rawget
 Array.__slots[mangle'_[]='] = rawset
+Array.__slots[mangle'~~'] = function(a, b)
+   if not b:is(Array) then return false end
+   if a:len() ~= b:len() then return false end
+   local idx = mangle'_[]'
+   local cmp = mangle'=='
+   for i=1, a:len() do
+      if not a:_us_lb_rb(a,i):_eq_eq(b:_us_lb_rb(i)) then
+         return false
+      end
+   end
+   return true
+end
 Array.__slots[mangle'+'] = function(a, b)
    local c = Array:new(unpack(a))
    for i=1, #b do c[#c + 1] = b[i] end
