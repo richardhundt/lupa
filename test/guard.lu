@@ -1,7 +1,11 @@
-function double(x : Number) : Number, Void {
-   return x * 2, "cheese"
+class A {
+   method give2(x : Number) : String, Any {
+      return "cheese"
+   }
 }
 
-double(10)
-double(-1)
+function b(x : String) : Number, Any {
+   print("HERE")
+   return 1, 42
+}
 

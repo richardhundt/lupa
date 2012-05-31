@@ -1055,6 +1055,17 @@ function evaluate(lua)
    end, __env)
 end
 
+int32_t = ffi.typeof('int32_t')
+Int32 = guard('Int32', function(grd, val)
+   return int32_t(val)
+end)
+
+uint32_t = ffi.typeof('uint32_t')
+UInt32 = guard('UInt32', function(grd, val)
+   return uint32_t(val)
+end)
+
+
 do
    -- from strict.lua
    local mt = getmetatable(_G)

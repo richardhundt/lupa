@@ -18,9 +18,6 @@ guard Int(i : Number) {
    return math#floor(i)
 }
 
-var nums : Array[Int] = [ 1, 2, "three" ]
-print("nums:", nums)
-
 class Mammal {
    has blood = "warm"
 }
@@ -31,7 +28,7 @@ guard NumArray(a : Array) {
 }
 
 try {
-   var a : NumArray = [ "1", 2, 3 ]
+   var a : NumArray = [ "1", 2, "three" ]
 }
 catch (e) {
    print("caught: ${e}")
