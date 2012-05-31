@@ -20,8 +20,10 @@ syn match   lupaSpecial	       "\\\d\d\d\|\\."
 syn region  lupaStringD	       start=+"+  skip=+\\\\\|\\"+  end=+"\|$+	contains=lupaSpecialCharacter
 syn region  lupaStringS	       start=+'+  skip=+\\\\\|\\'+  end=+'\|$+	contains=lupaSpecialCharacter
 syn region lupaStringD         start=+[uU]\=\z('''\|"""\)+ end="\z1" keepend contains=lupaSpecialCharacter
+"syn match   lupaType           "[A-Z$_][a-z_$][a-zA-Z_$0-9]*" display
 
 syn match   lupaComment "\%^#!.*"
+syn match   lupaOperator "#"
 
 syn match   lupaSpecialCharacter "'\\.'"
 syn match   lupaNumber	       "-\=\<\(\d\|_\)\+L\=\>\|0[xX][0-9a-fA-F]\+\>"
@@ -30,16 +32,16 @@ syn match   lupaNumber	       "-\=\<\(\d\|_\)\+L\=\>\|0[xX][0-9a-fA-F]\+\>"
 syn keyword lupaConditional	if else switch
 syn keyword lupaRepeat		while for do
 syn keyword lupaBranch		break continue
-syn keyword lupaOperator	in is typeof like
-syn keyword lupaType		Array Hash Boolean Error Function Number Object String Type Super Class Trait Range Fiber Pattern Any Void Nil Int8 Int16 Int32 Int64 UInt8 UInt16 UInt32 UInt64
+syn keyword lupaOperator	in is typeof like 
+syn keyword lupaType		Array Table Boolean Error Function Number Object String Type Class Trait Range Fiber Pattern Any Void Nil Int8 Int16 Int32 Int64 UInt8 UInt16 UInt32 UInt64
 syn keyword lupaStatement	return
-syn keyword lupaSpecial	        new bless isa does can gen __init __index __newindex __setindex __getindex __match __add __sub __mul __unm __pow __mod __call __missing __tostring __eq __le __lt __ge __gt __concat __each __make __size __len __gc __mode __in __apply __spread
+syn keyword lupaSpecial	        new is as does can init weak
 syn keyword lupaBoolean		true false
 syn keyword lupaConstant	nil
-syn keyword lupaIdentifier	var self
+syn keyword lupaIdentifier	var self super our
 syn keyword lupaLabel		default case
 syn keyword lupaException	try catch finally throw
-syn keyword lupaReserved	class export import trait object from as guard yield with
+syn keyword lupaReserved	class export import trait object guard with from static
 syn keyword lupaFunction	rule function method has needs
 
 if exists("lupa_fold")
