@@ -1,0 +1,83 @@
+import FFI, OS, C from std.system
+
+if OS === 'OSX' {
+   FFI.defs << """
+      typedef struct dirent {
+           ino_t    d_ino;
+           uint16_t d_reclen;
+           uint8_t  d_type;
+           uint8_t  d_namlen;
+           char     d_name[256];
+      } dirent_t;
+      int    chmod(const char *, mode_t);
+      int    mkdir(const char *, mode_t);
+      int    mkfifo(const char *, mode_t);
+      int    mknod(const char *, mode_t, dev_t);
+      mode_t umask(mode_t);
+   """
+}
+else if OS === "Linux" {
+   FFI.defs << """
+      typedef struct dirent {
+         ino_t    d_ino;
+         off_t    d_off;
+         uint16_t d_reclen;
+         uint8_t  d_type;
+         char     d_name[256];
+      } dirent_t;
+   """
+}
+else {
+   throw "unsupported OS: ${OS}"
+}
+
+FFI.defs << """
+   typedef struct {
+      int      fd;
+      dirent_t d;
+   } DIR;
+   DIR *opendir(const char *dirname);
+   dirent_t *readdir(DIR *dfd);
+   int closedir(DIR *dfd);
+"""
+
+class Dir with FFI::MetaType['DIR'] {
+   static method new(path : String = '.') {
+      C#opendir(path)
+   }
+   static method open(path : String = '.') {
+      C#opendir(path)
+   }
+   method read {
+      C#readdir(self)
+   }
+   method close {
+      C#closedir(self)
+   }
+
+   self#__gc = C#closedir
+
+   class Entry with FFI::MetaType['dirent_t'] {
+      method inode {
+         self#d_ino
+      }
+      method name {
+         FFI.toString(self#d_name)
+      }
+      method type {
+         self#d_type
+      }
+   }
+}
+
+var dir = Dir.open('./include')
+while true {
+   var ent = dir.read()
+   print("ENT:", ent)
+   if ent === nil { break }
+   print(ent.name)
+   print("inode:", ent.inode)
+   print("type:", ent.type)
+}
+dir.close
+

@@ -1,0 +1,100 @@
+//export Time, TimeSpec
+
+import FFI, ffi, C, OS from std.system
+
+FFI.defs << """
+   typedef long time_t;
+   typedef unsigned long clock_t;
+
+   typedef int32_t  suseconds_t;
+   typedef uint32_t useconds_t;
+
+   typedef struct TimeSpec {
+     time_t tv_sec;
+     long   tv_nsec;
+   } timespec_t;
+
+   typedef struct Date {
+     int tm_sec;	/* seconds after the minute [0-60] */
+     int tm_min;	/* minutes after the hour [0-59] */
+     int tm_hour;	/* hours since midnight [0-23] */
+     int tm_mday;	/* day of the month [1-31] */
+     int tm_mon;	/* months since January [0-11] */
+     int tm_year;	/* years since 1900 */
+     int tm_wday;	/* days since Sunday [0-6] */
+     int tm_yday;	/* days since January 1 [0-365] */
+     int tm_isdst;	/* Daylight Savings Time flag */
+     long tm_gmtoff;	/* offset from CUT in seconds */
+     char *tm_zone;	/* timezone abbreviation */
+   } tm_t;
+
+   typedef struct TimeVal {
+      time_t      tv_sec;   /* seconds since Jan. 1, 1970 */
+      suseconds_t tv_usec;  /* and microseconds */
+   } timeval_t;
+
+   typedef struct TimeZone {
+      int tz_minuteswest; /* of Greenwich */
+      int tz_dsttime;     /* type of dst correction to apply */
+   } timezone_t;
+
+   time_t time(time_t *tloc);
+   int gettimeofday(timeval_t *tp, timezone_t *tzp);
+   size_t strftime(char *, size_t, const char *, tm_t *);
+
+   char *asctime(tm_t *);
+   clock_t clock(void);
+   char *ctime(time_t *);
+   double difftime(time_t, time_t);
+   tm_t *getdate(const char *);
+   tm_t *gmtime(time_t *);
+   tm_t *localtime(time_t *);
+   tm_t *localtime_r(time_t *clock, tm_t *result);
+   time_t mktime(tm_t *);
+
+"""
+
+class TimeVal with FFI::MetaType['timeval_t'] {
+   method sec  { self#tv_sec  }
+   method usec { self#tv_usec }
+}
+
+class TimeZone with FFI::MetaType['timezone_t'] {
+   method minuteswest { self#tz_minuteswest }
+   method dsttime     { self#tz_dsttime     }
+}
+
+class TimeSpec with FFI::MetaType['timespec_t'] {
+   method sec  { self#tv_sec  }
+   method nsec { self#tv_nsec }
+}
+
+class Date with FFI::MetaType['tm_t'] {
+
+   static method gettimeofday {
+      var tv = TimeVal.new
+      var tz = TimeZone.new
+      var ok = C#gettimeofday(tv, tz)
+      if ok === 0 {
+         return tv, tz
+      }
+   }
+
+   method init {
+      var now = ffi#new('time_t[1]')
+      C#time(now)
+      C#localtime_r(now, self)
+   }
+
+   method format(fmt : String, len : Number = 255) : String {
+      var buf = ffi#new('char[?]', len)
+      C#strftime(buf, len, fmt, self)
+      return ffi#string(buf)
+   }
+}
+
+var d = Date.new
+print(d.format('%D'))
+print(d is Date)
+print(typeof(d), type(d))
+

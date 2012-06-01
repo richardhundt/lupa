@@ -1,0 +1,91 @@
+var ffi  = require('ffi')
+var OS   = ffi#os
+var ARCH = ffi#arch
+var C    = ffi#C
+
+export ffi, FFI, C, OS, ARCH
+
+object FFI {
+
+   method OS   { ffi#os   }
+   method ARCH { ffi#arch }
+
+   object DEFS {
+      method << (defs : String) {
+         ffi#cdef(defs)
+      }
+   }
+
+   method defs { DEFS }
+
+   trait MetaType[type] {
+
+      var ffi     = require('ffi')
+      var C       = ffi#C
+      var ctype_t = ffi#typeof(type)
+
+      static method new(...args) {
+         //var inst = ffi#cast(type+'*', C#malloc(ffi#sizeof(type)))
+         var inst = ctype_t()
+         if self#__slots#init {
+            self#__slots#init(inst, ...args)
+         }
+         return inst
+      }
+
+      static method check(that) {
+         return ffi#istype(type, that)
+      }
+
+      //self#__gc = C#free
+      self#__tostring = nil
+      self#__slots#toString = global#tostring
+
+      static method __finalize__ {
+         ffi#metatype(ctype_t, self)
+      }
+   }
+
+   method loadlib(path, global) {
+      ffi#load(path, global)
+   }
+   method create(ctype, ...args) {
+      ffi#new(ctype, ...args)
+   }
+   method define(defs = '') {
+      ffi#cdef(defs)
+   }
+   method typeof(obj) {
+      ffi#typeof(obj)
+   }
+   method toString(obj) {
+      ffi#string(obj)
+   }
+}
+
+FFI.defs << """
+   void *malloc(size_t);
+   void free(void *);
+"""
+
+if OS === 'OSX' {
+   FFI.defs << """
+      typedef int64_t quad_t;
+      typedef long ssize_t;
+      typedef unsigned long u_long;
+
+      typedef uint32_t ino_t; /* XXX: 32 bit inodes for now */
+      typedef int64_t  off_t;
+      typedef int32_t  dev_t;
+      typedef uint32_t uid_t;
+      typedef uint32_t gid_t;
+      typedef uint16_t mode_t;
+      typedef uint16_t nlink_t;
+      typedef int64_t  blkcnt_t;
+      typedef int32_t  blksize_t;
+   """
+}
+else if OS === 'Linux' {
+
+}
+

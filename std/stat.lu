@@ -1,0 +1,70 @@
+export stat, Stat
+
+import C, OS, ARCH, FFI from std.system
+
+//require('std.time')
+
+if OS === 'OSX' {
+   FFI.defs << """
+     typedef struct stat {
+         dev_t    st_dev;
+         ino_t    st_ino;
+         mode_t   st_mode;
+         nlink_t  st_nlink;
+         uid_t    st_uid;
+         gid_t    st_gid;
+         dev_t    st_rdev;
+         timespec_t st_atimespec;
+         timespec_t st_mtimespec;
+         timespec_t st_ctimespec;
+         off_t    st_size;
+         quad_t   st_blocks;
+         u_long   st_blksize;
+         u_long   st_flags;
+         u_long   st_gen;
+      } stat_t;
+   """
+}
+else if OS == 'Linux' {
+
+}
+
+FFI.defs << """
+   int fstat(int, stat_t *);
+   int lstat(const char *, stat_t *);
+   int stat(const char *, stat_t *);
+"""
+
+class Stat with FFI::MetaType['stat_t'] {
+   var ffi = require('ffi')
+
+   static method stat(path) {
+      var inst = self.new(path)
+      var retv = C#stat(path, inst)
+      if retv !== 0 {
+         // TODO: error handling
+      }
+      return inst
+   }
+   static method new(path : String = '.') {
+      var stat = ffi#cast('stat_t *', C#malloc(ffi#sizeof('stat_t')))
+      return stat
+   }
+
+   self#__gc = C#free
+
+   method size { self#st_size }
+   method mode { self#st_mode }
+
+   method atime { self#st_atimespec#tv_sec }
+   method mtime { self#st_mtimespec#tv_sec }
+   method ctime { self#st_ctimespec#tv_sec }
+
+   method uid { self#st_uid }
+   method gid { self#st_gid }
+}
+
+function stat(path) {
+   return Stat.new(path)
+}
+
