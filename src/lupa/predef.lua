@@ -84,6 +84,22 @@ function demangle(name)
    end)
 end
 
+function case(this, that)
+   if this == that then
+      return true
+   elseif typeof(this).__slots[mangle'~~'] then
+      return this:_ti_ti(that)
+   elseif typeof(this).__slots[mangle'=='] then
+      return this:_eq_eq(that)
+   else
+      local meta = typeof(that)
+      if meta == Type or meta == Class or meta == Trait then
+         return this:is(that)
+      end
+   end
+   return false
+end
+
 local Meta = {
    __call = function(self, ...) return self:apply(...) end;
    __tostring = function(self) return self:toString() end;
@@ -169,6 +185,10 @@ function class(into, name, from, with, body)
       end
    end
 
+   if rawget(class, mangle'__finalize__') then
+      class[mangle'__finalize__'](class)
+   end
+
    return class
 end
 
@@ -188,6 +208,13 @@ end
 function object(into, name, from, with, body)
    local inst = class(into, name, from, with, body)
    inst.new = nil
+   inst.__slots.toString = function(self)
+      local addr = lupa.refaddr(self)
+      return type(self)..'<object '..tostring(name)..">: "..addr
+   end
+   inst.__slots[mangle'::'] = function(self, name)
+      return self.__slots[name] or self.__inner[name]
+   end
    setmetatable(inst, inst)
    if inst.__slots.init then
       inst.__slots.init(inst)
@@ -419,8 +446,15 @@ function __load(from)
    return mod
 end
 
-typeof = getmetatable
-throw  = error
+function typeof(this)
+   if type(this) == 'cdata' then
+      return ffi.typeof(this)
+   else
+      return getmetatable(this)
+   end
+end
+
+throw = error
 
 function _each(a, ...)
    if rawtype(a) == "function" then
@@ -461,7 +495,7 @@ Any.__slots.apply = function(self)
 end
 Any.__slots.toString = function(self)
    local addr = lupa.refaddr(self)
-   return '<object '..tostring(getmetatable(self).__name).."@"..addr..'>'
+   return type(self)..tostring(getmetatable(self))..": "..addr
 end
 Any.__slots.is = function(self, that)
    return that:check(self)
@@ -682,10 +716,8 @@ Array.__slots[mangle'_[]='] = rawset
 Array.__slots[mangle'~~'] = function(a, b)
    if not b:is(Array) then return false end
    if a:len() ~= b:len() then return false end
-   local idx = mangle'_[]'
-   local cmp = mangle'=='
    for i=1, a:len() do
-      if not a:_us_lb_rb(a,i):_eq_eq(b:_us_lb_rb(i)) then
+      if not a:_us_lb_rb(i):_eq_eq(b:_us_lb_rb(i)) then
          return false
       end
    end
@@ -855,9 +887,7 @@ end
 
 Nil = newtype"Nil"
 Nil.__tostring = nil
-Nil.__slots.apply = function(self)
-   throw(TypeError:new("attempt to call a nil value"), 2)
-end
+Nil.__call = nil
 Nil.check = function(self, val)
    if val == nil then return true end
 end
@@ -901,8 +931,10 @@ Number.__slots._st_st = function(a, b) return a ^ b end
 Number.__slots[mangle'<=>'] = function(a, b)
    return (a < b and -1) or (a > b and 1) or 0
 end
+Number.__slots[mangle'~_'] = bit.bnot
 Number.__slots[mangle'|'] = bit.bor
 Number.__slots[mangle'&'] = bit.band
+Number.__slots[mangle'^'] = bit.bxor
 Number.__slots[mangle'<<'] = bit.lshift
 Number.__slots[mangle'>>'] = bit.rshift
 Number.__slots[mangle'>>>'] = bit.arshift
@@ -922,8 +954,12 @@ for k,v in pairs(string) do
 end
 String.__slots.toString = function(self) return self end
 String.__slots._pl = function(a, b) return a .. tostring(b) end
-String.__slots[mangle"~~"] = function(a, p)
-   return _patt.P(p):match(a)
+String.__slots[mangle"~~"] = function(a, b)
+   if _patt.type(b) == 'pattern' then
+      return _patt.P(p):match(a)
+   else
+      return a == b
+   end
 end
 String.__slots[mangle'_[]'] = function(self, idx)
    return self:sub(idx, idx + 1)

@@ -186,7 +186,7 @@ object Grammar {
 
    var keyword = / (
       | "var" | "function" | "class" | "with" | "in" | "our"
-      | "nil" | "true" | "false" | "typeof" | "return" | "as" | "static"
+      | "nil" | "true" | "false" | "return" | "as" | "static"
       | "for" | "throw" | "method" | "has" | "from" | "break" | "guard"
       | "switch" | "case" | "default" | "do" | "while" | "needs"
       | "continue" | "import" | "export" | "try" | "catch" | "super"
@@ -194,8 +194,7 @@ object Grammar {
    ) idsafe /
 
    var unrops = {
-      ["!"]      = "not(%s)",
-      ["typeof"] = "__env.typeof(%s)",
+      ["!"] = "not(%s)",
    }
 
    var binops = {
@@ -333,7 +332,7 @@ object Grammar {
    }
 
    function make_infix_expr(oper, term) {
-      / (({~ term (&(hs+ oper) hs+)? ~} {: hs* {oper} {~ s term ~} :}*) ~> fold_infix) /
+      / (({~ term (&(hs+ oper) s)? ~} {: hs* {oper} {~ s term ~} :}*) ~> fold_infix) /
    }
 
    function make_var_decl(ctx, kind, lhs, rhs) {
@@ -809,9 +808,9 @@ object Grammar {
    }
    rule case_stmt {
       {~
-         "case" idsafe {~ s <prefix_expr> s ~} <{ expect(":") }>
+         "case" idsafe {~ hs* <expr> s ~} <{ expect(":") }>
          {~ s <case_body>? ~}
-         -> " if __env.__match(_switch,%1) then %2 end "
+         -> " if __env.case(_switch,%1) then %2 end "
       ~}
    }
    rule case_body {
@@ -821,7 +820,7 @@ object Grammar {
       {~ !(("case" | "default") idsafe) <stmt> ~}
    }
    rule default_stmt {
-      {~ "default" idsafe s ":" {~ s <stmt_list>? ~} -> "%1" ~}
+      {~ "default" idsafe hs* ":" {~ s <stmt_list>? ~} -> "%1" ~}
    }
    rule throw_stmt {
       "throw" idsafe {~ s <expr> ~} -> '__env.throw(%1)'
@@ -1253,7 +1252,7 @@ object Grammar {
       <{ make_infix_expr(/("="|"!") punct+ /, /<expr_6>/) }>
    }
    rule expr_6 {
-      <{ make_infix_expr(/(":"|"?") punct* /, /<expr_7>/) }>
+      <{ make_infix_expr(/("?") punct* /, /<expr_7>/) }>
    }
    rule expr_7 {
       <{ make_infix_expr(/("+"|"-"|"~") punct* /, /<expr_8>/) }>
@@ -1266,7 +1265,7 @@ object Grammar {
    }
 
    rule prefix_expr {
-      | {: { "..."|"$"|"@"|"!"|"#"|"-"|"~"|"*"|"?"|("typeof"|"like")idsafe } {~ hs* <term> ~} :} -> fold_prefix
+      | {: { "..."|"$"|"@"|"!"|"#"|"-"|"~"|"*"|"?" } {~ hs* <term> ~} :} -> fold_prefix
       | {~ <term> ~}
    }
 

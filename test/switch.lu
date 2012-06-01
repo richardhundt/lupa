@@ -1,4 +1,4 @@
-var a = '40'
+var a = 69
 switch a {
    case 60 + 9:
       print("sixty-nine")
@@ -8,6 +8,7 @@ switch a {
       break
    case '40':
       print("number")
+      break
    case String:
       print("string")
       break

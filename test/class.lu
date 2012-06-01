@@ -54,7 +54,7 @@ print("HERE2")
 
 assert(p is Point3D)
 assert(p is Point)
-print(typeof p)
+print(typeof(p))
 
 for i = 1, 10_000_000 {
    p.move(i+1, i+2, i+3)
