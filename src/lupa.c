@@ -33,7 +33,7 @@ int lupa_util_refaddr(lua_State* L) {
 }
 
 static struct luaL_Reg lupa_util[] = {
-    { "refaddr", lupa_util_refaddr },
+    { "refaddr",   lupa_util_refaddr },
     { NULL, NULL }
 };
 
@@ -48,7 +48,7 @@ int main(int argc, char *argv[]) {
     }
 
     luaL_openlibs(L);
-    luaL_register(L, "lupa", lupa_util);
+    luaL_register(L, "__LUPA__", lupa_util);
     lua_pop(L, 1);
 
     lua_createtable(L, argc, 0);

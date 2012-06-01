@@ -62,7 +62,7 @@ class Dir with FFI::MetaType['DIR'] {
          self#d_ino
       }
       method name {
-         FFI.toString(self#d_name)
+         FFI.string(self#d_name)
       }
       method type {
          self#d_type

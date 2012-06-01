@@ -1,22 +1,24 @@
+export ffi, FFI, C, OS, ARCH, ABI
+
 var ffi  = require('ffi')
 var OS   = ffi#os
 var ARCH = ffi#arch
 var C    = ffi#C
+var ABI  = ffi#abi
 
-export ffi, FFI, C, OS, ARCH
+class FFI {
 
-object FFI {
+   our OS   = ffi#os
+   our ARCH = ffi#arch
+   our C    = ffi#C
 
-   method OS   { ffi#os   }
-   method ARCH { ffi#arch }
-
-   object DEFS {
+   object CDEF {
       method << (defs : String) {
          ffi#cdef(defs)
       }
    }
 
-   method defs { DEFS }
+   static method defs { CDEF }
 
    trait MetaType[type] {
 
@@ -25,7 +27,6 @@ object FFI {
       var ctype_t = ffi#typeof(type)
 
       static method new(...args) {
-         //var inst = ffi#cast(type+'*', C#malloc(ffi#sizeof(type)))
          var inst = ctype_t()
          if self#__slots#init {
             self#__slots#init(inst, ...args)
@@ -33,43 +34,106 @@ object FFI {
          return inst
       }
 
+      static method apply(arg) {
+         return ffi#cast(ctype_t, arg)
+      }
+
       static method check(that) {
          return ffi#istype(type, that)
       }
 
-      //self#__gc = C#free
-      self#__tostring = nil
-      self#__slots#toString = global#tostring
-
       static method __finalize__ {
          ffi#metatype(ctype_t, self)
       }
+
+      self#__tostring = nil
+      method toString {
+         return tostring(ctype_t)+': '+global#__LUPA__#refaddr(self)
+      }
    }
 
-   method loadlib(path, global) {
-      ffi#load(path, global)
-   }
-   method create(ctype, ...args) {
+   static method new(ctype, ...args) {
       ffi#new(ctype, ...args)
    }
-   method define(defs = '') {
+   static method cast(this, that) {
+      ffi#cast(this, that)
+   }
+   static method typeof(obj, nelem) {
+      if nelem !== nil {
+         return ffi#typeof(obj, nelem)
+      }
+      else {
+         return ffi#typeof(obj)
+      }
+   }
+   static method sizeof(obj) {
+      ffi#sizeof(obj)
+   }
+   static method alignof(obj) {
+      ffi#sizeof(obj)
+   }
+   static method istype(this, that) {
+      ffi#istype(this, that)
+   }
+   static method fill(dst, len, c) {
+      if c !== nil {
+         return ffi#fill(dst, len, c)
+      }
+      else {
+         return ffi#fill(dst, len)
+      }
+   }
+   static method cdef(defs) {
       ffi#cdef(defs)
    }
-   method typeof(obj) {
-      ffi#typeof(obj)
+   static method abi(param) {
+      ffi#abi(param)
    }
-   method toString(obj) {
-      ffi#string(obj)
+   static method metatype(ct, metatable) {
+      ffi#metatype(ct, metatable)
+   }
+   static method copy(dst, src, len) {
+      if len !== nil {
+         return ffi#copy(dst, src, len)
+      }
+      else {
+         return ffi#copy(dst, src, len)
+      }
+   }
+   static method string(obj, len) {
+      if len !== nil {
+         return ffi#string(obj, len)
+      }
+      else {
+         return ffi#string(obj)
+      }
+   }
+   static method gc(obj, fun) {
+      ffi#gc(obj, fun)
+   }
+   static method load(path, global) {
+      ffi#load(path, global)
+   }
+   static method errno(newerr) {
+      if newerr !== nil {
+         return ffi#errno(newerr)
+      }
+      else {
+         return ffi#errno()
+      }
+   }
+   static method offsetof(ct, field) {
+      ffi#offsetof(ct, field)
    }
 }
 
-FFI.defs << """
+FFI::CDEF << """
    void *malloc(size_t);
    void free(void *);
 """
 
 if OS === 'OSX' {
-   FFI.defs << """
+   FFI::CDEF << """
       typedef int64_t quad_t;
       typedef long ssize_t;
       typedef unsigned long u_long;

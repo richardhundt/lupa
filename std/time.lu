@@ -1,8 +1,8 @@
 //export Time, TimeSpec
 
-import FFI, ffi, C, OS from std.system
+import FFI from std.system
 
-FFI.defs << """
+FFI::CDEF << """
    typedef long time_t;
    typedef unsigned long clock_t;
 
@@ -71,7 +71,9 @@ class TimeSpec with FFI::MetaType['timespec_t'] {
 
 class Date with FFI::MetaType['tm_t'] {
 
-   static method gettimeofday {
+   var C = FFI::C
+
+   static method getTimeOfDay {
       var tv = TimeVal.new
       var tz = TimeZone.new
       var ok = C#gettimeofday(tv, tz)
@@ -81,15 +83,15 @@ class Date with FFI::MetaType['tm_t'] {
    }
 
    method init {
-      var now = ffi#new('time_t[1]')
+      var now = FFI.new('time_t[1]')
       C#time(now)
       C#localtime_r(now, self)
    }
 
-   method format(fmt : String, len : Number = 255) : String {
-      var buf = ffi#new('char[?]', len)
+   method format(fmt : String, len : Number = 256) {
+      var buf = FFI.new('char[?]', len)
       C#strftime(buf, len, fmt, self)
-      return ffi#string(buf)
+      return FFI.string(buf)
    }
 }
 
@@ -97,4 +99,6 @@ var d = Date.new
 print(d.format('%D'))
 print(d is Date)
 print(typeof(d), type(d))
+print(d)
+print(Date.getTimeOfDay)
 

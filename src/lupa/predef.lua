@@ -209,7 +209,7 @@ function object(into, name, from, with, body)
    local inst = class(into, name, from, with, body)
    inst.new = nil
    inst.__slots.toString = function(self)
-      local addr = lupa.refaddr(self)
+      local addr = __LUPA__.refaddr(self)
       return type(self)..'<object '..tostring(name)..">: "..addr
    end
    inst.__slots[mangle'::'] = function(self, name)
@@ -506,22 +506,6 @@ end
 Any.__slots.does = function(self, that)
    return getmetatable(self).__with[that.__body] ~= nil
 end
-Any.__slots[mangle'like_'] = function(self)
-   local type = typeof(self)
-   local like = Type:new("like "..type.__name)
-   like.coerce = function(self, that)
-      local t = typeof(that)
-      for k,v in pairs(type.__slots) do
-         local vt = v.__type or Any
-         local tt = t.__slots[k].__type or Any
-         if not (tt:is(vt)) then
-            throw(TypeError:new(tostring(that)..' is not '..tostring(self), 2))
-         end
-      end
-      return that
-   end
-   return like
-end
 
 Type = setmetatable({ }, Meta)
 Type.__name  = "Type"
@@ -627,18 +611,6 @@ Trait.__slots.coerce = function(self, that)
       throw(TypeError:new(tostring(that).." does not compose: "..tostring(self), 2))
    end
    return that
-end
-Trait.__slots[mangle'like_'] = function(self)
-   local like = self:make(nil, Type:new("like "..tostring(self)))
-   like.coerce = function(self, that)
-      local t = typeof(that)
-      for k,v in pairs(self.__slots) do
-         if not (t:can(k) and t.__slots[k].__type == v) then
-            throw(TypeError:new(tostring(that)..' is not '..tostring(self), 2))
-         end
-      end
-      return that
-   end
 end
 Trait.__slots[mangle'_[]'] = function(self, ...)
    local args = { ... }
@@ -810,18 +782,6 @@ Table.__slots.weak = function(self, mode)
    error("invalid weak mode '"..tostring(mode).."', must be 'k', 'kv' or 'v'", 2)
 end
 Table.__slots.next = next
-Table.__slots[mangle'like_'] = function(self)
-   local like = Type:new('like '..tostring(self))
-   like.coerce = function(this, that)
-      for k, v in pairs(self) do
-         if not (that[k](that):is(v) or that[k] == v) then
-            throw(TypeError:new(tostring(that).." is not like "..tostring(self), 2))
-         end
-      end
-      return that
-   end
-   return like
-end
 Table.__slots.toString = function(self)
    local buf = { }
    for k,v in pairs(self) do
