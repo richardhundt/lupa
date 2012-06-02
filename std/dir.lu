@@ -1,9 +1,9 @@
-import FFI, OS, C from std.system
+import FFI from std.system
 
-if OS === 'OSX' {
-   FFI.defs << """
-      typedef struct dirent {
-           ino_t    d_ino;
+if FFI::OS === 'OSX' {
+   FFI::CDEF << """
+      typedef struct Dir_Entry {
+           uint32_t d_ino;       // use 32 bit inodes for now
            uint16_t d_reclen;
            uint8_t  d_type;
            uint8_t  d_namlen;
@@ -16,9 +16,9 @@ if OS === 'OSX' {
       mode_t umask(mode_t);
    """
 }
-else if OS === "Linux" {
-   FFI.defs << """
-      typedef struct dirent {
+else if FFI::OS === "Linux" {
+   FFI::CDEF << """
+      typedef struct Dir_Entry {
          ino_t    d_ino;
          off_t    d_off;
          uint16_t d_reclen;
@@ -28,10 +28,10 @@ else if OS === "Linux" {
    """
 }
 else {
-   throw "unsupported OS: ${OS}"
+   throw "unsupported OS: ${FFI::OS}"
 }
 
-FFI.defs << """
+FFI::CDEF << """
    typedef struct {
       int      fd;
       dirent_t d;
@@ -42,6 +42,7 @@ FFI.defs << """
 """
 
 class Dir with FFI::MetaType['DIR'] {
+   var C = FFI::C
    static method new(path : String = '.') {
       C#opendir(path)
    }
@@ -55,11 +56,22 @@ class Dir with FFI::MetaType['DIR'] {
       C#closedir(self)
    }
 
+   method scan(func : Function) {
+      while true {
+         var entry = self.read()
+         if entry === nil { break }
+         func(entry)
+      }
+   }
+
    self#__gc = C#closedir
 
    class Entry with FFI::MetaType['dirent_t'] {
-      method inode {
+      method ino {
          self#d_ino
+      }
+      method len {
+         self#d_reclen
       }
       method name {
          FFI.string(self#d_name)
@@ -69,15 +81,4 @@ class Dir with FFI::MetaType['DIR'] {
       }
    }
 }
-
-var dir = Dir.open('./include')
-while true {
-   var ent = dir.read()
-   print("ENT:", ent)
-   if ent === nil { break }
-   print(ent.name)
-   print("inode:", ent.inode)
-   print("type:", ent.type)
-}
-dir.close
 

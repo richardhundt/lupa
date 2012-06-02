@@ -6,9 +6,6 @@ FFI::CDEF << """
    typedef long time_t;
    typedef unsigned long clock_t;
 
-   typedef int32_t  suseconds_t;
-   typedef uint32_t useconds_t;
-
    typedef struct TimeSpec {
      time_t tv_sec;
      long   tv_nsec;
@@ -94,11 +91,4 @@ class Date with FFI::MetaType['tm_t'] {
       return FFI.string(buf)
    }
 }
-
-var d = Date.new
-print(d.format('%D'))
-print(d is Date)
-print(typeof(d), type(d))
-print(d)
-print(Date.getTimeOfDay)
 
