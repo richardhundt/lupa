@@ -127,48 +127,78 @@ else if FFI::OS === 'Linux' {
    """
 }
 else {
-   throw "NYI: ${FFI::OS} supported"
+   throw "NYI: ${FFI::OS} support"
 }
 
 class Stat with FFI::MetaType['stat_t'] {
+
+   method size { self#st_size }
+   method mode { self#st_mode }
+
+   method atime { self#st_atimespec }
+   method mtime { self#st_mtimespec }
+   method ctime { self#st_ctimespec }
+
+   method uid { self#st_uid }
+   method gid { self#st_gid }
+
    var C = FFI::C
 
-   var STAT_IMPL
+   var STAT_IMPL, LSTAT_IMPL, FSTAT_IMPL
    if FFI::OS === 'Linux' {
       STAT_IMPL = function(path, stat) {
          C#__xstat(C#STAT_VER, path, stat)
+      }
+      FSTAT_IMPL = function(path, stat) {
+         C#__xfstat(C#STAT_VER, path, stat)
+      }
+      LSTAT_IMPL = function(path, stat) {
+         C#__xlstat(C#STAT_VER, path, stat)
       }
    }
    else {
       STAT_IMPL = function(path, stat) {
          C#stat(path, stat)
       }
+      FSTAT_IMPL = function(path, stat) {
+         C#fstat(path, stat)
+      }
+      LSTAT_IMPL = function(path, stat) {
+         C#lstat(path, stat)
+      }
    }
 
    static method stat(path) {
       var inst = self.new(path)
       var retv = STAT_IMPL(path, inst)
-      if retv !== 0 {
-         error(FFI.strerror(retv), 2)
+      if retv === -1 {
+         return nil, FFI.strerror(FFI.errno)
       }
       return inst
    }
+   static method fstat(path) {
+      var inst = self.new(path)
+      var retv = FSTAT_IMPL(path, inst)
+      if retv === -1 {
+         return nil, FFI.strerror(FFI.errno)
+      }
+      return inst
+   }
+   static method lstat(path) {
+      var inst = self.new(path)
+      var retv = LSTAT_IMPL(path, inst)
+      if retv === -1 {
+         return nil, FFI.strerror(FFI.errno)
+      }
+      return inst
+   }
+
    static method new(path : String = '.') {
       var stat = FFI.cast('stat_t *', C#malloc(FFI.sizeof('stat_t')))
       return stat
    }
 
    self#__gc = C#free
-
-   method size { self#st_size }
-   method mode { self#st_mode }
-
-   method atime { self#st_atimespec#tv_sec }
-   method mtime { self#st_mtimespec#tv_sec }
-   method ctime { self#st_ctimespec#tv_sec }
-
-   method uid { self#st_uid }
-   method gid { self#st_gid }
 }
 
 

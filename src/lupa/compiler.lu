@@ -600,6 +600,7 @@ object Grammar {
          }
       }
       else {
+         // XXX: import from <dotted_path> (i.e. no names, no dest)
          dest = 'nil'
          for i=1, names.len {
             ctx.define(names[i], { base = '__env' })

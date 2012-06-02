@@ -1,4 +1,4 @@
-//export Time, TimeSpec
+export Date, TimeVal, TimeZone, TimeSpec
 
 import FFI from std.system
 
@@ -54,6 +54,8 @@ FFI::CDEF << """
 class TimeVal with FFI::MetaType['timeval_t'] {
    method sec  { self#tv_sec  }
    method usec { self#tv_usec }
+
+   method toDate { Date.new(self.sec) }
 }
 
 class TimeZone with FFI::MetaType['timezone_t'] {
@@ -64,6 +66,8 @@ class TimeZone with FFI::MetaType['timezone_t'] {
 class TimeSpec with FFI::MetaType['timespec_t'] {
    method sec  { self#tv_sec  }
    method nsec { self#tv_nsec }
+
+   method toDate { Date.new(self.sec) }
 }
 
 class Date with FFI::MetaType['tm_t'] {
@@ -79,10 +83,13 @@ class Date with FFI::MetaType['tm_t'] {
       }
    }
 
-   method init {
-      var now = FFI.new('time_t[1]')
-      C#time(now)
-      C#localtime_r(now, self)
+   method init(time = C#time(FFI.new('time_t[1]'))) {
+      if !FFI.istype('time_t*', time) {
+         var temp = FFI.new('time_t[1]')
+         temp#[0] = time
+         time = temp
+      }
+      C#localtime_r(time, self)
    }
 
    method format(fmt : String, len : Number = 256) {

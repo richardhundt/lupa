@@ -386,26 +386,24 @@ end
 
 function import(into, from, what, dest) 
    local mod = __load(from)
-   if what then
-      if dest then
-         into[dest] = setmetatable({ }, { __index = lookup({ }) })
-         into[dest][mangle'::'] = function(self, name)
-            local sym = mod[name]
-            if sym == nil then
-               throw(ImportError:new("'"..tostring(name).."' from '"..tostring(from).."' is nil"), 2)
-            end
-            return sym
+   if dest then
+      into[dest] = setmetatable({ }, { __index = lookup({ }) })
+      into[dest][mangle'::'] = function(self, name)
+         local sym = mod[name]
+         if sym == nil then
+            throw(ImportError:new("'"..tostring(name).."' from '"..tostring(from).."' is nil"), 2)
          end
-         into = into[dest]
-      end 
-      for i=1, #what do
-         local key = what[i]
-         local val = rawget(mod, key)
-         if val == nil then
-            throw(ImportError:new("'"..tostring(key).."' from '"..tostring(from).."' is nil"), 2)
-         end
-         into[key] = val
+         return sym
       end
+      into = into[dest]
+   end 
+   for i=1, #what do
+      local key = what[i]
+      local val = rawget(mod, key)
+      if val == nil then
+         throw(ImportError:new("'"..tostring(key).."' from '"..tostring(from).."' is nil"), 2)
+      end
+      into[key] = val
    end
    return mod
 end
