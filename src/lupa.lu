@@ -74,7 +74,7 @@ var run = function(...a) {
       else {
          var main_env  = require('lupa.predef')#environ()
          xpcall(main, function(err) {
-            io#stderr.write(debug#traceback(tostring(err)),"\n")
+            io#stderr.write(debug#traceback(tostring(err)).demangle, "\n")
             os#exit(1)
          }, main_env, opt['files'][1], ...a)
       }
