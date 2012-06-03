@@ -259,6 +259,7 @@ object Grammar {
    var name_patt =  / "__env." ? { (%alnum | "_")+ } hs* "=" /
 
    function make_bind_expr(ctx, l, s1, s2, r) {
+      var hoist = ctx.scope.unhoist()
       if l.len == 1 {
          var name = name_patt.match(l[1])
          if name {
@@ -268,7 +269,7 @@ object Grammar {
                r[1] = (type+':coerce(%s)').format(r[1])
             }
          }
-         return l[1].format(s2 + r.concat(','))
+         return hoist+l[1].format(s2 + r.concat(','))
       }
       var t = [ ]
       for i = 1, l.len {
@@ -285,13 +286,13 @@ object Grammar {
          l[i] = l[i].format(t[i])
       }
       var b = [ ]
-      b.push('local %s%s=%s%s;'.format(t.concat(','), s1, s2, r.concat(',')))
+      b.push('%slocal %s%s=%s%s;'.format(hoist,t.concat(','), s1, s2, r.concat(',')))
       b.push(l.concat(';'))
       return b.concat()
    }
 
    var punct = /
-      '$'|'~'|'@'|'#'|'*'|'/'|'%'|'+'|'-'|':'|'!'|'>'|'<'|'&'|'^'|'|'|'='
+      '$'|'~'|'@'|'#'|'*'|'/'|'%'|'+'|'-'|':'|'!'|'>'|'<'|'&'|'^'|'|'|'='|'_'|'?'
    /
 
    function fold_prefix(o,e) {
@@ -303,6 +304,14 @@ object Grammar {
       }
       var m = mangle(o + '_')
       return '%s:%s()'.format(e, m)
+   }
+
+   function fold_bind_prefix(o,e) {
+      if o == '...' {
+         return '%s:unpack(%%s)'.format(e)
+      }
+      var m = mangle(o + '_=')
+      return '%s:%s(%%s)'.format(e, m)
    }
 
    var cmpops = {
@@ -1265,8 +1274,9 @@ object Grammar {
       <{ make_infix_expr(/"#" punct* /, /<prefix_expr>/) }>
    }
 
+   var prefix_punct = / "..."|"$"|"@"|"!"|"#"|"-"|"~"|"*"|"?" /
    rule prefix_expr {
-      | {: { "..."|"$"|"@"|"!"|"#"|"-"|"~"|"*"|"?" } {~ hs* <term> ~} :} -> fold_prefix
+      | {: { prefix_punct } {~ hs* <term> ~} :} -> fold_prefix
       | {~ <term> ~}
    }
 
@@ -1290,9 +1300,15 @@ object Grammar {
    rule bind_list {
       <bind_term> (hs* "," s <bind_term>)*
    }
+
+   rule bind_prefix_expr {
+      {: { prefix_punct } {~ hs* <term> ~} :} -> fold_bind_prefix
+   }
+
    rule bind_term {
       {~
       | <primary> (hs* <bind_member>)+
+      | <bind_prefix_expr>
       | %pos <name> <ctx> -> update
       ~}
    }
@@ -1306,8 +1322,8 @@ object Grammar {
       {~
       | "." {hs*} <opname> ->":%1%2${mangle('=')}(%%s)"
       | "[" {~ s <expr> s ~} "]" -> ":${mangle('_[]=')}(%1,%%s)"
-      | "#" {hs*} {~ <name> -> demangle ~} -> '.%1%2=%%s'
-      | "#" {hs*} "[" {~ s <expr> s ~} "]" -> '%1[%2]=%%s'
+      | "#" {hs*} {~ (<name> -> demangle) -> (s) => { s.gsub('%%','%%%%') } ~} -> '.%1%2=%%s'
+      | "#" {hs*} "[" {~ s (<expr> -> (s) => { s.gsub('%%','%%%%') }) s ~} "]" -> '%1[%2]=%%s'
       ~}
    }
 
