@@ -32,7 +32,7 @@ else {
 }
 
 FFI::CDEF << """
-   typedef struct {
+   typedef struct Dir {
       int      fd;
       dirent_t d;
    } DIR;
@@ -81,4 +81,5 @@ class Dir with FFI::MetaType['DIR'] {
       }
    }
 }
+
 
