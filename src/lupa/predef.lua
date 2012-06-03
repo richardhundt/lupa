@@ -458,7 +458,7 @@ function _each(a, ...)
    if rawtype(a) == "function" then
       return a, ...
    end
-   local mt = getmetatable(a)
+   local mt = typeof(a)
    local __each = mt and rawget(mt, "__each")
    if __each then
       return __each(a)
@@ -492,17 +492,17 @@ Any.__slots.apply = function(self)
    error(tostring(self).." is not callable", 2)
 end
 Any.__slots.toString = function(self)
-   local addr = lupa.refaddr(self)
-   return type(self)..tostring(getmetatable(self))..": "..addr
+   local addr = __LUPA__.refaddr(self)
+   return type(self)..tostring(typeof(self))..": "..addr
 end
 Any.__slots.is = function(self, that)
    return that:check(self)
 end
 Any.__slots.can = function(self, key)
-   return getmetatable(self).__slots[key] ~= nil
+   return typeof(self).__slots[key] ~= nil
 end
 Any.__slots.does = function(self, that)
-   return getmetatable(self).__with[that.__body] ~= nil
+   return typeof(self).__with[that.__body] ~= nil
 end
 
 Type = setmetatable({ }, Meta)
@@ -912,6 +912,8 @@ for k,v in pairs(string) do
 end
 String.__slots.toString = function(self) return self end
 String.__slots._pl = function(a, b) return a .. tostring(b) end
+String.__slots.mangle = mangle
+String.__slots.demangle = demangle
 String.__slots[mangle"~~"] = function(a, b)
    if _patt.type(b) == 'pattern' then
       return _patt.P(p):match(a)
@@ -1010,7 +1012,7 @@ for k,v in pairs(coroutine) do
 end
 debug.setmetatable(coroutine.create(function() end), Thread)
 
-Pattern = setmetatable(getmetatable(_patt.P(1)), Type)
+Pattern = setmetatable(typeof(_patt.P(1)), Type)
 Pattern.__name = "Pattern"
 Pattern.__from = Any
 Pattern.__with = { }
