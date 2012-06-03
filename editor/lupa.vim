@@ -33,7 +33,7 @@ syn keyword lupaConditional	if else switch
 syn keyword lupaRepeat		while for do
 syn keyword lupaBranch		break continue
 syn keyword lupaOperator	in is typeof like 
-syn keyword lupaType		Array Table Boolean Error Function Number Object String Type Class Trait Range Fiber Pattern Any Void Nil Int8 Int16 Int32 Int64 UInt8 UInt16 UInt32 UInt64
+syn keyword lupaType		Array Table Boolean Error Function Number Object String Type Class Trait Range Fiber Pattern Any Void Nil Int8 Int16 Int32 Int64 UInt8 UInt16 UInt32 UInt64 Float Double
 syn keyword lupaStatement	return
 syn keyword lupaSpecial	        new is as does can init weak
 syn keyword lupaBoolean		true false
