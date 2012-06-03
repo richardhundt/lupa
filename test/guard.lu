@@ -9,3 +9,8 @@ function b(x : String) : Number, Any {
    return 1, 42
 }
 
+var foo = { }
+foo['f'] = function(x : String) : Number {
+   return 42
+}
+
