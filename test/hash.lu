@@ -16,3 +16,11 @@ print(h["num"])
 print(h)
 h['greet']()
 
+class A {
+   method greet() { print("ANSWER: ${self#answer}") }
+}
+
+var t = { answer = 42 } as A
+
+t.greet()
+

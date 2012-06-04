@@ -34,7 +34,9 @@ catch (e) {
    print("caught: ${e}")
 }
 
-class Dog from Mammal with Guide[String], Pet {
+class Dog from Mammal with Guide[String] {
+   with Pet
+
    has legs : Int = 4
    has name : String = 'anon'
 
