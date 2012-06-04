@@ -1,0 +1,229 @@
+import FFI, int32, uint16 from std.system
+
+FFI::CDEF << """
+   typedef uint16_t in_port_t;
+   typedef uint32_t socklen_t;
+   typedef unsigned short int sa_family_t;
+
+   typedef struct SockAddr {
+     sa_family_t sa_family;
+     char        sa_data[14];
+   } sockaddr_t;
+
+   typedef struct SockAddr_Storage {
+     sa_family_t ss_family;
+     unsigned long int __ss_align;
+     char __ss_padding[128 - 2 * sizeof(unsigned long int)]; /* total length 128 */
+   } sockaddr_storage_t;
+
+   typedef struct INET_Addr {
+     uint32_t       s_addr;
+   } in_addr_t;
+
+   typedef struct INET6_Addr {
+     unsigned char  s6_addr[16];
+   } in6_addr_t;
+
+   typedef struct SockAddr_INET {
+     sa_family_t    sin_family;
+     in_port_t      sin_port;
+     in_addr_t      sin_addr;
+     unsigned char  sin_zero[8]; /* padding, should not vary by arch */
+   } sockaddr_in_t;
+
+   typedef struct SockAddr_INET6 {
+     sa_family_t    sin6_family;
+     in_port_t      sin6_port;
+     uint32_t       sin6_flowinfo;
+     in6_addr_t     sin6_addr;
+     uint32_t       sin6_scope_id;
+   } sockaddr_in6_t;
+
+   typedef struct SockAddr_UNIX {
+     sa_family_t sun_family;
+     char        sun_path[108];
+   } sockaddr_un_t;
+
+   typedef struct Socket {
+      int        so_fd;
+      sockaddr_t *so_addr;
+   } socket_t;
+
+   int socket(int domain, int type, int protocol);
+   int socketpair(int domain, int type, int protocol, int sv[2]);
+   int bind(int sockfd, sockaddr_t *addr, socklen_t addrlen);
+   int listen(int sockfd, int backlog);
+   int connect(int sockfd, sockaddr_t *addr, socklen_t addrlen);
+   int accept(int sockfd, sockaddr_t *addr, socklen_t *addrlen);
+   int accept4(int sockfd, sockaddr_t *addr, socklen_t *addrlen, int flags);
+   int getsockname(int sockfd, sockaddr_t *addr, socklen_t *addrlen);
+   int getpeername(int sockfd, sockaddr_t *addr, socklen_t *addrlen);
+   int shutdown(int sockfd, int how);
+
+   int inet_aton(const char *cp, in_addr_t *pin);
+   char * inet_ntoa(in_addr_t in);
+"""
+
+enum SOCK {
+   STREAM    = 1,
+   DGRAM     = 2,
+   RAW       = 3,
+   RDM       = 4,
+   SEQPACKET = 5,
+   DCCP      = 6,
+   PACKET    = 10,
+
+   CLOEXEC   = 02000000,
+   NONBLOCK  = 04000,
+}
+
+enum AF {
+   UNSPEC     = 0,
+   LOCAL      = 1,
+   UNIX       = 1, // AF_LOCAL
+   FILE       = 1, // AF_LOCAL
+   INET       = 2,
+   AX25       = 3,
+   IPX        = 4,
+   APPLETALK  = 5,
+   NETROM     = 6,
+   BRIDGE     = 7,
+   ATMPVC     = 8,
+   X25        = 9,
+   INET6      = 10,
+   ROSE       = 11,
+   DECnet     = 12,
+   NETBEUI    = 13,
+   SECURITY   = 14,
+   KEY        = 15,
+   NETLINK    = 16,
+   ROUTE      = 16, // AF_NETLINK
+   PACKET     = 17,
+   ASH        = 18,
+   ECONET     = 19,
+   ATMSVC     = 20,
+   RDS        = 21,
+   SNA        = 22,
+   IRDA       = 23,
+   PPPOX      = 24,
+   WANPIPE    = 25,
+   LLC        = 26,
+   CAN        = 29,
+   TIPC       = 30,
+   BLUETOOTH  = 31,
+   IUCV       = 32,
+   RXRPC      = 33,
+   ISDN       = 34,
+   PHONET     = 35,
+   IEEE802154 = 36,
+   CAIF       = 37,
+   ALG        = 38,
+   MAX        = 39,
+}
+
+enum PROTO {
+   TCP = 6,
+   UDP = 17,
+}
+
+class SockAddr with FFI::MetaType['sockaddr_t'] {
+   var ffi = require('ffi')
+   var C = FFI::C
+
+   method family { self#sa_family }
+   method family=(f : AF) { self#sa_family = f }
+
+   method data { self#sa_data }
+   method data=(d) { self#sa_data = d }
+
+   method len {
+      switch self.family {
+         case AF.INET:
+            return FFI.sizeof('sockaddr_in_t')
+         case AF.UNIX:
+            return FFI.sizeof('sockaddr_un_t')
+         case AF.INET6:
+            return FFI.sizeof('sockaddr_in6_t')
+         default:
+            throw "unkown address family ${self.family}"
+      }
+   }
+
+   static method coerce(that) {
+      if that does SockAddr::Common {
+         var v = ffi#cast('sockaddr_t*', ffi#cast('void*', that))
+         return v
+      }
+      throw TypeError.new("cannot coerce ${that} to ${self}")
+   }
+
+   class Storage with FFI::MetaType['sockaddr_storage_t'] {
+
+   }
+
+   trait Common {
+      method len { FFI.sizeof(self) }
+      static method coerce(that : SockAddr) {
+         return FFI.cast(self, that)
+      }
+   }
+
+   class INET with FFI::MetaType['sockaddr_in_t'], Common {
+      method init(host, port : uint16) {
+         self#sin_family = AF.INET
+         self#sin_port   = port
+         self#sin_addr   = SockAddr::INET::Addr.new(host)
+      }
+      class Addr with FFI::MetaType['in_addr_t'] {
+         method init(host) {
+            if host is String {
+               Socket.inet_aton(host, self)
+            }
+            else if host is int32 {
+               self#s_addr = host
+            }
+            else {
+               TypeError raise "host ${host} not valid"
+            }
+         }
+      }
+   }
+   class UNIX with FFI::MetaType['sockaddr_un_t'], Common {
+   }
+   class INET6 with FFI::MetaType['sockaddr_in6_t'], Common {
+      class Addr with FFI::MetaType['in6_addr_t'] {
+
+      }
+   }
+}
+
+class Socket with FFI::MetaType['socket_t'] {
+   var C = FFI::C
+   method init(domain : AF, type : SOCK, proto : PROTO) {
+      var fd = C#socket(domain, type, proto)
+      if fd === -1 { return nil, FFI.strerror(FFI.errno) }
+      self#so_fd   = fd
+      self#so_addr = nil
+   }
+   method bind(addr : SockAddr) {
+      C#bind(self#so_fd, addr, addr.len)
+   }
+   static method inet_aton(cp : String, pin : SockAddr::INET::Addr) {
+      C#inet_aton(cp, pin)
+   }
+   static method inet_ntoa(n) { C#inet_ntoa(n) }
+
+   class INET from self {
+      method init(type : SOCK, proto : PROTO) {
+         super.init(AF.INET, type, proto)
+      }
+   }
+}
+
+
+var addr = SockAddr::INET.new('127.0.0.1', 1234)
+var sock = Socket::INET.new(SOCK.STREAM, PROTO.TCP)
+var stat = sock.bind(addr)
+print(stat)
+
+
