@@ -24,7 +24,7 @@ endif
 
 XCFLAGS=-g
 XCFLAGS+=-DLUAJIT_ENABLE_LUA52COMPAT
-XCFLAGS+=-DLUA_USE_APICHECK
+#XCFLAGS+=-DLUA_USE_APICHECK
 export XCFLAGS
 
 BUILD= ${BUILDDIR}/bin/lupa
@@ -44,7 +44,7 @@ ${LPEGDIR}/lpeg.o:
 
 ${LIBDIR}/libluajit.a:
 	git submodule update --init ${LUADIR}
-	${MAKE} -C ${LUADIR}
+	${MAKE} XCFLAGS="-DLUAJIT_ENABLE_LUA52COMPAT" -C ${LUADIR}
 	cp ${LUADIR}/src/libluajit.a ${LIBDIR}/libluajit.a
 
 ${BINDIR}/luajit: ${LIBDIR}/libluajit.a
