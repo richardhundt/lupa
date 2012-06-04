@@ -204,7 +204,12 @@ end
 function needs(into, name, meta)
    into.__need[name] = meta
 end
-
+function with(into, with)
+   for i=1,#with do
+      with[i]:make(into.__inner, into)
+   end
+   return into
+end
 function object(into, name, from, with, body)
    local inst = class(into, name, from, with, body)
    inst.new = nil
@@ -547,22 +552,69 @@ end
 Type.__slots[mangle'~~'] = function(self, that)
    return self:check(that)
 end
-
---[[
-Type.__slots[mangle'|'] = function(self, that)
-   local union = Type:new(self.__name..'|'..that.__name)
-   union.coerce = function(this, value)
-      if self:check(value) then
-         return self:coerce(value)
-      elseif that:check(value) then
-         return that:coerce(value)
+Type.__slots[mangle'?_'] = function(self, that)
+   local this = self
+   local maybe = Type:new('?'..tostring(self.__name))
+   maybe.coerce = function(self, ...)
+      if ... == nil then return ... end
+      return this:coerce(...)
+   end
+   maybe.check = function(self, ...)
+      if ... == nil then return true end
+      return this:check(...)
+   end
+   return maybe
+end
+Type.__slots[mangle'|'] = function(this, that)
+   local union = Type:new(this.__name..'|'..that.__name)
+   union.coerce = function(self, ...)
+      if this:check(...) then
+         return this:coerce(...)
+      elseif that:check(...) then
+         return that:coerce(...)
       end
-      throw(TypeError:new("cannot coerce "..tostring(typeof(value)).." to "..tostring(this), 2))
+      throw(TypeError:new("cannot coerce "..tostring(typeof(...)).." to "..tostring(self), 2))
    end
    return union
 end
---]]
 for k,v in pairs(Meta) do Type[k] = v end
+
+local function newtype(name)
+   return Type:new(name)
+end
+
+Enum = newtype"Enum"
+Enum.new = function(class, name, proto)
+   local enum = { __name = name }
+   local nval = -1
+   for i,spec in ipairs(proto) do
+      local n, v = spec[1], spec[2]
+      if v then
+         nval = v
+      else
+         nval = nval + 1
+         v = nval
+      end
+      enum[n] = function() return v end
+      enum[v] = n
+   end
+   return setmetatable(enum, class)
+end
+Enum.__slots = setmetatable({ }, { __index = Type.__slots })
+Enum.__index = lookup(Enum.__slots)
+Enum.__slots.coerce = function(self, that)
+   if not self:check(that) then
+      throw(TypeError:new(tostring(that).." is not a member of "..tostring(self), 2), 2)
+   end
+   return that
+end
+Enum.__slots.check = function(self, that)
+   return rawget(self,that) ~= nil
+end
+
+function enum(name, proto)
+   return Enum:new(name, proto)
+end
 
 function guard(name, body)
    local guard = Type:new(name)
@@ -573,10 +625,6 @@ function guard(name, body)
       return (pcall(body, self, ...))
    end
    return guard
-end
-
-local function newtype(name)
-   return Type:new(name)
 end
 
 Class = newtype"Class"
@@ -780,6 +828,9 @@ Table.__slots.weak = function(self, mode)
    error("invalid weak mode '"..tostring(mode).."', must be 'k', 'kv' or 'v'", 2)
 end
 Table.__slots.next = next
+Table.__slots.as = function(this, that)
+   return setmetatable(this, that)
+end
 Table.__slots.toString = function(self)
    local buf = { }
    for k,v in pairs(self) do
@@ -1041,6 +1092,10 @@ Error = class(__env, "Error", nil, {StaticBuilder}, function(__env,self)
       if not level then level = 1 end
       self:trace_eq(demangle(debug.traceback(message, level + 1)))
    end)
+   method(self,'raise', function(self, message, level)
+      if not level then level = 1 end
+      throw(self:new(message, level + 1))
+   end, true)
    method(self,'toString',function(self)
       return tostring(typeof(self).__name)..": "..tostring(self:trace())
    end)
@@ -1063,17 +1118,6 @@ function evaluate(lua)
       os.exit(1)
    end, __env)
 end
-
-int32_t = ffi.typeof('int32_t')
-Int32 = guard('Int32', function(grd, val)
-   return int32_t(val)
-end)
-
-uint32_t = ffi.typeof('uint32_t')
-UInt32 = guard('UInt32', function(grd, val)
-   return uint32_t(val)
-end)
-
 
 do
    -- from strict.lua
