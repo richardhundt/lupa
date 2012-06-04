@@ -186,11 +186,11 @@ object Grammar {
 
    var keyword = / (
       | "var" | "function" | "class" | "with" | "in" | "our"
-      | "nil" | "true" | "false" | "return" | "as" | "static"
+      | "nil" | "true" | "false" | "return" | "static"
       | "for" | "throw" | "method" | "has" | "from" | "break" | "guard"
       | "switch" | "case" | "default" | "do" | "while" | "needs"
       | "continue" | "import" | "export" | "try" | "catch" | "super"
-      | "default" | "finally" | "if" | "else" | "rule"
+      | "default" | "finally" | "if" | "else" | "rule" | "enum"
    ) idsafe /
 
    var unrops = {
@@ -497,6 +497,21 @@ object Grammar {
       }
    }
 
+   function make_enum_decl(c,n,b,s) {
+      var decl = '__env.enum(%q,{%s});'
+      if s == 'lexical' {
+         c.define(n, { type = 'Enum' })
+         decl = 'local %s='+decl
+      }
+      else {
+         c.define(n, { type = 'Enum', base = '__env' })
+         decl = '__env.%s='+decl
+      }
+      return decl.format(n,n,b)
+   }
+   function make_with_decl(w) {
+      return "__env.with(self,{%s})".format(w)
+   }
    function make_meth_decl(c,n,p,b,s,a) {
       p = [ 'self', ...p ]
       var p, h = make_params(c,p)
@@ -704,6 +719,7 @@ object Grammar {
 
    rule decl_stmt {
       | <var_decl>
+      | <enum_decl>
       | <func_decl>
       | <class_decl>
       | <trait_decl>
@@ -929,7 +945,6 @@ object Grammar {
       "{" {~ s <func_body> s ~} <{ expect("}") }>
       =scope =attr) -> make_meth_decl ~} <leave>
    }
-
    rule func_decl {
       {~ ("function" idsafe <ctx> s <name> s
       <enter>
@@ -985,8 +1000,21 @@ object Grammar {
       ) -> make_guard_decl ~} <leave>
    }
 
+   rule enum_decl {
+      "enum" idsafe hs* <ctx> <name> hs* "{"
+      {~ s <enum_members>* s ~} <{ expect("}") }>
+      =scope
+      -> make_enum_decl
+   }
+   rule enum_members {
+      <enum_member> (hs* "," s <enum_member>)* (hs* ",")?
+   }
+   rule enum_member {
+      <name> (hs* "=" hs* <number> | {`'nil'`}) -> '{"%1",%2}'
+   }
+
    rule class_decl {
-      "class" idsafe s <ctx> <name> s
+      "class" idsafe hs* <ctx> <name> s
       (<class_from> | {`"nil"`}) s
       (<class_with> | {`""`}) s
       "{" {~ s <class_body> s ~} <{ expect("}") }>
@@ -994,25 +1022,25 @@ object Grammar {
       -> make_class_decl
    }
    rule trait_decl {
-      "trait" idsafe s <ctx> <name> s
+      "trait" idsafe hs* <ctx> <name> hs*
       <enter>
       ("[" hs* ((<name_list> -> [ ]) <ctx> -> define) hs* "]" | {`[]`}) s
-      (<class_with> | {`""`}) s
+      (<class_with> | {`""`}) hs*
       "{" {~ s <trait_body> s ~} <{ expect("}") }>
       -> make_trait_decl <leave>
    }
    rule object_decl {
-      "object" idsafe s <ctx> <name> s
-      (<class_from> | {`"nil"`}) s
-      (<class_with> | {`""`}) s
+      "object" idsafe hs* <ctx> <name> hs*
+      (<class_from> | {`"nil"`}) hs*
+      (<class_with> | {`""`}) hs*
       "{" {~ s <class_body> s ~} <{ expect("}") }>
       =scope
       -> make_obj_decl
    }
    rule object_expr {
-      "object" idsafe s <ctx>
-      (<class_from> | {`"nil"`}) s
-      (<class_with> | {`""`}) s
+      "object" idsafe hs* <ctx>
+      (<class_from> | {`"nil"`}) hs*
+      (<class_with> | {`""`}) hs*
       "{" {~ s <class_body> s ~} <{ expect("}") }>
       =scope
       -> make_obj
@@ -1021,14 +1049,14 @@ object Grammar {
       {:scope: {`'self'`} :}
       <enter>
       ({`'self'`} <ctx> -> static_define)
-      {~ (<class_body_stmt> (<sep> s <class_body_stmt>)*)? ~}
+      {~ (<class_body_stmt> (<sep> s <class_body_stmt>)* <sep>?)? ~}
       <leave>
    }
    rule trait_body {
       {:scope: {`'self'`} :}
       <enter>
       ({`'self'`} <ctx> -> static_define)
-      {~ (<trait_body_stmt> (<sep> s <trait_body_stmt>)*)? ~}
+      {~ (<trait_body_stmt> (<sep> s <trait_body_stmt>)* <sep>?)? ~}
       <leave>
    }
    rule class_from {
@@ -1037,11 +1065,14 @@ object Grammar {
    rule class_with {
       "with" idsafe {~ hs* <type_term> (hs* "," s <type_term>)* ~}
    }
-
+   rule with_decl {
+      <class_with> -> make_with_decl
+   }
    rule class_body_stmt {
       | <has_decl>
       | <meth_decl>
       | <rule_decl>
+      | <with_decl>
       | <decl_stmt>
       | <stmt>
    }
@@ -1141,7 +1172,6 @@ object Grammar {
          "[" s <expr> s ";" s <expr> ( s ";" s <expr> | {`"1"`} ) s "]"
       ) -> "__env.Range:new(%1,%2,%3)" ~}
    }
-
    rule array {
       {~
          ("[" -> "__env.Array:new(") s
