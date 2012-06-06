@@ -11,31 +11,44 @@
 #include "compiler.h"
 #include "lupa.h"
 
-static int lupa_run(lua_State *L) {
-    int nargs;
-    nargs = lua_gettop(L);
+static int traceback(lua_State *L) {
+    lua_getfield(L, LUA_GLOBALSINDEX, "debug");
+    if (!lua_istable(L, -1)) {
+        lua_pop(L, 1);
+        return 1;
+    }
+    lua_getfield(L, -1, "traceback");
+    if (!lua_isfunction(L, -1)) {
+        lua_pop(L, 2);
+        return 1;
+    }
 
-    if (luaL_loadbuffer(L, luaJIT_BC_predef, luaJIT_BC_predef_SIZE, "=predef")) return 1;
-    if (lua_pcall(L, 0, LUA_MULTRET, 0)) return 1;
+    lua_pushvalue(L, 1);    /* pass error message */
+    lua_pushinteger(L, 2);  /* skip this function and traceback */
+    lua_call(L, 2, 1);      /* call debug.traceback */
 
-    if (luaL_loadbuffer(L, luaJIT_BC_compiler, luaJIT_BC_compiler_SIZE, "=compiler")) return 1;
-    if (lua_pcall(L, 0, LUA_MULTRET, 0)) return 1;
-
-    if (luaL_loadbuffer(L, luaJIT_BC_lupa, luaJIT_BC_lupa_SIZE, "=lupa")) return 1;
-    if (lua_pcall(L, nargs, LUA_MULTRET, 0)) return 1;
-
-    return 0;
-}
-
-int lupa_util_refaddr(lua_State* L) {
-    lua_pushfstring(L, "%p", lua_topointer(L,1));
+    fprintf(stderr, "TYPE: %s\n", lua_typename(L, lua_type(L, -1)));
+    fprintf(stderr, "TRACE: %s\n", lua_tostring(L, -1));
     return 1;
 }
 
-static struct luaL_Reg lupa_util[] = {
-    { "refaddr",   lupa_util_refaddr },
-    { NULL, NULL }
-};
+static int lupa_run(lua_State *L) {
+    int nargs, errfn;
+    nargs = lua_gettop(L);
+    lua_pushcfunction(L, traceback);
+    errfn = nargs + 1;
+
+    if (luaL_loadbuffer(L, luaJIT_BC_predef, luaJIT_BC_predef_SIZE, "=predef")) return 1;
+    if (lua_pcall(L, 0, 0, errfn)) return 1;
+
+    if (luaL_loadbuffer(L, luaJIT_BC_compiler, luaJIT_BC_compiler_SIZE, "=compiler")) return 1;
+    if (lua_pcall(L, 0, 0, errfn)) return 1;
+
+    if (luaL_loadbuffer(L, luaJIT_BC_lupa, luaJIT_BC_lupa_SIZE, "=lupa")) return 1;
+    if (lua_pcall(L, nargs, LUA_MULTRET, errfn)) return 1;
+
+    return 0;
+}
 
 int main(int argc, char *argv[]) {
     lua_State *L;
@@ -48,8 +61,6 @@ int main(int argc, char *argv[]) {
     }
 
     luaL_openlibs(L);
-    luaL_register(L, "__LUPA__", lupa_util);
-    lua_pop(L, 1);
 
     lua_createtable(L, argc, 0);
     for (i = 0; i < argc; i++) {
@@ -59,7 +70,10 @@ int main(int argc, char *argv[]) {
     lua_setglobal(L, "arg");
 
     if (lupa_run(L)) {
-        printf("%s\n", lua_tostring(L, -1));
+        const char *msg;
+        msg = lua_tostring(L, -1);
+        if (msg == NULL) msg = "(error object not a string)";
+        printf("%s\n", msg);
         lua_pop(L, 1);
         lua_close(L);
         return -1;

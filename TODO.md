@@ -1,13 +1,12 @@
 # FIXMEs
 * super calls
+* import from some.path (static checks do not resolve)
 
 # Must haves
 * better SyntaxError emissions
 * whitespace retention audit
 * unpolluted _G
 * REPL
-* lupac executable
-* liblupa.so for embedding
 * MOAR DOCZ!
 * abstract filesystem (a la falconpl, or on top of libuv)
 

@@ -199,19 +199,25 @@ class SockAddr with FFI::MetaType['sockaddr_t'] {
 
 class Socket with FFI::MetaType['socket_t'] {
    var C = FFI::C
+
    method init(domain : AF, type : SOCK, proto : PROTO) {
       var fd = C#socket(domain, type, proto)
       if fd === -1 { return nil, FFI.strerror(FFI.errno) }
       self#so_fd   = fd
       self#so_addr = nil
    }
+
    method bind(addr : SockAddr) {
       C#bind(self#so_fd, addr, addr.len)
    }
+   method connect(addr : SockAddr) {
+      C#connect(self#so_fd, addr, addr.len)
+   }
+
    static method inet_aton(cp : String, pin : SockAddr::INET::Addr) {
       C#inet_aton(cp, pin)
    }
-   static method inet_ntoa(n) { C#inet_ntoa(n) }
+   static method inet_ntoa(n) : String { C#inet_ntoa(n) }
 
    class INET from self {
       method init(type : SOCK, proto : PROTO) {
@@ -220,10 +226,13 @@ class Socket with FFI::MetaType['socket_t'] {
    }
 }
 
-
+/*
 var addr = SockAddr::INET.new('127.0.0.1', 1234)
 var sock = Socket::INET.new(SOCK.STREAM, PROTO.TCP)
-var stat = sock.bind(addr)
+var stat = sock.connect(addr)
+print(FFI.strerror(FFI.errno))
 print(stat)
+*/
+
 
 

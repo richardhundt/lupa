@@ -40,28 +40,28 @@ local rawget, rawset = rawget, rawset
 rawtype = _G.type
 
 local mangles = {
-   ["["] = "_lb",
-   ["]"] = "_rb",
-   ["$"] = "_do",
-   ["_"] = "_us",
-   ["~"] = "_ti",
-   ["@"] = "_at",
-   ["#"] = "_po",
-   ["*"] = "_st",
-   ["/"] = "_sl",
-   ["%"] = "_pe",
-   ["+"] = "_pl",
-   ["-"] = "_mi",
-   [":"] = "_co",
-   ["!"] = "_ba",
-   ["?"] = "_qm",
-   ["="] = "_eq",
-   [">"] = "_gt",
-   ["<"] = "_lt",
-   ["&"] = "_am",
-   ["^"] = "_ca",
-   ["|"] = "_pi",
-   ["."] = "_dt",
+   ["["] = "_Z2lb",
+   ["]"] = "_Z2rb",
+   ["$"] = "_Z2do",
+   ["_"] = "_Z2us",
+   ["~"] = "_Z2ti",
+   ["@"] = "_Z2at",
+   ["#"] = "_Z2po",
+   ["*"] = "_Z2st",
+   ["/"] = "_Z2sl",
+   ["%"] = "_Z2pe",
+   ["+"] = "_Z2pl",
+   ["-"] = "_Z2mi",
+   [":"] = "_Z2co",
+   ["!"] = "_Z2ba",
+   ["?"] = "_Z2qm",
+   ["="] = "_Z2eq",
+   [">"] = "_Z2gt",
+   ["<"] = "_Z2lt",
+   ["&"] = "_Z2am",
+   ["^"] = "_Z2ca",
+   ["|"] = "_Z2pi",
+   ["."] = "_Z2dt",
 }
 
 local demangles = { }
@@ -74,8 +74,8 @@ local function mangle(name)
       return mangles[o]
    end)
 end
-function demangle(name)
-   return tostring(name):gsub('(_%w%w)', function(o)
+local function demangle(name)
+   return tostring(name):gsub('(_Z2%w%w)', function(o)
       if demangles[o] then
          return demangles[o]
       else
@@ -88,9 +88,9 @@ function case(this, that)
    if this == that then
       return true
    elseif typeof(this).__slots[mangle'~~'] then
-      return this:_ti_ti(that)
+      return this[mangle'~~'](this, that)
    elseif typeof(this).__slots[mangle'=='] then
-      return this:_eq_eq(that)
+      return this[mangle'=='](this, that)
    else
       local meta = typeof(that)
       if meta == Type or meta == Class or meta == Trait then
@@ -120,7 +120,8 @@ local function lookup(slots)
    return function(self, key)
       local val = slots[key]
       if val == nil then
-         throw(TypeError:new("no such member '"..tostring(key).."' in "..tostring(self), 2))
+         --throw(TypeError:new("no such member '"..tostring(key).."' in "..tostring(self), 2))
+         throw("NameError no such member '"..tostring(key).."' in "..tostring(self), 2)
       end
       return val
    end
@@ -166,12 +167,20 @@ function class(into, name, from, with, body)
 
    if with then
       for i=1,#with do
+         if typeof(with[i]) ~= Trait then
+            throw(TypeError:new(tostring(with[i]).." is not a trait"), 2)
+         end
          with[i]:make(class.__inner, class)
       end
    end
 
    local super = setmetatable({ }, from)
    body(class.__inner, class, super)
+
+   local __extend__ = rawget(from, mangle'__extend__')
+   if __extend__ then
+      __extend__(from, class)
+   end
 
    for k,v in pairs(class.__need) do
       if v == true then
@@ -185,8 +194,9 @@ function class(into, name, from, with, body)
       end
    end
 
-   if rawget(class, mangle'__finalize__') then
-      class[mangle'__finalize__'](class)
+   local __finalize__ = rawget(class, mangle'__finalize__')
+   if __finalize__ then
+      __finalize__(class)
    end
 
    return class
@@ -214,11 +224,13 @@ function object(into, name, from, with, body)
    local inst = class(into, name, from, with, body)
    inst.new = nil
    inst.__slots.toString = function(self)
-      local addr = __LUPA__.refaddr(self)
-      return type(self)..'<object '..tostring(name)..">: "..addr
+      return ('%s<object %s>: %p'):format(type(self), tostring(name), self)
    end
    inst.__slots[mangle'::'] = function(self, name)
       return self.__slots[name] or self.__inner[name]
+   end
+   inst.__slots.members = function(self)
+      return self.__slots
    end
    setmetatable(inst, inst)
    if inst.__slots.init then
@@ -258,10 +270,10 @@ function has(into, name, type, ctor, meta)
 
    if meta then
       into[name] = get
-      into[name..'_eq'] = set
+      into[name..mangle'='] = set
    else
       into.__slots[name] = get
-      into.__slots[name..'_eq'] = set
+      into.__slots[name..mangle'='] = set
    end
 end
 
@@ -308,7 +320,7 @@ function try(try,...)
          if type == nil then
             return body(er)
          end
-         if er:_ti_ti(type) then
+         if er[mangle'~~'](er, type) then
              return body(er)
          end
       end
@@ -485,8 +497,8 @@ Any.__size = 0
 Any.__rules = { }
 Any.__slots = { }
 Any.__index = lookup(Any.__slots)
-Any.__slots._ba_eq = function(a, b) return a ~= b end
-Any.__slots._eq_eq = function(a, b) return a == b end
+Any.__slots[mangle'!='] = function(a, b) return a ~= b end
+Any.__slots[mangle'=='] = function(a, b) return a == b end
 Any.__slots[mangle'~~'] = function(a, b)
    if typeof(b) == Class or typeof(b) == Trait or typeof(b) == Type then
       return b:check(a)
@@ -497,8 +509,7 @@ Any.__slots.apply = function(self)
    error(tostring(self).." is not callable", 2)
 end
 Any.__slots.toString = function(self)
-   local addr = __LUPA__.refaddr(self)
-   return type(self)..tostring(typeof(self))..": "..addr
+   return ('%s%s: %p'):format(type(self), tostring(typeof(self)), self)
 end
 Any.__slots.is = function(self, that)
    return that:check(self)
@@ -643,6 +654,9 @@ Class.__slots.new = function(self, ...)
    end
    return obj
 end
+Class.__slots.members = function(self)
+   return self.__slots
+end
 
 Trait = newtype"Trait"
 Trait.__index = lookup(Trait.__slots)
@@ -734,8 +748,11 @@ Array.__slots[mangle'_[]='] = rawset
 Array.__slots[mangle'~~'] = function(a, b)
    if not b:is(Array) then return false end
    if a:len() ~= b:len() then return false end
+   local geti = mangle'_[]'
+   local equals = mangle'=='
    for i=1, a:len() do
-      if not a:_us_lb_rb(i):_eq_eq(b:_us_lb_rb(i)) then
+      local va, vb = a[geti](a,i), b[geti](b,i)
+      if not va[equals](va, vb) then
          return false
       end
    end
@@ -750,11 +767,15 @@ Array.__slots.unpack = unpack
 Array.__slots.insert = table.insert
 Array.__slots.remove = table.remove
 Array.__slots.concat = table.concat
-Array.__slots.sort = table.sort
+Array.__slots.sort = function(self, cond)
+   table.sort(self, cond)
+   return self
+end
 Array.__slots.each = function(self, block)
    for i=1, #self do
       block(self[i])
    end
+   return self
 end
 Array.__slots.map = function(self, block)
    local out = Array:new()
@@ -903,12 +924,12 @@ end
 debug.setmetatable(nil, Nil)
 
 Comparable = trait(__env,"Comparable",{},0,function(__env,self)
-   needs(self, mangle'<=>')
-
-   method(self, mangle'>',  function(a, b) return a:_lt_eq_gt(b) == 1 end)
-   method(self, mangle'<',  function(a, b) return a:_lt_eq_gt(b) ==-1 end)
-   method(self, mangle'>=', function(a, b) return a:_lt_eq_gt(b) >= 0 end)
-   method(self, mangle'<=', function(a, b) return a:_lt_eq_gt(b) <= 0 end)
+   local cmp = mangle'<=>'
+   needs(self, cmp)
+   method(self, mangle'>',  loadstring('local a,b = ...; return a:'..cmp..'(b) == 1','=>'))
+   method(self, mangle'<',  loadstring('local a,b = ...; return a:'..cmp..'(b) ==-1','=<'))
+   method(self, mangle'>=', loadstring('local a,b = ...; return a:'..cmp..'(b) >= 0','=>='))
+   method(self, mangle'<=', loadstring('local a,b = ...; return a:'..cmp..'(b) <= 0','=<='))
 end)
 
 Number = newtype"Number"
@@ -929,17 +950,14 @@ Number.__slots.times = function(self, block)
       block(i)
    end
 end
-Number.__slots._mi_us = function(a) return -a end
-Number.__slots._st = function(a, b) return a * b end
-Number.__slots._pe = function(a, b) return a % b end
-Number.__slots._sl = function(a, b) return a / b end
-Number.__slots._pl = function(a, b) return a + b end
-Number.__slots._mi = function(a, b) return a - b end
-Number.__slots._ba = function(a) return not a end
-Number.__slots._st_st = function(a, b) return a ^ b end
-Number.__slots[mangle'<=>'] = function(a, b)
-   return (a < b and -1) or (a > b and 1) or 0
-end
+Number.__slots[mangle'*'] = function(a, b) return a * b end
+Number.__slots[mangle'%'] = function(a, b) return a % b end
+Number.__slots[mangle'/'] = function(a, b) return a / b end
+Number.__slots[mangle'+'] = function(a, b) return a + b end
+Number.__slots[mangle'-'] = function(a, b) return a - b end
+Number.__slots[mangle'-_'] = function(a) return -a end
+Number.__slots[mangle'!_'] = function(a) return not a end
+Number.__slots[mangle'**'] = function(a, b) return a ^ b end
 Number.__slots[mangle'~_'] = bit.bnot
 Number.__slots[mangle'|'] = bit.bor
 Number.__slots[mangle'&'] = bit.band
@@ -947,8 +965,20 @@ Number.__slots[mangle'^'] = bit.bxor
 Number.__slots[mangle'<<'] = bit.lshift
 Number.__slots[mangle'>>'] = bit.rshift
 Number.__slots[mangle'>>>'] = bit.arshift
+Number.__slots[mangle'<=>'] = function(a, b)
+   return (a < b and -1) or (a > b and 1) or 0
+end
 Comparable:make(__env,Number)
 debug.setmetatable(0, Number)
+
+Symbol = newtype"Symbol"
+Symbol.__tostring = nil
+Symbol.check = function(self, that)
+   return rawtype(that) == 'string'
+end
+Symbol.coerce = function(self, that)
+   return tostring(that):demangle()
+end
 
 String = newtype"String"
 String.__tostring = nil
@@ -962,12 +992,12 @@ for k,v in pairs(string) do
    String.__slots[k] = v
 end
 String.__slots.toString = function(self) return self end
-String.__slots._pl = function(a, b) return a .. tostring(b) end
+String.__slots[mangle'+'] = function(a, b) return a .. tostring(b) end
 String.__slots.mangle = mangle
 String.__slots.demangle = demangle
 String.__slots[mangle"~~"] = function(a, b)
    if _patt.type(b) == 'pattern' then
-      return _patt.P(p):match(a)
+      return b:match(a)
    else
       return a == b
    end
@@ -1013,7 +1043,7 @@ Boolean.__tostring = nil
 Boolean.check = function(self, that)
    return rawtype(that) == 'boolean'
 end
-Boolean.coerce = function(v)
+Boolean.coerce = function(self, v)
    return not(not(v))
 end
 Boolean.__slots.toString = function(self) return tostring(self) end
@@ -1090,7 +1120,7 @@ Error = class(__env, "Error", nil, {StaticBuilder}, function(__env,self)
    has(self, "trace", nil, function(self) return end)
    method(self,'init',function(self, message, level)
       if not level then level = 1 end
-      self:trace_eq(demangle(debug.traceback(message, level + 1)))
+      self[mangle'trace='](self, demangle(debug.traceback(message, level + 1)))
    end)
    method(self,'raise', function(self, message, level)
       if not level then level = 1 end

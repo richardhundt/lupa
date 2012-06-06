@@ -146,7 +146,7 @@ object Grammar {
       }
       if info['base'] {
          if info['base'] == 'self' {
-            return info['base']+':'+name+'_eq(%s)'
+            return info['base']+':'+name+mangle('=')+'(%s)'
          }
          return info['base']+'.'+name+'=%s'
       }
@@ -210,27 +210,41 @@ object Grammar {
    }
 
    var mangles = {
-      ["["] = "_lb",
-      ["]"] = "_rb",
-      ["$"] = "_do",
-      ["_"] = "_us",
-      ["~"] = "_ti",
-      ["@"] = "_at",
-      ["#"] = "_po",
-      ["*"] = "_st",
-      ["/"] = "_sl",
-      ["%"] = "_pe",
-      ["+"] = "_pl",
-      ["-"] = "_mi",
-      [":"] = "_co",
-      ['?'] = "_qm",
-      ["!"] = "_ba",
-      ["="] = "_eq",
-      [">"] = "_gt",
-      ["<"] = "_lt",
-      ["&"] = "_am",
-      ["^"] = "_ca",
-      ["|"] = "_pi",
+      ["["] = "_Z2lb",
+      ["]"] = "_Z2rb",
+      ["$"] = "_Z2do",
+      ["_"] = "_Z2us",
+      ["~"] = "_Z2ti",
+      ["@"] = "_Z2at",
+      ["#"] = "_Z2po",
+      ["*"] = "_Z2st",
+      ["/"] = "_Z2sl",
+      ["%"] = "_Z2pe",
+      ["+"] = "_Z2pl",
+      ["-"] = "_Z2mi",
+      [":"] = "_Z2co",
+      ['?'] = "_Z2qm",
+      ["!"] = "_Z2ba",
+      ["="] = "_Z2eq",
+      [">"] = "_Z2gt",
+      ["<"] = "_Z2lt",
+      ["&"] = "_Z2am",
+      ["^"] = "_Z2ca",
+      ["|"] = "_Z2pi",
+   }
+
+   var demangles = { } as nil
+   for k,v in mangles { demangles#[v] = k }
+
+   function demangle(name) {
+      return tostring(name).gsub('(_Z2%w%w)', function(o) {
+         if demangles#[o] {
+            return demangles#[o]
+         }
+         else {
+            return o
+         }
+      })
    }
 
    function mangle(name) {
