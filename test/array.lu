@@ -6,8 +6,8 @@ object Tests from TestUnit {
 
    method test_literal {
       var a = [1, 2, 3]
-      assert(a, 'created array')
-      assert(a.len === 3, 'len is sane')
+      .assert(a, 'created array')
+      .assert(a.len === 3, 'len is sane')
    }
 
    method test_callable {
@@ -16,19 +16,19 @@ object Tests from TestUnit {
       }
       var a = [ func, "Hello" ]
       var b = a(" World")
-      assert(b === 'Hello World!', 'callable')
+      .assert(b === 'Hello World!', 'callable')
    }
 
    method test_add {
       var a = [ 1, 2, 3 ]
       var b = [ 4, 5, 6 ]
       var c = a + b
-      assert(c.len === 6, 'len is sane')
+      .assert(c.len === 6, 'len is sane')
       for i=1, 3 {
          assert(a[i] === c[i], "a item ${i}")
       }
       for i=4, 6 {
-         assert(b[i - 3] === c[i], "b item ${i}")
+         .assert(b[i - 3] === c[i], "b item ${i}")
       }
    }
 }

@@ -1,15 +1,11 @@
 object Point {
     has x = 0
     has y = 0
-    trait Inner {
-       has foo = 42
-    }
     method move(x, y) {
         self.x = x
         self.y = y
     }
 }
-print(Point::Inner.foo)
 
 var p = Point
 print(p.x, p.y)

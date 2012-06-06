@@ -497,6 +497,7 @@ Any.__size = 0
 Any.__rules = { }
 Any.__slots = { }
 Any.__index = lookup(Any.__slots)
+Any.__slots[mangle'::'] = function(a, b) return a[b] end
 Any.__slots[mangle'!='] = function(a, b) return a ~= b end
 Any.__slots[mangle'=='] = function(a, b) return a == b end
 Any.__slots[mangle'~~'] = function(a, b)
@@ -1124,7 +1125,7 @@ Error = class(__env, "Error", nil, {StaticBuilder}, function(__env,self)
    end)
    method(self,'raise', function(self, message, level)
       if not level then level = 1 end
-      throw(self:new(message, level + 1))
+      error(self:new(message, level + 1), level + 1)
    end, true)
    method(self,'toString',function(self)
       return tostring(typeof(self).__name)..": "..tostring(self:trace())

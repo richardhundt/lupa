@@ -55,7 +55,7 @@ class Context {
          .scope = outer
          return outer
       }
-      throw Error.new("no outer scope")
+      Error raise "no outer scope"
    }
    method define(name, info) {
       .scope.define(name, info)
@@ -558,7 +558,7 @@ object Grammar {
    }
    function make_obj(c,f,w,b,s) {
       var decl = '__env.object(__env,%q,%s,{%s},function(__env,self,super) %s end)'
-      return decl.format("t${genid()}",f,w,b)
+      return decl.format("object${genid()}",f,w,b)
    }
    function make_trait_decl(c,n,p,w,b) {
       var decl = '__env.trait(__env,%q,{%s},%s,function(__env,self,%s)%s end);'
@@ -670,7 +670,7 @@ object Grammar {
             for k,v in curr.resolve {
                var info = curr.lookup(k)
                if !(info && info['base'] == '__env') {
-                  throw SyntaxError.new(
+                  SyntaxError.raise(
                      "symbol '${k}' was never defined on"+
                      " line: ${error_line(ctx.source,v)}"+
                      " near: ${error_near(ctx.source,v)}",
@@ -701,7 +701,7 @@ object Grammar {
          var buf = [ ]
          for k,v in ctx.exports {
             if !ctx.lookup(k) {
-               throw SyntaxError.new("export '${k}' was never defined", 2)
+               SyntaxError.raise("export '${k}' was never defined", 2)
             }
             buf.push('{%q,%s}'.format(k,lookup(0, k, ctx)))
          }
