@@ -1,0 +1,42 @@
+export TestUnit
+
+class TestUnit {
+   has tests = [ ]
+
+   method assert(cond : Boolean, mesg : String = '?') {
+      assert(cond, mesg)
+      io#stdout.write(".")
+   }
+   method run {
+      if self can `set_up {
+         self.set_up()
+      }
+      for s : Symbol, v in typeof(self).members {
+         if / 'test'/ match s {
+            .tests.push({ name = s, test = v })
+         }
+      }
+      .tests sort (a, b) => {
+         var a_info = debug#getinfo(a['test'])
+         var b_info = debug#getinfo(b['test'])
+         a_info#linedefined < b_info#linedefined
+      }
+      var failed = [ ]
+      for i, test in .tests {
+         io#stdout.write(test['name'])
+         var ok, ex = pcall(test['test'], self)
+         if !ok {
+            print("FAILED: ${test['name']} - ${ex}")
+            test['fail'] = ex
+            failed.push(test)
+         }
+         else {
+            print("OK")
+         }
+      }
+      if self can `tear_down {
+         self.tear_down()
+      }
+   }
+}
+
