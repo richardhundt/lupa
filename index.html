@@ -1,0 +1,752 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>Lupa by richardhundt</title>
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.1/jquery.min.js"></script>
+    <script src="javascripts/respond.js"></script>
+    <!--[if lt IE 9]>
+      <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <!--[if lt IE 8]>
+    <link rel="stylesheet" href="stylesheets/ie.css">
+    <![endif]-->
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+
+  </head>
+  <body>
+      <div id="header">
+        <nav>
+          <li class="fork"><a href="https://github.com/richardhundt/lupa">View On GitHub</a></li>
+          <li class="downloads"><a href="https://github.com/richardhundt/lupa/zipball/master">ZIP</a></li>
+          <li class="downloads"><a href="https://github.com/richardhundt/lupa/tarball/master">TAR</a></li>
+          <li class="title">DOWNLOADS</li>
+        </nav>
+      </div><!-- end header -->
+
+    <div class="wrapper">
+
+      <section>
+        <div id="title">
+          <h1>Lupa</h1>
+          <p>OO language targetting Lua</p>
+          <hr>
+          <span class="credits left">Project maintained by <a href="https://github.com/richardhundt">richardhundt</a></span>
+          <span class="credits right">Hosted on GitHub Pages &mdash; Theme by <a href="http://twitter.com/#!/michigangraham">mattgraham</a></span>
+        </div>
+
+        <p>[<a href="https://github.com/richardhundt/lupa/wiki/lupa_logo.png">https://github.com/richardhundt/lupa/wiki/lupa_logo.png</a>]</p>
+
+<h1>NAME</h1>
+
+<p>Lupa - multi-paradigm object oriented, dynamic language</p>
+
+<h1>SYNOPSIS</h1>
+
+<pre><code>lupa &lt;file&gt;
+    run the script
+lupa &lt;file&gt; -l
+    list generated Lua
+</code></pre>
+
+<h1>INTRODUCTION</h1>
+
+<p><em>NOTE:</em> This is alpha software and is therefore very likey to change</p>
+
+<p>Lupa is a language which translates to Lua. So, bowing to the
+mandatory justification of "why yet another language", here's the
+reasoning. LuaJIT2 is fast. Very fast. I like fast in a language
+runtime. LuaJIT2 also has a low memory footprint. Which is also
+nice.</p>
+
+<p>However, although a beautiful language, Lua is also very minimal.
+I want a language with a bit more meat. More than that though, I
+want a language which gives me the most syntactic and semantic
+flexibility possible, while allowing me to write code which is
+run-time safe. Not type safe, neccessarily, but more generally,
+constraint safe, where a constraint may be a type check.</p>
+
+<p>For syntactic and semantic flexibility, Lupa borrows an idea from
+Scala in that infix and prefix operators are method calls. That's
+probably where the similarity ends. Lupa is a dynamic language.</p>
+
+<p>For safety, Lupa provides compile-time symbol checks to catch typos,
+and for the rest we have guard expressions.</p>
+
+<p>Lupa to Lua source translation is done without the use of abstract
+syntax trees in a single pass, using essentially a big substitution
+capture with LPeg. This limits static checks and early binding
+across source files, but compilation is fast and within a given
+compilation unit we can still perform some checks. It also allows
+us to call from Lupa into Lua.</p>
+
+<h2>Features</h2>
+
+<p>Most of Lua's semantics shine through, such as Lua's for loops,
+1-based arrays, first-class functions, and late binding.</p>
+
+<p>However, Lupa adds several features, such as:</p>
+
+<ul>
+<li>classes with single inheritance</li>
+<li>parameterisable traits and mixin composition</li>
+<li>everything-is-an-object semantics</li>
+<li>static symbol resolution</li>
+<li>type guards and assertions</li>
+<li>language integrated grammars (via LPeg)</li>
+<li>operators as method calls</li>
+<li>continue statement</li>
+<li>string interpolation</li>
+<li>builtin Array type</li>
+<li>short function literals</li>
+<li>switch-case statement</li>
+<li>try-catch statement</li>
+<li>and more...</li>
+</ul><h1>LANGUAGE</h1>
+
+<p>Syntactically Lupa belongs to the C family of languages, in that
+it has curly braces delimiting blocks and includes familiar constructs
+such as switch statements and while loops.</p>
+
+<h2>Sample</h2>
+
+<div class="highlight">
+<pre><span class="nx">trait</span> <span class="nx">Pet</span><span class="p">[</span><span class="nx">T</span><span class="p">]</span> <span class="p">{</span>
+   <span class="c1">// parameterised traits with lexical scoping</span>
+   <span class="nx">has</span> <span class="nx">size</span> <span class="o">:</span> <span class="nx">T</span>
+<span class="p">}</span>
+
+<span class="kd">class</span> <span class="nx">Mammal</span> <span class="p">{</span>
+   <span class="nx">has</span> <span class="nx">blood</span> <span class="o">=</span> <span class="s2">"warm"</span>
+<span class="p">}</span>
+
+<span class="nx">trait</span> <span class="nx">Named</span> <span class="p">{</span>
+   <span class="c1">// default property values are lazy expressions</span>
+   <span class="nx">has</span> <span class="nx">name</span> <span class="o">=</span> <span class="nx">error</span><span class="p">(</span><span class="s2">"A pet needs a name!"</span><span class="p">)</span>
+<span class="p">}</span>
+
+<span class="c1">// single inheritance with trait mixins</span>
+<span class="kd">class</span> <span class="nx">Hamster</span> <span class="nx">from</span> <span class="nx">Mammal</span> <span class="k">with</span> <span class="nx">Pet</span><span class="p">[</span><span class="nb">Number</span><span class="p">]</span><span class="o">,</span> <span class="nx">Named</span> <span class="p">{</span>
+
+   <span class="c1">// default initializer</span>
+   <span class="nx">method</span> <span class="nx">init</span><span class="p">(</span><span class="nx">name</span><span class="p">)</span> <span class="p">{</span>
+      <span class="nx">self</span><span class="p">.</span><span class="nx">size</span> <span class="o">=</span> <span class="mi">42</span>
+      <span class="p">.</span><span class="nx">name</span> <span class="o">=</span> <span class="nx">name</span> <span class="c1">// short for self.name = name</span>
+   <span class="p">}</span>
+
+   <span class="nx">method</span> <span class="nx">greet</span><span class="p">(</span><span class="nx">whom</span> <span class="o">:</span> <span class="nb">String</span><span class="p">)</span> <span class="p">{</span>
+      <span class="c1">// string interpolation</span>
+      <span class="nx">print</span><span class="p">(</span><span class="s2">"Hi ${whom}, I am ${.name}, a ${.size}, ${.blood}, ${typeof self}!"</span><span class="p">)</span>
+   <span class="p">}</span>
+
+   <span class="c1">// class bodies have lexical scope</span>
+   <span class="k">var</span> <span class="nx">numbers</span> <span class="o">=</span> <span class="p">[</span> <span class="s2">"one"</span><span class="o">,</span> <span class="s2">"two"</span><span class="o">,</span> <span class="s2">"three"</span><span class="o">,</span> <span class="s2">"four"</span><span class="o">,</span> <span class="s2">"five"</span> <span class="p">]</span>
+
+   <span class="nx">method</span> <span class="nx">count</span><span class="p">(</span><span class="nx">upto</span><span class="p">)</span> <span class="p">{</span>
+      <span class="c1">// short functions</span>
+      <span class="nx">upto</span><span class="p">.</span><span class="nx">times</span><span class="p">((</span><span class="nx">_</span><span class="p">)</span> <span class="o">=&gt;</span> <span class="p">{</span> <span class="nx">print</span><span class="p">(</span><span class="nx">numbers</span><span class="p">[</span><span class="nx">_</span><span class="p">])</span> <span class="p">})</span>
+
+      <span class="c1">// same thing, but `times' as infix operator</span>
+      <span class="nx">upto</span> <span class="nx">times</span> <span class="o">=&gt;</span> <span class="nx">print</span><span class="p">(</span><span class="nx">numbers</span><span class="p">[</span><span class="nx">_</span><span class="p">])</span>
+   <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">var</span> <span class="nx">rudy</span> <span class="o">=</span> <span class="nx">Hamster</span><span class="p">.</span><span class="k">new</span><span class="p">(</span><span class="s2">"Rudy"</span><span class="p">)</span>
+<span class="nx">rudy</span><span class="p">.</span><span class="nx">greet</span><span class="p">(</span><span class="s2">"Jack"</span><span class="p">)</span>
+<span class="nx">rudy</span><span class="p">.</span><span class="nx">count</span><span class="p">(</span><span class="mi">5</span><span class="p">)</span>
+</pre>
+</div>
+
+
+<h2>Tutorial</h2>
+
+<p>To introduce the language, we start with a tutorial, where we
+implement a naive NumArray type which simply wraps an Array, and
+constrains values to be of type Number. Our first attempt might
+look as follows:</p>
+
+<div class="highlight">
+<pre><span class="kd">class</span> <span class="nx">NumArray</span> <span class="p">{</span>
+    <span class="c1">// a "public" read-write property with lazy constructor</span>
+    <span class="nx">has</span> <span class="nx">data</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+
+    <span class="c1">// initializer</span>
+    <span class="nx">method</span> <span class="nx">init</span><span class="p">(</span><span class="nx">data</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">self</span><span class="p">.</span><span class="nx">data</span> <span class="o">=</span> <span class="nx">data</span> <span class="o">||</span> <span class="p">[</span> <span class="p">]</span>
+    <span class="p">}</span>
+
+    <span class="nx">method</span> <span class="kd">set</span><span class="p">(</span><span class="nx">index</span><span class="o">,</span> <span class="nx">value</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="o">!</span><span class="nx">value</span> <span class="nx">is</span> <span class="nb">Number</span> <span class="p">{</span>
+            <span class="k">throw</span> <span class="s2">"${value} is not a Number"</span>
+        <span class="p">}</span>
+        <span class="nx">self</span><span class="p">.</span><span class="nx">data</span><span class="p">[</span><span class="nx">index</span><span class="p">]</span> <span class="o">=</span> <span class="nx">value</span>
+    <span class="p">}</span>
+
+    <span class="nx">method</span> <span class="kd">get</span><span class="p">(</span><span class="nx">index</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">self</span><span class="p">.</span><span class="nx">data</span><span class="p">[</span><span class="nx">index</span><span class="p">]</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre>
+</div>
+
+
+<p>This has several problems. One problem is that it doesn't
+implement the same interface as the built-in Array type which
+it is wrapping. Lupa provides postcircumfix operator methods
+which allow us to make this more consistent:</p>
+
+<div class="highlight">
+<pre><span class="kd">class</span> <span class="nx">NumArray</span> <span class="p">{</span>
+    <span class="nx">has</span> <span class="nx">data</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+    <span class="nx">method</span> <span class="nx">init</span><span class="p">(</span><span class="nx">data</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">self</span><span class="p">.</span><span class="nx">data</span> <span class="o">=</span> <span class="nx">data</span> <span class="o">||</span> <span class="p">[</span> <span class="p">]</span>
+    <span class="p">}</span>
+    <span class="nx">method</span> <span class="nx">_</span><span class="p">[]</span><span class="o">=</span><span class="p">(</span><span class="nx">index</span><span class="o">,</span> <span class="nx">value</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">if</span> <span class="o">!</span><span class="nx">value</span> <span class="nx">is</span> <span class="nb">Number</span> <span class="p">{</span>
+            <span class="k">throw</span> <span class="s2">"${value} is not a Number"</span>
+        <span class="p">}</span>
+        <span class="nx">self</span><span class="p">.</span><span class="nx">data</span><span class="p">[</span><span class="nx">index</span><span class="p">]</span> <span class="o">=</span> <span class="nx">value</span>
+    <span class="p">}</span>
+    <span class="nx">method</span> <span class="nx">_</span><span class="p">[](</span><span class="nx">index</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">self</span><span class="p">.</span><span class="nx">data</span><span class="p">[</span><span class="nx">index</span><span class="p">]</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre>
+</div>
+
+
+<p>The <code>_[]</code> and <code>_[]=</code> methods are called when getting or
+setting a value using array subscript.</p>
+
+<p>A second thing which can make our implementation nicer is
+to use guard annotations instead of explicitly checking
+that our value is a <code>Number</code>.</p>
+
+<div class="highlight">
+<pre><span class="kd">class</span> <span class="nx">NumArray</span> <span class="p">{</span>
+    <span class="nx">has</span> <span class="nx">data</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+    <span class="nx">method</span> <span class="nx">init</span><span class="p">(</span><span class="nx">data</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">self</span><span class="p">.</span><span class="nx">data</span> <span class="o">=</span> <span class="nx">data</span> <span class="o">||</span> <span class="p">[</span> <span class="p">]</span>
+    <span class="p">}</span>
+    <span class="nx">method</span> <span class="nx">_</span><span class="p">[]</span><span class="o">=</span><span class="p">(</span><span class="nx">index</span><span class="o">,</span> <span class="nx">value</span> <span class="o">:</span> <span class="nb">Number</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">self</span><span class="p">.</span><span class="nx">data</span><span class="p">[</span><span class="nx">index</span><span class="p">]</span> <span class="o">=</span> <span class="nx">value</span>
+    <span class="p">}</span>
+    <span class="nx">method</span> <span class="nx">_</span><span class="p">[](</span><span class="nx">index</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">self</span><span class="p">.</span><span class="nx">data</span><span class="p">[</span><span class="nx">index</span><span class="p">]</span>
+    <span class="p">}</span>
+    <span class="nx">method</span> <span class="nx">len</span> <span class="p">{</span>
+        <span class="nx">self</span><span class="p">.</span><span class="nx">data</span><span class="p">.</span><span class="nx">len</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre>
+</div>
+
+
+<p>The Array class also implements a <code>len</code> property which is
+readonly. Properties introduced by <code>has</code> are actually just
+sugar for creating a getter/setter method pair. Therefore
+to create a readonly property, simply define the method
+and call it without parameters:</p>
+
+<div class="highlight">
+<pre><span class="kd">class</span> <span class="nx">NumArray</span> <span class="p">{</span>
+    <span class="nx">has</span> <span class="nx">data</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+    <span class="nx">method</span> <span class="nx">init</span><span class="p">(</span><span class="nx">data</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">self</span><span class="p">.</span><span class="nx">data</span> <span class="o">=</span> <span class="nx">data</span> <span class="o">||</span> <span class="p">[</span> <span class="p">]</span>
+    <span class="p">}</span>
+    <span class="nx">method</span> <span class="nx">_</span><span class="p">[]</span><span class="o">=</span><span class="p">(</span><span class="nx">index</span><span class="o">,</span> <span class="nx">value</span> <span class="o">:</span> <span class="nb">Number</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">self</span><span class="p">.</span><span class="nx">data</span><span class="p">[</span><span class="nx">index</span><span class="p">]</span> <span class="o">=</span> <span class="nx">value</span>
+    <span class="p">}</span>
+    <span class="nx">method</span> <span class="nx">_</span><span class="p">[](</span><span class="nx">index</span><span class="p">)</span> <span class="p">{</span>
+        <span class="k">return</span> <span class="nx">self</span><span class="p">.</span><span class="nx">data</span><span class="p">[</span><span class="nx">index</span><span class="p">]</span>
+    <span class="p">}</span>
+    <span class="nx">method</span> <span class="nx">len</span> <span class="p">{</span>
+        <span class="p">.</span><span class="nx">data</span><span class="p">.</span><span class="nx">len</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre>
+</div>
+
+
+<p>Note that the <code>return</code> keyword is missing from our <code>len</code> method.
+This is because the last expression evaluated in a function
+body has an implicit return. Similarly we could have left
+out the <code>_[]</code> method's return.</p>
+
+<p>This makes it convenient to use <code>map</code> and similar functions
+for transforming list-like objects. More on that later.</p>
+
+<p>We've also left out <code>self</code>, which is implied by the leading <code>.</code>.</p>
+
+<p>A class body is actually a closure which can have lexical variables
+which are not accessible from outside. This can be used to make our
+inner array private. You could do the following:</p>
+
+<div class="highlight">
+<pre><span class="kd">class</span> <span class="nx">NumArray</span> <span class="p">{</span>
+    <span class="c1">// create a table with weak keys</span>
+    <span class="k">var</span> <span class="kd">private</span> <span class="o">=</span> <span class="p">{</span> <span class="p">}</span> <span class="nx">weak</span> <span class="s1">'k'</span>
+
+    <span class="nx">method</span> <span class="nx">init</span><span class="p">(</span><span class="nx">data</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kd">private</span><span class="p">[</span><span class="nx">self</span><span class="p">]</span> <span class="o">=</span> <span class="nx">data</span> <span class="o">||</span> <span class="p">[</span> <span class="p">]</span>
+    <span class="p">}</span>
+    <span class="nx">method</span> <span class="nx">_</span><span class="p">[]</span><span class="o">=</span><span class="p">(</span><span class="nx">index</span><span class="o">,</span> <span class="nx">value</span> <span class="o">:</span> <span class="nb">Number</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kd">private</span><span class="p">[</span><span class="nx">self</span><span class="p">][</span><span class="nx">index</span><span class="p">]</span> <span class="o">=</span> <span class="nx">value</span>
+    <span class="p">}</span>
+    <span class="nx">method</span> <span class="nx">_</span><span class="p">[](</span><span class="nx">index</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kd">private</span><span class="p">[</span><span class="nx">self</span><span class="p">][</span><span class="nx">index</span><span class="p">]</span>
+    <span class="p">}</span>
+    <span class="nx">method</span> <span class="nx">len</span> <span class="p">{</span>
+        <span class="kd">private</span><span class="p">[</span><span class="nx">self</span><span class="p">].</span><span class="nx">len</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre>
+</div>
+
+
+<p>It's not all that pretty, but then again, Lupa is more interested
+in being flexible than carrying around a shotgun. Another thing
+you could do is to use the low-level direct table access operator <code>#</code>.</p>
+
+<p>This operator exists for interop with Lua and Lua libraries (and for
+making hard things possible):</p>
+
+<div class="highlight">
+<pre><span class="kd">class</span> <span class="nx">NumArray</span> <span class="p">{</span>
+    <span class="nx">method</span> <span class="nx">init</span><span class="p">(</span><span class="nx">data</span> <span class="o">:</span> <span class="nb">Array</span> <span class="o">=</span> <span class="p">[</span> <span class="p">])</span> <span class="p">{</span>
+        <span class="nx">self</span><span class="err">#</span><span class="nx">data</span> <span class="o">=</span> <span class="nx">data</span>
+    <span class="p">}</span>
+    <span class="nx">method</span> <span class="nx">_</span><span class="p">[]</span><span class="o">=</span><span class="p">(</span><span class="nx">index</span><span class="o">,</span> <span class="nx">value</span> <span class="o">:</span> <span class="nb">Number</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">self</span><span class="err">#</span><span class="nx">data</span><span class="p">[</span><span class="nx">index</span><span class="p">]</span> <span class="o">=</span> <span class="nx">value</span>
+    <span class="p">}</span>
+    <span class="nx">method</span> <span class="nx">_</span><span class="p">[](</span><span class="nx">index</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">self</span><span class="err">#</span><span class="nx">data</span><span class="p">[</span><span class="nx">index</span><span class="p">]</span>
+    <span class="p">}</span>
+    <span class="nx">method</span> <span class="nx">len</span> <span class="p">{</span>
+        <span class="nx">self</span><span class="err">#</span><span class="nx">data</span><span class="p">.</span><span class="nx">len</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre>
+</div>
+
+
+<p>This is also not pretty, but it is noticeable. Which is good. The
+<code>#</code> operator is associated with accessing something's private parts
+in that member accesses via <code>.</code> are method calls. Names following
+the <code>#</code> operator are also not mangled, which is needed for calling
+into Lua and FFI code.</p>
+
+<p>You could, of course, save yourself all the above trouble if you're
+just interested in constraint checking and create a guard:</p>
+
+<div class="highlight">
+<pre><span class="nx">guard</span> <span class="nx">NumArray</span><span class="p">(</span><span class="nx">sample</span> <span class="o">:</span> <span class="nb">Array</span><span class="p">)</span> <span class="p">{</span>
+    <span class="c1">// the Number annotation on the value does the coercion</span>
+    <span class="k">for</span> <span class="nx">index</span><span class="o">,</span> <span class="nx">value</span> <span class="o">:</span> <span class="nb">Number</span> <span class="k">in</span> <span class="nx">sample</span> <span class="p">{</span>
+        <span class="c1">// in-place, although we could return a copy</span>
+        <span class="nx">sample</span><span class="p">[</span><span class="nx">index</span><span class="p">]</span> <span class="o">=</span> <span class="nx">value</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="nx">sample</span>
+<span class="p">}</span>
+
+<span class="k">var</span> <span class="nx">foo</span> <span class="o">:</span> <span class="nx">NumArray</span> <span class="o">=</span> <span class="p">[</span> <span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="s2">"three"</span> <span class="p">]</span> <span class="c1">// KABOOM! cannot coerce "three" to Number</span>
+</pre>
+</div>
+
+
+<p>Alternatively you could save yourself even that much trouble and just say:</p>
+
+<div class="highlight">
+<pre><span class="k">var</span> <span class="nx">foo</span> <span class="o">:</span> <span class="nb">Array</span><span class="p">[</span><span class="nb">Number</span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span> <span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span> <span class="p">]</span>
+</pre>
+</div>
+
+
+<p>This works simply because the Array class itself implements a static
+method <code>_[]</code> which constructs a guard on demand and returns it.</p>
+
+<h2>Scoping</h2>
+
+<p>Lupa has two kinds of scopes. The first is simple lexical scoping,
+which is seen in function and class bodies, and control structures.</p>
+
+<p>The second kind of scope is the environment scope, which is modeled
+after Lua 5.2's <code>_ENV</code> idea, where symbols which are not declared in
+a compilation unit, are looked up in a special <code>__env</code> table, which
+delegates to Lua's <code>_G</code> global table.</p>
+
+<p>At the top level of a script, class, object, trait and function
+declarations are bound to <code>__env</code>, while variable declarations
+remain lexical.</p>
+
+<p>Inside class, object and trait bodies, only function declarations
+bind to <code>__env</code>. Method and property declarations bind to <code>self</code>
+(the class or object).</p>
+
+<p>Inside function bodies, function declarations are lexical and are
+<em>not</em> hoisted to the top of the scope, meaning they are only visible
+after they are declared.</p>
+
+<p>Variable declarations declared as <code>var</code> are always lexical. To declare
+a variable bound to the environment, use <code>our</code>:</p>
+
+<div class="highlight">
+<pre><span class="k">var</span> <span class="nx">answer</span> <span class="o">=</span> <span class="mi">42</span>  <span class="c1">// ordinary lexical</span>
+<span class="nx">our</span> <span class="nx">DEBUG</span> <span class="o">=</span> <span class="kc">true</span> <span class="c1">// bound to environment</span>
+</pre>
+</div>
+
+
+<div class="highlight">
+<pre><span class="c1">// bound to the environment (__env.envfunc)</span>
+<span class="kd">function</span> <span class="nx">envfunc</span><span class="p">()</span> <span class="p">{</span>
+    <span class="c1">// ...</span>
+<span class="p">}</span>
+<span class="c1">// a lexical function</span>
+<span class="k">var</span> <span class="nx">localfunc</span> <span class="o">=</span> <span class="kd">function</span><span class="p">()</span> <span class="p">{</span>
+    <span class="c1">// ...</span>
+<span class="p">}</span>
+<span class="kd">class</span> <span class="nx">MyClass</span> <span class="p">{</span>
+    <span class="c1">// this function is only visible in this block</span>
+    <span class="kd">function</span> <span class="nx">hidden</span><span class="p">()</span> <span class="p">{</span>
+        <span class="c1">// ...</span>
+    <span class="p">}</span>
+    <span class="nx">method</span> <span class="nx">munge</span><span class="p">()</span> <span class="p">{</span>
+        <span class="nx">hidden</span><span class="p">()</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre>
+</div>
+
+
+<p>Nested function declarations are also lexical, however the differ
+from function literals in that inside a function declaration, the
+function itself is always visible, so can be called recursively:</p>
+
+<div class="highlight">
+<pre><span class="kd">function</span> <span class="nx">outer</span><span class="p">()</span> <span class="p">{</span>
+
+    <span class="c1">// inner function is lexical</span>
+    <span class="kd">function</span> <span class="nx">inner</span><span class="p">()</span> <span class="p">{</span>
+        <span class="c1">// inner itself is visible here</span>
+    <span class="p">}</span>
+
+    <span class="c1">// not quite the same thing</span>
+    <span class="k">var</span> <span class="nx">inner</span> <span class="o">=</span> <span class="kd">function</span><span class="p">()</span> <span class="p">{</span>
+        <span class="c1">// inner itself is not visible here</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre>
+</div>
+
+
+<h2>Variables</h2>
+
+<p>Lexical variables are introduced with the <code>var</code> keyword, followed
+by a comma separated list of identifiers, and an optional <code>=</code>
+followed by a list of expressions.</p>
+
+<div class="highlight">
+<pre><span class="k">var</span> <span class="nx">a</span><span class="o">,</span> <span class="nx">b</span>         <span class="c1">// declare only</span>
+<span class="k">var</span> <span class="nx">c</span><span class="o">,</span> <span class="nx">d</span> <span class="o">=</span> <span class="mi">1</span><span class="o">,</span> <span class="mi">2</span>  <span class="c1">// declare and assign</span>
+</pre>
+</div>
+
+
+<p>Variables can also be introduced using the <code>our</code> keyword, which, as
+mentioned earlier binds to the environment table:</p>
+
+<div class="highlight">
+<pre><span class="kd">function</span> <span class="nx">life_etc</span><span class="p">()</span> <span class="p">{</span>
+    <span class="nx">print</span><span class="p">(</span><span class="s2">"the answer is ${answer}"</span><span class="p">)</span>
+<span class="p">}</span>
+<span class="nx">our</span> <span class="nx">answer</span> <span class="o">=</span> <span class="mi">42</span>
+<span class="nx">life_etc</span><span class="p">()</span>
+</pre>
+</div>
+
+
+<h2>Guards</h2>
+
+<p>Various declarations may also include guard expressions:</p>
+
+<div class="highlight">
+<pre><span class="k">var</span> <span class="nx">s</span> <span class="o">:</span> <span class="nb">String</span> <span class="o">=</span> <span class="s2">"first"</span>
+</pre>
+</div>
+
+
+<p>Future updates to guarded variables within a given scope cause the
+guard's <code>coerce</code> method to be called with the value as argument to
+allow the guard to coerce the value or raise an exception.</p>
+
+<p>The above statement (loosely) translates to the following Lua snippet:</p>
+
+<div class="highlight">
+<pre><span class="kd">local</span> <span class="n">s</span> <span class="o">=</span> <span class="n">String</span><span class="p">:</span><span class="n">coerce</span><span class="p">(</span><span class="s2">"</span><span class="s">first"</span><span class="p">)</span>
+</pre>
+</div>
+
+
+<p>Classes and traits, as well as built-in types <code>Number</code>, <code>String</code>,
+<code>Boolean</code>, <code>Array</code>, <code>Table</code> and <code>Function</code> can be used as guards.</p>
+
+<p>Custom guards can also be created using a <code>guard</code> declaration:</p>
+
+<div class="highlight">
+<pre><span class="nx">guard</span> <span class="nx">Size</span><span class="p">(</span><span class="nx">sample</span> <span class="o">:</span> <span class="nb">Number</span><span class="p">)</span> <span class="p">{</span>
+    <span class="k">if</span> <span class="o">!</span><span class="nx">sample</span> <span class="o">&gt;</span> <span class="mi">0</span> <span class="p">{</span>
+        <span class="k">throw</span> <span class="nb">TypeError</span><span class="p">.</span><span class="k">new</span><span class="p">(</span><span class="s2">"${sample} does not pass Size constraint"</span><span class="p">)</span>
+    <span class="p">}</span>
+    <span class="k">return</span> <span class="nx">sample</span>
+<span class="p">}</span>
+<span class="k">var</span> <span class="nx">size</span> <span class="o">:</span> <span class="nx">Size</span> <span class="o">=</span> <span class="mf">4.2</span>
+</pre>
+</div>
+
+
+<h2>Assignment</h2>
+
+<p>Assignments can be simple binding expressions:</p>
+
+<div class="highlight">
+<pre><span class="nx">everything</span><span class="p">.</span><span class="nx">answer</span> <span class="o">=</span> <span class="mi">42</span>
+</pre>
+</div>
+
+
+<p>... or compound:</p>
+
+<div class="highlight">
+<pre><span class="nx">a</span> <span class="o">+=</span> <span class="mi">1</span>
+</pre>
+</div>
+
+
+<h2>Operators</h2>
+
+<p>Most operators in Lupa are method calls. For example:</p>
+
+<div class="highlight">
+<pre><span class="nx">a</span> <span class="o">+</span> <span class="mi">42</span>
+</pre>
+</div>
+
+
+<p>which is the same as:</p>
+
+<div class="highlight">
+<pre><span class="nx">a</span><span class="p">.</span><span class="o">+</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>
+</pre>
+</div>
+
+
+<p>This syntax applies to all method calls, so the following are equivalent:</p>
+
+<div class="highlight">
+<pre><span class="k">var</span> <span class="nx">d</span> <span class="o">=</span> <span class="nx">Dog</span><span class="p">.</span><span class="k">new</span><span class="p">(</span><span class="s2">"Fido"</span><span class="p">)</span>
+<span class="k">var</span> <span class="nx">d</span> <span class="o">=</span> <span class="nx">Dog</span> <span class="k">new</span> <span class="s2">"Fido"</span>
+<span class="mi">10</span><span class="p">.</span><span class="nx">times</span><span class="p">((</span><span class="nx">i</span><span class="p">)</span> <span class="o">=&gt;</span> <span class="p">{</span> <span class="nx">print</span><span class="p">(</span><span class="nx">i</span><span class="p">)</span> <span class="p">})</span>
+<span class="mi">10</span> <span class="nx">times</span> <span class="p">(</span><span class="nx">i</span><span class="p">)</span> <span class="o">=&gt;</span> <span class="p">{</span> <span class="nx">print</span><span class="p">(</span><span class="nx">i</span><span class="p">)</span> <span class="p">}</span>
+<span class="mi">10</span> <span class="nx">times</span> <span class="o">=&gt;</span> <span class="nx">print</span><span class="p">(</span><span class="nx">_</span><span class="p">)</span> <span class="c1">// same as above</span>
+</pre>
+</div>
+
+
+<p>A notable exception are <code>===</code> and <code>!==</code> which are raw identity comparisons.</p>
+
+<p>Infix operator precedences are determined by their first character and are
+always left associative. In the order of highest to lowest precedence:</p>
+
+<h3>Infix operator precedence</h3>
+
+<ul>
+<li>alphanumeric word</li>
+<li>/, *, %</li>
+<li>+, -, ~</li>
+<li>:, ?</li>
+<li>=, !</li>
+<li>&lt;, &gt;</li>
+<li>^</li>
+<li>&amp;</li>
+<li>|</li>
+</ul><p>Prefix operators can also be defined as methods. The following may be used:</p>
+
+<ul>
+<li>@</li>
+<li>#</li>
+<li>-</li>
+<li>~</li>
+<li>*</li>
+</ul><p>To define a prefix operator method, the method name must be suffixed
+with an underscore. For example:</p>
+
+<div class="highlight">
+<pre><span class="kd">class</span> <span class="nx">A</span> <span class="p">{</span>
+    <span class="c1">// unary minus</span>
+    <span class="nx">method</span> <span class="o">-</span><span class="nx">_</span><span class="p">(</span><span class="nx">b</span><span class="p">)</span> <span class="p">{</span>
+        <span class="p">...</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre>
+</div>
+
+
+<p>Additionally, postcircumfix operators are allowed in certain contexts. Array and
+Table subscripts are actually defined as <code>_[]</code> and <code>_[]=</code> methods. These
+can be used to implement your own collection:</p>
+
+<div class="highlight">
+<pre><span class="kd">class</span> <span class="nx">NumberArray</span> <span class="p">{</span>
+    <span class="nx">has</span> <span class="nx">data</span> <span class="o">=</span> <span class="p">[</span> <span class="p">]</span>
+    <span class="nx">method</span> <span class="nx">_</span><span class="p">[](</span><span class="nx">index</span><span class="p">)</span> <span class="p">{</span>
+        <span class="p">.</span><span class="nx">data</span><span class="p">[</span><span class="nx">index</span><span class="p">]</span>
+    <span class="p">}</span>
+    <span class="nx">method</span> <span class="nx">_</span><span class="p">[]</span><span class="o">=</span><span class="p">(</span><span class="nx">index</span><span class="o">,</span> <span class="nx">value</span> <span class="o">:</span> <span class="nb">Number</span><span class="p">)</span> <span class="p">{</span>
+        <span class="p">.</span><span class="nx">data</span><span class="p">[</span><span class="nx">index</span><span class="p">]</span> <span class="o">=</span> <span class="nx">value</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+<span class="k">var</span> <span class="nx">nums</span> <span class="o">=</span> <span class="nx">NumberArray</span><span class="p">.</span><span class="k">new</span>
+<span class="nx">nums</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mi">42</span>
+</pre>
+</div>
+
+
+<p>Property assignment is also a bit special, in that <code>foo.bar = 42</code> translates
+to <code>foo.bar_eq(42)</code>.</p>
+
+<h2>Identifiers</h2>
+
+<p>Indentifiers in Lupa come in two flavours. The first type are the
+familiar type seen in most languages (currently <code>?</code> and <code>!</code> are
+supported in the first and last positions respectively). The following
+pattern describes these:</p>
+
+<pre><code>name = / (%alpha | "_" | "$" | "?") (%alnum | "_" | "$")* "!"? /
+</code></pre>
+
+<p>Other other kind of identifiers consist only of punctuation as described
+earlier under Operators. These are used in method declarations:</p>
+
+<div class="highlight">
+<pre><span class="kd">class</span> <span class="nb">Point</span> <span class="p">{</span>
+    <span class="nx">has</span> <span class="nx">x</span> <span class="o">:</span> <span class="nb">Number</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="nx">has</span> <span class="nx">y</span> <span class="o">:</span> <span class="nb">Number</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="nx">method</span> <span class="o">+</span><span class="p">(</span><span class="nx">b</span> <span class="o">:</span> <span class="nb">Point</span><span class="p">)</span> <span class="o">:</span> <span class="nb">Point</span> <span class="p">{</span>
+        <span class="nb">Point</span><span class="p">.</span><span class="k">new</span><span class="p">(.</span><span class="nx">x</span> <span class="o">+</span> <span class="nx">b</span><span class="p">.</span><span class="nx">x</span><span class="o">,</span> <span class="p">.</span><span class="nx">y</span> <span class="o">+</span> <span class="nx">b</span><span class="p">.</span><span class="nx">y</span><span class="p">)</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</pre>
+</div>
+
+
+<h2>Patterns</h2>
+
+<p>Lupa integrates LPeg into the language and supports pattern literals
+delimited by a starting and ending <code>/</code>:</p>
+
+<div class="highlight">
+<pre><span class="k">var</span> <span class="nx">ident</span> <span class="o">=</span> <span class="sr">/ { [a-zA-Z_] ([a-zA-Z_0-9]+) } /</span>
+</pre>
+</div>
+
+
+<p>Patterns are also composable. Here the lexical pattern <code>a</code> is
+referenced from within the second pattern:</p>
+
+<div class="highlight">
+<pre><span class="k">var</span> <span class="nx">a</span> <span class="o">=</span> <span class="sr">/ '42' /</span>
+<span class="nx">print</span><span class="p">(</span><span class="sr">/ { 'answer' | &lt;{a}&gt; } /</span><span class="p">.</span><span class="nx">match</span><span class="p">(</span><span class="s2">"42"</span><span class="p">))</span>
+</pre>
+</div>
+
+
+<p>Grammars are constructed in that nominal types can declare patterns
+as rules in their body. Here's the example macro expander from the
+LPeg website translated to Lupa:</p>
+
+<div class="highlight">
+<pre><span class="nx">object</span> <span class="nx">Macro</span> <span class="p">{</span>
+
+    <span class="nx">rule</span> <span class="nx">text</span> <span class="p">{</span>
+        <span class="p">{</span><span class="o">~</span> <span class="o">&lt;</span><span class="nx">item</span><span class="o">&gt;*</span> <span class="o">~</span><span class="p">}</span>
+    <span class="p">}</span>
+    <span class="nx">rule</span> <span class="nx">item</span> <span class="p">{</span>
+        <span class="o">&lt;</span><span class="nx">macro</span><span class="o">&gt;</span> <span class="o">|</span> <span class="p">[</span><span class="o">^</span><span class="p">()]</span> <span class="o">|</span> <span class="s1">'('</span> <span class="o">&lt;</span><span class="nx">item</span><span class="o">&gt;*</span> <span class="s1">')'</span>
+    <span class="p">}</span>
+    <span class="nx">rule</span> <span class="nx">arg</span> <span class="p">{</span>
+        <span class="s1">' '</span><span class="o">*</span> <span class="p">{</span><span class="o">~</span> <span class="p">(</span><span class="o">!</span><span class="s1">','</span> <span class="o">&lt;</span><span class="nx">item</span><span class="o">&gt;</span><span class="p">)</span><span class="o">*</span> <span class="o">~</span><span class="p">}</span>
+    <span class="p">}</span>
+    <span class="nx">rule</span> <span class="nx">args</span> <span class="p">{</span>
+        <span class="s1">'('</span> <span class="o">&lt;</span><span class="nx">arg</span><span class="o">&gt;</span> <span class="p">(</span><span class="s1">','</span> <span class="o">&lt;</span><span class="nx">arg</span><span class="o">&gt;</span><span class="p">)</span><span class="o">*</span> <span class="s1">')'</span>
+    <span class="p">}</span>
+    <span class="nx">rule</span> <span class="nx">macro</span> <span class="p">{</span>
+        <span class="o">|</span> <span class="p">(</span><span class="s1">'apply'</span> <span class="o">&lt;</span><span class="nx">args</span><span class="o">&gt;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s1">'%1(%2)'</span>
+        <span class="o">|</span> <span class="p">(</span><span class="s1">'add'</span>   <span class="o">&lt;</span><span class="nx">args</span><span class="o">&gt;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s1">'%1 + %2'</span>
+        <span class="o">|</span> <span class="p">(</span><span class="s1">'mul'</span>   <span class="o">&lt;</span><span class="nx">args</span><span class="o">&gt;</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="s1">'%1 * %2'</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">var</span> <span class="nx">s</span> <span class="o">=</span> <span class="s2">"add(mul(a,b),apply(f,x))"</span>
+<span class="nx">print</span><span class="p">(</span><span class="nx">Macro</span><span class="p">.</span><span class="nx">text</span><span class="p">(</span><span class="nx">s</span><span class="p">))</span>
+</pre>
+</div>
+
+
+<p>The Lupa grammar is self bootstrapped, so hopefully that can serve
+as a reference until I finish this document. ;)</p>
+
+<h2>Modules</h2>
+
+<p>Modules are simply Lupa source files. There are no additional
+namespaces constructs within the language to declare modules or
+packages.</p>
+
+<p>Symbols are not exported by default. To export symbols, the <code>export</code>
+statement can be used. It has the form <code>export &lt;name&gt; [, &lt;name&gt;]*</code>
+Symbols can be imported using the <code>import</code> statement, which takes
+the form <code>import [&lt;name&gt; [, &lt;name&gt;] from &lt;dotted_path&gt;</code>.</p>
+
+<p>For example:</p>
+
+<div class="highlight">
+<pre><span class="cm">/*--- file: ./my/shapes.lu ---*/</span>
+<span class="nx">export</span> <span class="nb">Point</span><span class="o">,</span> <span class="nx">Point3D</span>
+
+<span class="kd">class</span> <span class="nb">Point</span> <span class="p">{</span>
+    <span class="nx">has</span> <span class="nx">x</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="nx">has</span> <span class="nx">y</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="nx">method</span> <span class="nx">move</span><span class="p">(</span><span class="nx">x</span><span class="o">,</span> <span class="nx">y</span><span class="p">)</span> <span class="p">{</span>
+        <span class="nx">self</span><span class="p">.</span><span class="nx">x</span> <span class="o">=</span> <span class="nx">x</span>
+        <span class="nx">self</span><span class="p">.</span><span class="nx">y</span> <span class="o">=</span> <span class="nx">y</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+<span class="kd">class</span> <span class="nx">Point3D</span> <span class="nx">from</span> <span class="nb">Point</span> <span class="p">{</span>
+    <span class="nx">has</span> <span class="nx">z</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="nx">method</span> <span class="nx">move</span><span class="p">(</span><span class="nx">x</span><span class="o">,</span> <span class="nx">y</span><span class="o">,</span> <span class="nx">z</span><span class="p">)</span> <span class="p">{</span>
+        <span class="kd">super</span><span class="p">.</span><span class="nx">move</span><span class="p">(</span><span class="nx">x</span><span class="o">,</span> <span class="nx">y</span><span class="p">)</span>
+        <span class="nx">self</span><span class="p">.</span><span class="nx">z</span> <span class="o">=</span> <span class="nx">z</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="cm">/*--- file: test.lu ---*/</span>
+<span class="kd">import</span> <span class="nb">Point</span><span class="o">,</span> <span class="nx">Point3D</span> <span class="nx">from</span> <span class="nx">my</span><span class="p">.</span><span class="nx">shapes</span>
+
+<span class="k">var</span> <span class="nx">p</span> <span class="o">=</span> <span class="nx">Point3D</span><span class="p">.</span><span class="k">new</span>
+<span class="nx">p</span><span class="p">.</span><span class="nx">move</span><span class="p">(</span><span class="mi">1</span><span class="o">,</span> <span class="mi">2</span><span class="o">,</span> <span class="mi">3</span><span class="p">)</span>
+</pre>
+</div>
+
+
+<p>It is an error to attempt to export a symbol which is never declared,
+or is declared but evaluates to <code>nil</code>.</p>
+      </section>
+
+    </div>
+    <!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+    
+  </body>
+</html>
