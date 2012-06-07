@@ -88,7 +88,7 @@ rudy.count(5)
 
 For more, check out:
 
-* [Getting Started](wiki/Getting-Started)
-* [Tutorial](wiki/Tutorial)
+* [Getting Started](lupa/wiki/Getting-Started)
+* [Tutorial](lupa/wiki/Tutorial)
 
 
