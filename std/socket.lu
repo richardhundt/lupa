@@ -62,6 +62,9 @@ FFI::CDEF << """
 
    int inet_aton(const char *cp, in_addr_t *pin);
    char * inet_ntoa(in_addr_t in);
+
+   /* FIXME: on BE arch this is a null macro */
+   uint16_t htons(uint16_t hostshort);
 """
 
 enum SOCK {
@@ -169,15 +172,27 @@ class SockAddr with FFI::MetaType['sockaddr_t'] {
    }
 
    class INET with FFI::MetaType['sockaddr_in_t'], Common {
-      method init(host, port : uint16) {
+      var C = FFI::C
+
+      method family { self#sin_family }
+      method family=(f : AF) { self#sin_family = f }
+
+      method init(host, port) {
          self#sin_family = AF.INET
-         self#sin_port   = port
-         self#sin_addr   = SockAddr::INET::Addr.new(host)
+         if port {
+            self#sin_port = C#htons(port)
+         }
+         if host {
+            self#sin_addr = SockAddr::INET::Addr.new(host)
+         }
       }
       class Addr with FFI::MetaType['in_addr_t'] {
          method init(host) {
             if host is String {
-               Socket.inet_aton(host, self)
+               var stat = Socket.inet_aton(host, self)
+               if stat !== 1 {
+                  Error raise FFI.strerror(FFI.errno)
+               }
             }
             else if host is int32 {
                self#s_addr = host
@@ -208,16 +223,44 @@ class Socket with FFI::MetaType['socket_t'] {
    }
 
    method bind(addr : SockAddr) {
-      C#bind(self#so_fd, addr, addr.len)
+      var stat = C#bind(self#so_fd, addr, addr.len)
+      if stat === -1 { return nil, FFI.strerror(FFI.errno) }
+      self#so_addr = addr
+      return stat
    }
    method connect(addr : SockAddr) {
-      C#connect(self#so_fd, addr, addr.len)
+      var stat = C#connect(self#so_fd, addr, addr.len)
+      if stat === -1 { return nil, FFI.strerror(FFI.errno) }
+      self#so_addr = addr
+   }
+   method listen(backlog = 16) {
+      C#listen(self#so_fd, backlog)
+   }
+
+   method accept {
+      var cli_addr     = FFI.new('sockaddr_t')
+      cli_addr.family  = self#so_addr.family
+
+      var cli_addr_len = FFI.new('socklen_t[1]', self#so_addr.len)
+      var so_fd = C#accept(self#so_fd, cli_addr, cli_addr_len)
+
+      if so_fd === -1 {
+         AcceptError raise FFI.strerror(FFI.errno)
+      }
+      var sock = FFI.new('socket_t')
+
+      sock#so_fd   = so_fd
+      sock#so_addr = cli_addr
+
+      return sock
    }
 
    static method inet_aton(cp : String, pin : SockAddr::INET::Addr) {
       C#inet_aton(cp, pin)
    }
-   static method inet_ntoa(n) : String { C#inet_ntoa(n) }
+   static method inet_ntoa(n) {
+      C#inet_ntoa(n)
+   }
 
    class INET from self {
       method init(type : SOCK, proto : PROTO) {
@@ -226,13 +269,14 @@ class Socket with FFI::MetaType['socket_t'] {
    }
 }
 
-/*
+class SocketError from Error { }
+class AcceptError from SocketError { }
+
 var addr = SockAddr::INET.new('127.0.0.1', 1234)
 var sock = Socket::INET.new(SOCK.STREAM, PROTO.TCP)
-var stat = sock.connect(addr)
-print(FFI.strerror(FFI.errno))
-print(stat)
-*/
-
+print('bind:', sock.bind(addr))
+print('listen:', sock.listen(4))
+var child = sock.accept()
+print(child)
 
 

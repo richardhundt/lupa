@@ -1,9 +1,20 @@
-var r = [0:10:0.5]
-for i : Number in r {
-    print(i)
+import TestUnit from etc.test
+
+object Tests from TestUnit {
+   method test_basic {
+      var r = [1;10;0.5]
+      var x = 1
+      for i : Number in r {
+         x += 1
+      }
+      .assert(x == 20, "correct number of iterations") 
+   }
+   method test_guard {
+      var R = [1;10]
+      .assert(R.check(10),  'check in range')
+      .assert(!R.check(11), 'check out of range')
+   }
 }
 
-r.each -> { print(_) }
-
-var a = [ 1, 2, 3 ].map->(i) { i+i }.each->{ print(_) }
+Tests.run
 

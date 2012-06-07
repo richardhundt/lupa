@@ -1131,16 +1131,19 @@ object Grammar {
       {~ "`" <opname> -> '"%1"' ~}
    }
    rule hexadec {
-      "-"? "0x" %xdigit+
+      "-"? "0x" %xdigit+ ('UL' -> 'ULL' | 'L' -> 'LL')?
    }
    rule decimal {
-      "-"? digits ("." digits)? (("e"|"E") "-"? digits)?
+      "-"? digits "." digits (("e"|"E") "-"? digits)?
+   }
+   rule integer {
+      "-"? digits ('UL' -> 'ULL' | 'L' -> 'LL')?
    }
    rule octal {
       {~ { "-"? "0" [0-7]+ } -> function(s) { tostring(tonumber(s, 8)) } ~}
    }
    rule number {
-      {~ <hexadec> | <octal> | <decimal> ~} -> '(%1)'
+      {~ <hexadec> | <octal> | <decimal> | <integer> ~} -> '(%1)'
    }
    rule string {
       {~ (<qstring> | <astring>) ~} -> '(%1)'

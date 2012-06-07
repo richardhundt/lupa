@@ -1,10 +1,14 @@
+[[https://github.com/richardhundt/lupa/wiki/lupa_logo.png]]
 # NAME
 
 Lupa - multi-paradigm object oriented, dynamic language
 
 # SYNOPSIS
 
-    lupa <file> [options]
+    lupa <file>
+        run the script
+    lupa <file> -l
+        list generated Lua
 
 # INTRODUCTION
 

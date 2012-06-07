@@ -894,7 +894,7 @@ Range.new = function(self, min, max, inc)
    inc = assert(tonumber(inc or 1), "range inc is not a number")
    return setmetatable({ min, max, inc }, self)
 end
-Range.__slots.iter = function(self)
+Range.__each = function(self)
    local inc = self[3]
    local cur = self[1] - inc
    local max = self[2]
@@ -905,10 +905,27 @@ Range.__slots.iter = function(self)
       end
    end
 end
+Range.__slots.iter = Range.__each
 Range.__slots.each = function(self, block)
    for i in Range.__slots.iter(self) do
       block(i)
    end
+end
+Range.__slots.check = function(self, val)
+   if type(val) ~= 'number' then return false end
+   if val < self[1] then return false end
+   if val > self[2] then return false end
+   if self[3] == 1  then return true  end
+   for i=self[1],self[2],self[3] do
+      if val == i then return true end
+   end
+   return false
+end
+Range.__slots.coerce = function(self, val)
+   if not self:check(val) then
+      throw(TypeError:new(tostring(val).." is not in: "..tostring(self)))
+   end
+   return val
 end
 
 Void = newtype"Void"
