@@ -1,4 +1,5 @@
-[[https://github.com/richardhundt/lupa/wiki/lupa_logo.png]]
+![logo](https://github.com/richardhundt/lupa/wiki/lupa_logo.png)
+
 # NAME
 
 Lupa - multi-paradigm object oriented, dynamic language
