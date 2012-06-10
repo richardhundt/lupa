@@ -1131,13 +1131,13 @@ object Grammar {
       {~ "`" <opname> -> '"%1"' ~}
    }
    rule hexadec {
-      "-"? "0x" %xdigit+ ('UL' -> 'ULL' | 'L' -> 'LL')?
+      "-"? "0x" %xdigit+ ([Uu][Ll] -> 'ULL' | [Ll] -> 'LL')?
    }
    rule decimal {
       "-"? digits "." digits (("e"|"E") "-"? digits)?
    }
    rule integer {
-      "-"? digits ('UL' -> 'ULL' | 'L' -> 'LL')?
+      "-"? digits ([Uu][Ll] -> 'ULL' | [Ll] -> 'LL')?
    }
    rule octal {
       {~ { "-"? "0" [0-7]+ } -> function(s) { tostring(tonumber(s, 8)) } ~}

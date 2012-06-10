@@ -26,14 +26,27 @@ syn match   lupaComment "\%^#!.*"
 syn match   lupaOperator "#"
 
 syn match   lupaSpecialCharacter "'\\.'"
-syn match   lupaNumber	       "-\=\<\(\d\|_\)\+L\=\>\|0[xX][0-9a-fA-F]\+\>"
+
+" Numbers
+"
+syn case ignore
+
+syn match lupaDec	display "\<\d[0-9_]*\(u\=l\=\)\>"
+syn match lupaHex	display "\<0x[0-9a-f_]\+\(u\=l\=\)\>"
+syn match lupaOctal     display "\<0[0-7_]\+\(u\=l\=\)\>"
+syn match lupaBadOctal  display "\<0[0-7_]*[89][0-9_]*"
+syn match lupaFloat	display "\<\d[0-9_]*\.[0-9_]*\(e[-+]\=[0-9_]\+\)\="
+syn match lupaHexFloat	display "\<0x[0-9a-f_]\+\.[0-9a-f_]*\(p[-+]\=[0-9_]\+\)\="
+
+syn case match
+
 "syn region  lupaRegexpString     start=+/[^/*]+me=e-1 skip=+\\\\\|\\/+ end=+/+me=e-1
 
 syn keyword lupaConditional	if else switch
 syn keyword lupaRepeat		while for do
 syn keyword lupaBranch		break continue
 syn keyword lupaOperator	in is typeof like 
-syn keyword lupaType		Array Table Boolean Error Function Number Object String Type Class Trait Range Fiber Pattern Any Void Nil Int8 Int16 Int32 Int64 UInt8 UInt16 UInt32 UInt64 Float Double int8 uint8 int16 uint16 int32 uint32 int64 uint64 float double
+syn keyword lupaType		Array Table Boolean Error Function Number Object String Type Class Trait Range Fiber Pattern Any Void Nil Int8 Int16 Int32 Int64 UInt8 UInt16 UInt32 UInt64 Float Double
 syn keyword lupaStatement	return
 syn keyword lupaSpecial	        new is as does can init weak raise
 syn keyword lupaBoolean		true false
@@ -84,7 +97,13 @@ if version >= 508 || !exists("did_lupa_syn_inits")
   HiLink lupaStringD		    String
   HiLink lupaCharacter		    Character
   HiLink lupaSpecialCharacter	    lupaSpecial
-  HiLink lupaNumber		    Number
+
+  HiLink lupaDec                    Number
+  HiLink lupaHex                    Number
+  HiLink lupaOctal                  Number
+  HiLink lupaBadOctal		    Error
+  HiLink lupaFloat                  Number
+  HiLink lupaHexFloat               Number
   HiLink lupaConditional	    Conditional
   HiLink lupaRepeat		    Repeat
   HiLink lupaBranch		    Conditional
