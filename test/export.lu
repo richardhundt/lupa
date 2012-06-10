@@ -16,7 +16,7 @@ function bar() {
    }
 }
 function blah() { }
-var p = Point()
+var p = Point.new()
 p.x = 1
 p.y = 1
 

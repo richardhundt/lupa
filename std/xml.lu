@@ -1,0 +1,260 @@
+export Element, Node, Document, Parser
+
+class Node {
+   has data
+   has type
+   has parent
+   has children = [ ]
+
+   method init(spec) {
+      self.data = spec['data']
+      self.type = spec['type']
+      spec['data'] = nil
+      spec['type'] = nil
+   }
+
+   method toString {
+      var type = self.type
+      if type == 'COMMENT_NODE' {
+         return "<!--${self.data}-->"
+      }
+      else if type == 'DOCTYPE_DECLARATION' {
+         return "<!DOCTYPE${self.data}>"
+      }
+      else if type == 'PROCESSING_INSTRUCTION_NODE' {
+         return "<?${self.data}>"
+      }
+      else if type == 'CDATA_SECTION_NODE' {
+         return "<![CDATA[${self.data}]]>"
+      }
+      else {
+         return self.data
+      }
+   }
+}
+
+class Element from Node {
+   has name
+   has attributes = { }
+
+   method init(spec) {
+      super.init(spec)
+      self.name       = spec['name']
+      self.attributes = spec['attributes']
+      self.children   = spec
+      spec['name']       = nil
+      spec['attributes'] = nil
+   }
+
+   method first_child {
+      return self.children.len > 0 && self.children[1] || nil
+   }
+   method last_child {
+      return self.children[self.children.len]
+   }
+   method prev_sibling {
+      for i, node in self.parent {
+         if node === self {
+            return i > 1 && self.parent.children[i - 1] || nil
+         }
+      }
+   }
+   method next_sibling {
+      for i, node in self.parent {
+         if node === self {
+            return i < self.parent.children.len && self.parent.children[i + 1] || nil
+         }
+      }
+   }
+   method append(node) {
+      self.children.push(node)
+   }
+   method insert(new_child, ref_child) {
+      for i, node in self.children {
+         if node === ref_child {
+            return self.children.insert(i, new_child)
+         }
+      }
+   }
+   method remove(ref_child) {
+      for i, node in self.children {
+         if node === ref_child {
+            return self.children.remove(i)
+         }
+      }
+   }
+   method toString() {
+      var name = self.name
+      var atts = self.attributes_as_string()
+
+      if atts.len > 0 {
+         atts = " ${atts}"
+      }
+
+      if self.children.len == 0 {
+         return "<${name}${atts} />"
+      }
+      var kids = self.children_as_string()
+      return "<${name}${atts}>${kids}</${name}>"
+   }
+
+   method _[](key) {
+      return self.attributes[key]
+   }
+   method _[]=(key, val) {
+      self.attributes[key] = val
+   }
+
+   method attributes_as_string() {
+      var buff = [ ]
+      for name, data in self.attributes {
+         buff.push("%s=%q".format(name, data))
+      }
+      return buff.concat(" ")
+   }
+
+   method children_as_string() {
+      var buff = [ ]
+      for i, node in self.children {
+         buff.push(node.toString())
+      }
+      return buff.concat()
+   }
+}
+
+class Document from Element {
+   has elements = { }
+
+   method init(spec) {
+      super.init(spec)
+
+      var stack = [ self ]
+      while stack.len > 0 {
+         var node = stack.pop()
+         if node.type == "ELEMENT_NODE" {
+            if node.attributes['id'] {
+               self.elements[node.attributes['id']] = node
+            }
+         }
+         for i=node.children.len, 1, -1 {
+            node.children[i].parent = node
+            stack.push(node.children[i])
+         }
+      }
+
+      return self
+   }
+
+   method toString() {
+      return self.children_as_string()
+   }
+}
+
+class Parser {
+
+   method parse(xmlstr) {
+      var xmldoc = Parser::Grammar.match(xmlstr)
+      return xmldoc
+   }
+
+   function parse_error(s, i) {
+      var msg = (s.len < i + 20) && s.sub(i) || s.sub(i, i+20)+"..."
+      throw "parse error near '%s'".format(msg)
+   }
+
+   function backref(s, i, c) {
+      if !c is String { return nil }
+      var e = c.len + i
+      if s.sub(i, e - 1) === c {
+         return e
+      }
+   }
+
+   function Cbr(name) {
+      return Pattern::Cmt(Pattern::Cb(name), backref)
+   }
+
+   function fold_attributes(list) {
+      var atts = { }
+      for i=1, list.len, 2 {
+         atts[list[i]] = list[i+1]
+      }
+      return atts
+   }
+
+   function create_document(spec) {
+      Document new spec
+   }
+   function create_node(spec) {
+      Node new spec
+   }
+   function create_element(spec) {
+      Element new spec
+   }
+
+   object Grammar {
+      rule match {
+         <ws>* (<document> -> { }) -> create_document | <eos>
+      }
+      rule document {
+         <doctype>? <markup> (<eos> | <{parse_error}>)
+      }
+      rule doctype {
+         ("<!DOCTYPE" {:data: [^>]+ :} {:type: {`"DOCTYPE_DECLARATION"`} :} ">" -> { }) -> create_node
+      }
+      rule markup {
+         ( <element> -> { } -> create_element
+         | <cdata>   -> { } -> create_node
+         | <text>    -> { } -> create_node
+         | <comment> -> { } -> create_node
+         | <procins> -> { } -> create_node
+         )*
+      }
+      rule element {
+         <tag_open> <markup> (&<tag_close> | <{parse_error}>)
+         <tag_close> | <tag_open_empty>
+      }
+
+      rule tag_open {
+         "<" (<tag_name> <attrs> <ws>* ">" | <ws>* ">")
+      }
+
+      rule tag_open_empty {
+         "<" (<tag_name> <attrs> <ws>* "/>" | <ws>* "/>")
+      }
+      rule tag_close {
+         "</" <{Cbr("name")}> <ws>* ">"
+      }
+      rule tag_name {
+         {:name: <ident> :} {:type: {`"ELEMENT_NODE"`} :}
+      }
+      rule text {
+         {:data: [^><]+ :} {:type: {`"TEXT_NODE"`} :}
+      }
+      rule cdata {
+         "<![CDATA[" {:data: (!"]]>" .)* :} "]]>" {:type: {`"CDATA_SECTION_NODE"`} :}
+      }
+      rule comment {
+         "<!--" {:data: (!"-->" .)* :} "-->" {:type: {`"COMMENT_NODE"`} :}
+      }
+      rule procins {
+         "<?" {:data: (!"?>" .)* :} "?>" {:type: {`"PROCESSING_INSTRUCTION_NODE"`} :}
+      }
+      rule attrs {
+         {:attributes: (<attr>* -> { }) -> fold_attributes :}
+      }
+      rule attr {
+         <ws>+ { <ident> } "=" <str>
+      }
+      rule str {
+         '"' { (!'"' .)* } '"' | "'" { (!"'" .)* } "'"
+      }
+      rule ident {
+         [a-zA-Z0-9_.:-]+
+      }
+      rule ws { %space }
+      rule eos { !. }
+   }
+}
+
+

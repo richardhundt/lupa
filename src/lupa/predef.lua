@@ -38,6 +38,7 @@ end)
 function newtable(...) return { ... } end
 local rawget, rawset = rawget, rawset
 rawtype = _G.type
+rawlen = function(tab) return #tab end
 
 local mangles = {
    ["["] = "_Z2lb",
@@ -120,8 +121,7 @@ local function lookup(slots)
    return function(self, key)
       local val = slots[key]
       if val == nil then
-         --throw(TypeError:new("no such member '"..tostring(key).."' in "..tostring(self), 2))
-         throw("NameError no such member '"..tostring(key).."' in "..tostring(self), 2)
+         throw(TypeError:new("no such member '"..tostring(key).."' in "..tostring(self), 2))
       end
       return val
    end
@@ -533,6 +533,9 @@ Type.new = function(meta, name)
    type.__size = 0
    type.__rules = { }
    type.__slots = setmetatable({ }, { __index = Any.__slots })
+   type[mangle'::'] = function(self, name)
+      return self.__slots[name]
+   end
    type.__index = lookup(type.__slots)
    type.toString = function() return '<type '..name..'>' end
 
@@ -1121,11 +1124,17 @@ Pattern.toString = function() return '<type '..name..'>' end
 for k,v in pairs(Meta) do
    Pattern[k] = v
 end
+for k,v in pairs(_patt) do
+   Pattern[k] = v
+end
 Pattern.__slots.apply = function(patt, self, subj, ...)
    return patt:match(subj, ...)
 end
 Pattern.__slots[mangle"~~"] = function(patt, subj)
    return patt:match(subj)
+end
+Pattern[mangle"::"] = function(self, name)
+   return self.__slots[name] or self[name]
 end
 
 StaticBuilder = trait(__env, "StaticBuilder",{},0,function(__env,self)
@@ -1147,6 +1156,11 @@ Error = class(__env, "Error", nil, {StaticBuilder}, function(__env,self)
    method(self,'toString',function(self)
       return tostring(typeof(self).__name)..": "..tostring(self:trace())
    end)
+   method(self, mangle'__extend__', function(self, that)
+      if not rawget(that, 'raise') then
+         that.raise = self.raise
+      end
+   end, true)
 end)
 
 SyntaxError  = class(__env, "SyntaxError",  Error, {StaticBuilder}, function() end)
