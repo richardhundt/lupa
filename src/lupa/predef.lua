@@ -121,7 +121,7 @@ local function lookup(slots)
    return function(self, key)
       local val = slots[key]
       if val == nil then
-         throw(TypeError:new("no such member '"..tostring(key).."' in "..tostring(self), 2))
+         throw(TypeError:new("no such member '"..tostring(key).."' via "..tostring(typeof(self)), 2))
       end
       return val
    end

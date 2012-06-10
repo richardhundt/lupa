@@ -27,8 +27,6 @@ static int traceback(lua_State *L) {
     lua_pushinteger(L, 2);  /* skip this function and traceback */
     lua_call(L, 2, 1);      /* call debug.traceback */
 
-    fprintf(stderr, "TYPE: %s\n", lua_typename(L, lua_type(L, -1)));
-    fprintf(stderr, "TRACE: %s\n", lua_tostring(L, -1));
     return 1;
 }
 
