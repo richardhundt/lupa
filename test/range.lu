@@ -10,9 +10,10 @@ object Tests from TestUnit {
       .assert(x == 20, "correct number of iterations") 
    }
    method test_guard {
-      var R = [1;10]
+      var R = [1;10;0.5]
       .assert(R.check(10),  'check in range')
       .assert(!R.check(11), 'check out of range')
+      .assert(!R.check(1.4), 'check out of range')
    }
 }
 

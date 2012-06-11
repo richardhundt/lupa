@@ -915,13 +915,10 @@ Range.__slots.each = function(self, block)
    end
 end
 Range.__slots.check = function(self, val)
-   if type(val) ~= 'number' then return false end
+   if type(tonumber(val)) ~= 'number' then return false end
    if val < self[1] then return false end
    if val > self[2] then return false end
-   if self[3] == 1  then return true  end
-   for i=self[1],self[2],self[3] do
-      if val == i then return true end
-   end
+   if val % self[3] == 0 then return true end
    return false
 end
 Range.__slots.coerce = function(self, val)
