@@ -992,6 +992,40 @@ end
 Comparable:make(__env,Number)
 debug.setmetatable(0, Number)
 
+CData = newtype"CData"
+CData.check = function(self, val)
+   return rawtype(val) == 'cdata' and ffi.istype(self, val)
+end
+CData.coerce = function(self, val)
+   if self:check(val) then return val end
+   return ffi.typeof(self)(val)
+end
+CData.__slots[mangle'*'] = function(a, b) return a * b end
+CData.__slots[mangle'%'] = function(a, b) return a % b end
+CData.__slots[mangle'/'] = function(a, b) return a / b end
+CData.__slots[mangle'+'] = function(a, b) return a + b end
+CData.__slots[mangle'-'] = function(a, b) return a - b end
+CData.__slots[mangle'-_'] = function(a) return -a end
+CData.__slots[mangle'!_'] = function(a) return not a end
+CData.__slots[mangle'**'] = function(a, b) return a ^ b end
+CData.__slots[mangle'~_'] = function(a) return bit.bnot(tonumber(a)) end
+CData.__slots[mangle'|'] = function(a, b) return bit.bor(tonumber(a), tonumber(b)) end
+CData.__slots[mangle'&'] = function(a, b) return bit.band(tonumber(a), tonumber(b)) end
+CData.__slots[mangle'^'] = function(a, b) return bit.bxor(tonumber(a), tonumber(b)) end
+CData.__slots[mangle'<<'] = function(a, b) return bit.lshift(tonumber(a), tonumber(b)) end
+CData.__slots[mangle'>>'] = function(a, b) return bit.rshift(tonumber(a), tonumber(b)) end
+CData.__slots[mangle'>>>'] = function(a, b) return bit.arshift(tonumber(a), tonumber(b)) end
+CData.__slots[mangle'<=>'] = function(a, b)
+   return (a < b and -1) or (a > b and 1) or 0
+end
+Comparable:make(__env, CData)
+local cdata_meta = debug.getmetatable(1LL)
+for k,v in pairs(cdata_meta) do
+   CData[k] = v
+end
+CData.__index = lookup(CData.__slots)
+debug.setmetatable(1LL, CData)
+
 Symbol = newtype"Symbol"
 Symbol.__tostring = nil
 Symbol.check = function(self, that)
