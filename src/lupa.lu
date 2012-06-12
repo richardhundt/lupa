@@ -1,7 +1,7 @@
 import Compiler from lupa.lang
 
-package#path  = ";;./lib/?.lua;${package#path}"
-package#cpath = ";;./lib/?.so;${package#cpath}"
+global#['package']#path  = ";;./lib/?.lua;${global#['package']#path}"
+global#['package']#cpath = ";;./lib/?.so;${global#['package']#cpath}"
 
 var getopt = function(...args) {
    var opt = { files = [ ] }
