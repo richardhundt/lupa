@@ -3,6 +3,7 @@ export Compiler, Grammar, Context
 class Scope {
    has entries = { }
    has resolve = { }
+   has exports = [ ]
    has hoists  = [ ]
    has inner   = [ ]
    has outer
@@ -37,7 +38,6 @@ class Scope {
 
 class Context {
    has scope   = Scope.new
-   has exports = { }
    has source  = ''
 
    method init(source = '') {
@@ -51,9 +51,10 @@ class Context {
          error("unhoisted code: ${.scope.hoists}", 2)
       }
       var outer = .scope.outer
+      var inner = .scope
       if outer != nil {
          .scope = outer
-         return outer
+         return inner
       }
       Error raise "no outer scope"
    }
@@ -123,6 +124,18 @@ object Grammar {
       return
    }
    function leave(ctx) {
+      var scope = ctx.scope
+      if scope.exports.len > 0 {
+         var buf = [ ]
+         for _, k in scope.exports {
+            if !scope.lookup(k) {
+               SyntaxError.raise("export '${k}' was never defined", 2)
+            }
+            buf.push('{%q,%s}'.format(k, lookup(0, k, ctx)))
+         }
+         ctx.leave()
+         return " return __env:export(${buf.concat(',')});"
+      }
       ctx.leave()
       return
    }
@@ -471,7 +484,7 @@ object Grammar {
       return '%sfor %s=%s,%s,%s do %s%s end'.format(hoist, name, init, last, step, head, body)
    }
 
-   function make_return_stmt(ctx, is_lex, expr_list, ...type_list) {
+   function make_return_stmt(ctx, is_lex, expr_list, scope, ...type_list) {
       expr_list = expr_list || [ ]
       if type_list {
          for i=1, type_list.len {
@@ -650,7 +663,7 @@ object Grammar {
    function make_export_decl(c,n) {
       var b = [ ]
       for i=1, n.len {
-         c.exports[n[i]] = true
+         c.scope.exports.push(n[i])
       }
       return ''
    }
@@ -695,18 +708,8 @@ object Grammar {
       <enter>
       ({`'__env'`} <ctx> -> static_define)
       {`'local __env=require("lupa.predef").environ();'`}
-      s <stmt_list>? s
+      s <main_stmt_list>? s
       <verify>
-      (<ctx> -> function(ctx) {
-         var buf = [ ]
-         for k,v in ctx.exports {
-            if !ctx.lookup(k) {
-               SyntaxError.raise("export '${k}' was never defined", 2)
-            }
-            buf.push('{%q,%s}'.format(k,lookup(0, k, ctx)))
-         }
-         return " return __env:export(${buf.concat(',')});"
-      })
       <leave>
    }
    rule eval {
@@ -739,8 +742,13 @@ object Grammar {
       | <trait_decl>
       | <guard_decl>
       | <object_decl>
+   }
+   rule main_decl_stmt {
       | <import_decl>
       | <export_decl>
+   }
+   rule body_decl_stmt {
+      | <import_decl>
    }
    rule stmt {
       | <if_stmt>
@@ -759,11 +767,31 @@ object Grammar {
       | <block_stmt>
       | <return_stmt>
    }
+   rule main_stmt {
+      | <main_decl_stmt>
+      | <stmt>
+   }
+   rule body_stmt {
+      | <body_decl_stmt>
+      | &<export_decl> <{ syntax_error("export in nested scope") }>
+      | <stmt>
+   }
    rule stmt_list {
       {~ <stmt> (<sep> s <stmt>)* <sep>? ~}
    }
+   rule main_stmt_list {
+      {~ <main_stmt> (<sep> s <main_stmt>)* <sep>? ~}
+   }
+   rule body_stmt_list {
+      {~ <body_stmt> (<sep> s <body_stmt>)* <sep>? ~}
+   }
    rule return_stmt {
-      {~ "return" -> '' idsafe s (
+      {~ (%pos "return" idsafe =scope => function(s,o,p,c) {
+            if c !== 'lexical' {
+               syntax_error("return outside of function body")(s,p)
+            }
+            return o, ''
+         }) s (
          <ctx>
          =set_return ((<expr> (s "," s <expr>)*)? -> [ ])
          =type_list
@@ -976,7 +1004,8 @@ object Grammar {
    rule func_stmt {
       | ((&(<expr> s "}") <ctx> // last expr implies return
         =set_return (<expr> -> [ ])
-        =type_list) -> make_return_stmt)
+        =type_list
+        ) -> make_return_stmt)
       | <stmt>
    }
    rule func {
@@ -996,7 +1025,8 @@ object Grammar {
             | {~ (
                <ctx>
                =set_return (<expr_stmt> -> [ ])
-               =type_list -> make_return_stmt
+               =type_list
+               -> make_return_stmt
             ) (s <sep>)? ~}
          )
       ) -> make_func ~} <leave>
@@ -1087,8 +1117,7 @@ object Grammar {
       | <meth_decl>
       | <rule_decl>
       | <with_decl>
-      | <decl_stmt>
-      | <stmt>
+      | <body_stmt>
    }
    rule trait_body_stmt {
       <class_body_stmt> | <needs_decl>
@@ -1550,7 +1579,7 @@ object Compiler {
    }
 }
 
-package#loaded#['lupa.lang'] = {
+global#['package']#loaded#['lupa.lang'] = {
    Compiler = Compiler,
    Grammar  = Grammar,
    Context  = Context,
