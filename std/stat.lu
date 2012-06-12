@@ -22,16 +22,15 @@ if FFI::OS === 'OSX' {
          unsigned long st_blksize;
          unsigned long st_flags;
          unsigned long st_gen;
-      } stat_t;
-      int fstat(int, stat_t *);
-      int lstat(const char *, stat_t *);
-      int stat(const char *, stat_t *);
+      } Stat;
+      int fstat(int, Stat *);
+      int lstat(const char *, Stat *);
+      int stat(const char *, Stat *);
    """
 }
 else if FFI::OS === 'Linux' {
    if FFI::ARCH === 'x86' {
       FFI::CDEF << """
-         static const int STAT_VER = 1;
          typedef struct Stat {
            unsigned long  st_dev;
            unsigned long  st_ino;
@@ -48,12 +47,11 @@ else if FFI::OS === 'Linux' {
            timespec_t     st_ctimespec;
            unsigned long  __unused4;
            unsigned long  __unused5;
-         } stat_t;
+         } Stat;
       """
    }
    else if FFI::ARCH === 'x64' {
       FFI::CDEF << """
-         static const int STAT_VER = 1;
          typedef struct Stat {
            unsigned long   st_dev;
            unsigned long   st_ino;
@@ -70,7 +68,7 @@ else if FFI::OS === 'Linux' {
            timespec_t      st_mtimespec;
            timespec_t      st_ctimespec;
            long            __unused[3];
-         } stat_t;
+         } Stat;
       """ 
    }
    else if FFI::ARCH === 'arm' {
@@ -93,7 +91,7 @@ else if FFI::OS === 'Linux' {
               unsigned long  st_ctime_nsec;
               unsigned long  __unused4;
               unsigned long  __unused5;
-            } stat_t;
+            } Stat;
          """
       }
       else {
@@ -116,21 +114,22 @@ else if FFI::OS === 'Linux' {
               timespec_t     st_ctimespec;
               unsigned long  __unused4;
               unsigned long  __unused5;
-            } stat_t;
+            } Stat;
          """
       }
    }
    FFI::CDEF << """
-      int __xlstat(int, const char *, stat_t *);
-      int __xfstat(int, const char *, stat_t *);
-      int __xstat(int, const char *, stat_t *);
+      static const int STAT_VER = 1;
+      int __xlstat(int, const char *, Stat *);
+      int __xfstat(int, const char *, Stat *);
+      int __xstat(int, const char *, Stat *);
    """
 }
 else {
    throw "NYI: ${FFI::OS} support"
 }
 
-class Stat with FFI::MetaType['stat_t'] {
+class Stat with FFI::MetaType['Stat'] {
 
    method size { self#st_size }
    method mode { self#st_mode }
@@ -194,7 +193,7 @@ class Stat with FFI::MetaType['stat_t'] {
    }
 
    static method new(path : String = '.') {
-      var stat = FFI.cast('stat_t *', C#malloc(FFI.sizeof('stat_t')))
+      var stat = FFI.cast('Stat *', C#malloc(FFI.sizeof('Stat')))
       return stat
    }
 
