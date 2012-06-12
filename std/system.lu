@@ -6,7 +6,7 @@ var OS   = ffi#os
 var ARCH = ffi#arch
 var C    = ffi#C
 
-class FFI {
+object FFI {
 
    our OS   = ffi#os
    our ARCH = ffi#arch
@@ -45,48 +45,34 @@ class FFI {
 
       self#__tostring = nil
       method toString {
-         return tostring(CTYPE)+': '+global#__LUPA__#refaddr(self)
+         return tostring(CTYPE)+': %p'.format(self)
       }
 
       var meta = self
       method does(that) {
          meta#__with#[that#__body] !== nil
       }
-      method can(key) {
-         meta#__slots#[key] !== nil
+      method can(that) {
+         meta#__slots#[that] !== nil
       }
 
-      // any invalid identifier in C will do, but `typedef` says it best :)
+      // hook into CData's does, can and is
       self#__slots#typedef = self
-   }
 
-   trait Boxed[M] {
-      method *_ { self#[M] }
-      method *_=(v) { self#[M] = v }
-
-      var meta = self
-      guard Maybe(val) {
-         if val === nil { return val }
-         return meta.coerce(val)
-      }
-      static method ?_ {
-         return Maybe
-      }
-      static method apply(v) {
-         self::CTYPE(v)
-      }
-      static method coerce(v) {
-         self::CTYPE(v)
+      var index = CData#__index
+      var slots = self#__slots
+      self#__index = function(obj, key) {
+         return self#__slots#[key] || index(obj, key)
       }
    }
 
-   static method new(ctype, ...args) {
+   method new(ctype, ...args) {
       ffi#new(ctype, ...args)
    }
-   static method cast(this, that) {
+   method cast(this, that) {
       ffi#cast(this, that)
    }
-   static method typeof(obj, nelem) {
+   method typeof(obj, nelem) {
       if nelem !== nil {
          return ffi#typeof(obj, nelem)
       }
@@ -94,16 +80,16 @@ class FFI {
          return ffi#typeof(obj)
       }
    }
-   static method sizeof(obj) {
+   method sizeof(obj) {
       ffi#sizeof(obj)
    }
-   static method alignof(obj) {
+   method alignof(obj) {
       ffi#sizeof(obj)
    }
-   static method istype(this, that) {
+   method istype(this, that) {
       ffi#istype(this, that)
    }
-   static method fill(dst, len, c) {
+   method fill(dst, len, c) {
       if c !== nil {
          return ffi#fill(dst, len, c)
       }
@@ -111,18 +97,18 @@ class FFI {
          return ffi#fill(dst, len)
       }
    }
-   static method cdef(defs) {
+   method cdef(defs) {
       ffi#cdef(defs)
    }
-   static method abi(param) {
+   method abi(param) {
       ffi#abi(param)
    }
 
-   static method metatype(ct, metatable) {
+   method metatype(ct, metatable) {
       ffi#metatype(ct, metatable)
    }
 
-   static method copy(dst, src, len) {
+   method copy(dst, src, len) {
       if len !== nil {
          return ffi#copy(dst, src, len)
       }
@@ -130,7 +116,7 @@ class FFI {
          return ffi#copy(dst, src, len)
       }
    }
-   static method string(obj, len) {
+   method string(obj, len) {
       if len !== nil {
          return ffi#string(obj, len)
       }
@@ -138,13 +124,13 @@ class FFI {
          return ffi#string(obj)
       }
    }
-   static method gc(obj, fun) {
+   method gc(obj, fun) {
       ffi#gc(obj, fun)
    }
-   static method load(path, global) {
+   method load(path, global) {
       ffi#load(path, global)
    }
-   static method errno(newerr) {
+   method errno(newerr) {
       if newerr !== nil {
          return ffi#errno(newerr)
       }
@@ -152,61 +138,14 @@ class FFI {
          return ffi#errno()
       }
    }
-   static method offsetof(ct, field) {
+   method offsetof(ct, field) {
       ffi#offsetof(ct, field)
    }
-   static method strerror(errnum) {
+   method strerror(errnum) {
       var len = 256
       var buf = FFI.new('char[?]', len)
       FFI::C#strerror_r(errnum, buf, len)
       return FFI.string(buf)
-   }
-
-   var slots = self#__slots
-
-   slots#['-_'.mangle] = loadstring('local a = ...; return -a', '=-_')
-   slots#['*_'.mangle] = loadstring('local a = ...; return a[0]', '=*_')
-   slots#['+'.mangle]  = loadstring('local a, b = ...; return a + b', '=+')
-   slots#['-'.mangle]  = loadstring('local a, b = ...; return a - b', '=-')
-   slots#['*'.mangle]  = loadstring('local a, b = ...; return a * b', '=*')
-   slots#['/'.mangle]  = loadstring('local a, b = ...; return a / b', '=/')
-   slots#['%'.mangle]  = loadstring('local a, b = ...; return a % b', '=%')
-   slots#['**'.mangle] = loadstring('local a, b = ...; return a ^ b', '=**')
-   slots#['>'.mangle]  = loadstring('local a, b = ...; return a > b', '=>')
-   slots#['<'.mangle]  = loadstring('local a, b = ...; return a < b', '=<')
-   slots#['>='.mangle] = loadstring('local a, b = ...; return a >= b', '=>=')
-   slots#['<='.mangle] = loadstring('local a, b = ...; return a <= b', '=<=')
-   slots#['=='.mangle] = loadstring('local a, b = ...; return a == b', '===')
-   slots#['!='.mangle] = loadstring('local a, b = ...; return a ~= b', '=!=')
-
-   var bit = require('bit')
-   method ~_  ( )          { bit#bnot(tonumber(self)) }
-   method |   (b : Number) { bit#bor(tonumber(self), b) }
-   method &   (b : Number) { bit#band(tonumber(self), b) }
-   method ^   (b : Number) { bit#bxor(tonumber(self), b) }
-   method <<  (b : Number) { bit#lshift(tonumber(self), b) }
-   method >>  (b : Number) { bit#rshift(tonumber(self), b) }
-   method >>> (b : Number) { bit#arshift(tonumber(self), b) }
-
-   method coerce(that) {
-      if type(that) == 'cdata' {
-         return ffi#cast(self, that)
-      }
-      else {
-         return self(that)
-      }
-   }
-   method check(that) {
-      return ffi#sizeof(that) === ffi#sizeof(self)
-   }
-
-   var fmeta = debug#getmetatable(ffi#typeof('int32_t'))
-   var index = fmeta#__index
-   var pcall = pcall
-   fmeta#__index = function(obj, key) {
-      var ok, meta = pcall(index, obj, 'typedef')
-      if !ok { meta = self }
-      return meta#__slots#[key] || index(obj, key)
    }
 }
 
@@ -269,48 +208,8 @@ FFI::CDEF << """
    typedef int32_t fd_mask;
 
    void *malloc(size_t);
+   void *realloc(void *, size_t);
    void free(void *);
    int strerror_r(int errnum, char *strerrbuf, size_t buflen);
 """
-
-FFI::CDEF << """
-   typedef struct Int8   { int8_t   val; } Int8_t;
-   typedef struct UInt8  { uint8_t  val; } UInt8_t;
-   typedef struct Int16  { int16_t  val; } Int16_t;
-   typedef struct UInt16 { uint16_t val; } UInt16_t;
-   typedef struct Int32  { int32_t  val; } Int32_t;
-   typedef struct UInt32 { uint32_t val; } UInt32_t;
-   typedef struct Int64  { int64_t  val; } Int64_t;
-   typedef struct UInt64 { uint64_t val; } UInt64_t;
-   typedef struct Float  { float    val; } Float_t;
-   typedef struct Double { double   val; } Double_t;
-"""
-
-export Int8, UInt8, Int16, UInt16, Int32, UInt32, Int64, UInt64, Float, Double
-
-class Int8   with FFI::MetaType['Int8_t'],   FFI::Boxed['val'] { }
-class UInt8  with FFI::MetaType['UInt8_t'],  FFI::Boxed['val'] { }
-class Int16  with FFI::MetaType['Int16_t'],  FFI::Boxed['val'] { }
-class UInt16 with FFI::MetaType['UInt16_t'], FFI::Boxed['val'] { }
-class Int32  with FFI::MetaType['Int32_t'],  FFI::Boxed['val'] { }
-class UInt32 with FFI::MetaType['UInt32_t'], FFI::Boxed['val'] { }
-class Int64  with FFI::MetaType['Int64_t'],  FFI::Boxed['val'] { }
-class UInt64 with FFI::MetaType['UInt64_t'], FFI::Boxed['val'] { }
-class Float  with FFI::MetaType['Float_t'],  FFI::Boxed['val'] { }
-class Double with FFI::MetaType['Double_t'], FFI::Boxed['val'] { }
-
-export int8, uint8, int16, uint16, int32, uint32, int64, uint64, float, double
-
-our int8   = FFI.typeof('int8_t')
-our uint8  = FFI.typeof('uint8_t')
-our int16  = FFI.typeof('int16_t')
-our int16  = FFI.typeof('int16_t')
-our uint16 = FFI.typeof('uint16_t')
-our int32  = FFI.typeof('int32_t')
-our uint32 = FFI.typeof('uint32_t')
-our int64  = FFI.typeof('int64_t')
-our uint64 = FFI.typeof('uint64_t')
-our float  = FFI.typeof('float')
-our double = FFI.typeof('double')
-
 
