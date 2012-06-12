@@ -9,12 +9,29 @@ local ffi = require('ffi')
 package.path  = ';;./lib/?.lua;'..package.path
 package.cpath = ';;./lib/?.so;'..package.cpath
 
-LUPA_PATH = "./?.lu;./lib/?.lu;./src/?.lu;/usr/local/lib/lupa/?.lu;/usr/lib/lupa/?.lu;"
+do
+   local paths = {
+      ".",
+      "./lib",
+      "./src",
+      os.getenv('HOME').."/.lupa",
+      "/usr/local/lib/lupa",
+      "/usr/lib/lupa",
+   }
+   local buf = { }
+   for i, frag in ipairs(paths) do
+      buf[#buf + 1] = frag.."/?.lu"
+      buf[#buf + 1] = frag.."/?/init.lu"
+   end
+   LUPA_PATH = table.concat(buf, ';')..';'
+end
 table.insert(package.loaders, function(modname)
    local filename = modname:gsub("%.", "/")
    for path in LUPA_PATH:gmatch("([^;]+)") do
       if path ~= "" then
-         local Compiler = require("lupa.lang").Compiler
+         local lang = package.loaded["lupa.lang"]
+         if not lang then return end
+         local Compiler = lang.Compiler
          local filepath = path:gsub("?", filename)
          local file = io.open(filepath, "r")
          if file then
@@ -106,15 +123,17 @@ local Meta = {
    __tostring = function(self) return self:toString() end;
 }
 
-__env[mangle"::"] = function(self, name)
-   return self[name]
-end
-
 function environ(outer)
-   if not outer then
-      outer = __env
-   end
-   return setmetatable({ }, { __index = outer })
+   if not outer then outer = __env end
+   local declared = { }
+   return setmetatable({ }, {
+      __index    = outer,
+      __declared = declared,
+      __newindex = function(env, key, val)
+         declared[key] = true
+         rawset(env, key, val)
+      end
+   })
 end
 
 local function lookup(slots)
@@ -403,6 +422,9 @@ end
 
 function import(into, from, what, dest) 
    local mod = __load(from)
+   if mod == true then
+      throw(ImportError:new("'"..tostring(from).."' does not export any symbols."), 2)
+   end
    if dest then
       into[dest] = setmetatable({ }, { __index = lookup({ }) })
       into[dest][mangle'::'] = function(self, name)
@@ -519,6 +541,7 @@ Any.__slots.can = function(self, key)
    return typeof(self).__slots[key] ~= nil
 end
 Any.__slots.does = function(self, that)
+   print("Any.does:", self, that)
    return typeof(self).__with[that.__body] ~= nil
 end
 
@@ -530,6 +553,7 @@ Type.new = function(meta, name)
    type.__from = Any
    type.__need = { }
    type.__with = { }
+   type.__body = function() end
    type.__size = 0
    type.__rules = { }
    type.__slots = setmetatable({ }, { __index = Any.__slots })
@@ -990,12 +1014,27 @@ Comparable:make(__env,Number)
 debug.setmetatable(0, Number)
 
 CData = newtype"CData"
-CData.check = function(self, val)
+CData.__slots.check = function(self, val)
    return rawtype(val) == 'cdata' and ffi.istype(self, val)
 end
-CData.coerce = function(self, val)
-   if self:check(val) then return val end
-   return ffi.typeof(self)(val)
+CData.__slots.coerce = function(self, val)
+   if rawtype(val) == 'cdata' and ffi.istype(self, val) then return val end
+   return ffi.cast(self, val)
+end
+
+local function try_does(this, that)
+   return this.typedef.__with[that.__body] ~= nil
+end
+CData.__slots.does = function(this, that)
+   local ok, rv = pcall(try_does, this, that)
+   if ok then return rv end
+   return false
+end
+CData.__slots.is = function(this, that)
+   return this.typedef.__slots.is(this, that)
+end
+CData.__slots.can = function(this, that)
+   return this.typedef.__slots.can(this, that)
 end
 CData.__slots[mangle'*'] = function(a, b) return a * b end
 CData.__slots[mangle'%'] = function(a, b) return a % b end
@@ -1016,12 +1055,28 @@ CData.__slots[mangle'<=>'] = function(a, b)
    return (a < b and -1) or (a > b and 1) or 0
 end
 Comparable:make(__env, CData)
-local cdata_meta = debug.getmetatable(1LL)
-for k,v in pairs(cdata_meta) do
-   CData[k] = v
+do
+   local cmeta = debug.getmetatable(1LL)
+   for k,v in pairs(cmeta) do CData[k] = v end
+   local index = cmeta.__index
+   local slots = CData.__slots
+   CData.__index = function(obj, key)
+      return slots[key] or index(obj, key)
+   end
 end
-CData.__index = lookup(CData.__slots)
 debug.setmetatable(1LL, CData)
+
+int8   = ffi.typeof('int8_t')
+uint8  = ffi.typeof('uint8_t')
+int16  = ffi.typeof('int16_t')
+int16  = ffi.typeof('int16_t')
+uint16 = ffi.typeof('uint16_t')
+int32  = ffi.typeof('int32_t')
+uint32 = ffi.typeof('uint32_t')
+int64  = ffi.typeof('int64_t')
+uint64 = ffi.typeof('uint64_t')
+float  = ffi.typeof('float')
+double = ffi.typeof('double')
 
 Symbol = newtype"Symbol"
 Symbol.__tostring = nil
@@ -1199,6 +1254,7 @@ AccessError  = class(__env, "AccessError",  Error, {StaticBuilder}, function() e
 ImportError  = class(__env, "ImportError",  Error, {StaticBuilder}, function() end)
 ExportError  = class(__env, "ExportError",  Error, {StaticBuilder}, function() end)
 TypeError    = class(__env, "TypeError",    Error, {StaticBuilder}, function() end)
+NameError    = class(__env, "NameError",    Error, {StaticBuilder}, function() end)
 ComposeError = class(__env, "ComposeError", Error, {StaticBuilder}, function() end)
 
 function evaluate(lua)
