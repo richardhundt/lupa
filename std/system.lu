@@ -55,15 +55,6 @@ object FFI {
       method can(that) {
          meta#__slots#[that] !== nil
       }
-
-      // hook into CData's does, can and is
-      self#__slots#typedef = self
-
-      var index = CData#__index
-      var slots = self#__slots
-      self#__index = function(obj, key) {
-         return self#__slots#[key] || index(obj, key)
-      }
    }
 
    method new(ctype, ...args) {
