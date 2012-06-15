@@ -159,7 +159,7 @@ object Grammar {
       }
       if info['base'] {
          if info['base'] == 'self' {
-            return info['base']+':'+name+mangle('=')+'(%s)'
+            return info['base']+':__set_'+name+'(%s)'
          }
          return info['base']+'.'+name+'=%s'
       }
@@ -208,62 +208,44 @@ object Grammar {
 
    var unrops = {
       ["!"] = "not(%s)",
+      ["-"] = "-(%s)",
+      ["~"] = "__env.__bnot__(%s)",
+      ["?"] = '__env.__maybe__(%s)',
+      ["..."] = "__env.__spread__(%s)",
    }
 
    var binops = {
-      ['can'] = false,
-      ['is'] = false,
-      ['as'] = false,
-      ['does'] = false,
+      ['can']  = "__env.__can__(%s,%s)",
+      ['is']   = "__env.__is__(%s,%s)",
+      ['as']   = "__env.__as__(%s,%s)",
+      ['does'] = "__env.__does__(%s,%s)",
 
-      ["==="] = "(%s)==(%s)",
-      ["!=="] = "(%s)~=(%s)",
+      ["+"] = "(%s)+(%s)",
+      ["-"] = "(%s)-(%s)",
+      ["*"] = "(%s)*(%s)",
+      ["/"] = "(%s)/(%s)",
+      ["**"] = "(%s)^(%s)",
+      ["%"] = "(%s)%%(%s)",
+      ["~"] = "(%s)..(%s)",
+
+      ['<<'] = '__env.__lshift__(%s,%s)',
+      ['>>'] = '__env.__rshift__(%s,%s)',
+      ['>>>'] = '__env.__arshift__(%s,%s)',
+      ['&'] = '__env.__band__(%s,%s)',
+      ['|'] = '__env.__bor__(%s,%s)',
+      ['^'] = '__env.__bxor__(%s,%s)',
+
+      ["<="] = "(%s)<=(%s)",
+      [">="] = "(%s)>=(%s)",
+      [">"] = "(%s)>(%s)",
+      ["<"] = "(%s)<(%s)",
+      ["=="] = "(%s)==(%s)",
+      ["!="] = "(%s)~=(%s)",
+
+      ["~~"] = "__env.__match__(%s,%s)",
+
       ["&&"] = "(%s)and(%s)",
       ["||"] = "(%s)or(%s)",
-   }
-
-   var mangles = {
-      ["["] = "_Z2lb",
-      ["]"] = "_Z2rb",
-      ["$"] = "_Z2do",
-      ["_"] = "_Z2us",
-      ["~"] = "_Z2ti",
-      ["@"] = "_Z2at",
-      ["#"] = "_Z2po",
-      ["*"] = "_Z2st",
-      ["/"] = "_Z2sl",
-      ["%"] = "_Z2pe",
-      ["+"] = "_Z2pl",
-      ["-"] = "_Z2mi",
-      [":"] = "_Z2co",
-      ['?'] = "_Z2qm",
-      ["!"] = "_Z2ba",
-      ["="] = "_Z2eq",
-      [">"] = "_Z2gt",
-      ["<"] = "_Z2lt",
-      ["&"] = "_Z2am",
-      ["^"] = "_Z2ca",
-      ["|"] = "_Z2pi",
-   }
-
-   var demangles = { } as nil
-   for k,v in mangles { demangles#[v] = k }
-
-   function demangle(name) {
-      return tostring(name).gsub('(_Z2%w%w)', function(o) {
-         if demangles#[o] {
-            return demangles#[o]
-         }
-         else {
-            return o
-         }
-      })
-   }
-
-   function mangle(name) {
-      return name.gsub('(%W)', function(o,w) {
-         return mangles[o]
-      })
    }
 
    function make_binop_bind(ctx, a1, a2, o, b) {
@@ -274,7 +256,7 @@ object Grammar {
          oper = binops[o]
       }
       else {
-         oper = '%s:'+mangle(o)+'(%s)'
+         error("invalid operator ${o}")
       }
       if info && info['type'] {
          var type = info['type']
@@ -318,52 +300,21 @@ object Grammar {
       return b.concat()
    }
 
-   var punct = /
-      '$'|'~'|'@'|'#'|'*'|'/'|'%'|'+'|'-'|':'|'!'|'>'|'<'|'&'|'^'|'|'|'='|'_'|'?'
+   var infix_punct = /
+      |'||'|'|'|'&&'|'&'|'~~'|'~'|'**'|'*'|'/'|'%'
+      |'+'|'-'|'>>>'|'>>'|'>='|'>'|'<<'|'<='|'<'|'^'
    /
 
    function fold_prefix(o,e) {
-      if o == '...' {
-         return '%s:unpack()'.format(e)
-      }
-      else if unrops[o] {
-         return unrops[o].format(e)
-      }
-      var m = mangle(o + '_')
-      return '%s:%s()'.format(e, m)
-   }
-
-   function fold_bind_prefix(o,e) {
-      if o == '...' {
-         return '%s:unpack(%%s)'.format(e)
-      }
-      var m = mangle(o + '_=')
-      return '%s:%s(%%s)'.format(e, m)
-   }
-
-   var cmpops = {
-      ["=="] = true,
-      ["!="] = true,
-      [">"]  = true,
-      ["<"]  = true,
-      [">="] = true,
-      ["<="] = true,
+      unrops[o].format(e)
    }
 
    function fold_infix(a,o,b) {
       if binops[o] {
          return binops[o].format(a, b)
       }
-      else if cmpops[o] {
-         return "%s:${mangle(o)}(%s)".format(a, b)
-      }
-      else if o.match('.=$') {
-         var m = mangle(o.match('^(.-)=$'))
-         return "%s=%s:%s(%s)".format(a, a, m, b)
-      }
       else {
-         var m = mangle(o)
-         return "%s:%s(%s)".format(a,m,b)
+         return '%s:%s(%s)'.format(a, o, b)
       }
    }
 
@@ -476,7 +427,7 @@ object Grammar {
    function make_for_in_stmt(ctx, name_list, expr, body) {
       var list, head = make_params(ctx, name_list)
       var hoist = ctx.scope.unhoist()
-      return '%sfor %s in __env._each(%s) do %s%s end'.format(hoist, list, expr, head, body)
+      return '%sfor %s in __env.__each__(%s) do %s%s end'.format(hoist, list, expr, head, body)
    }
    function make_for_stmt(ctx, name, init, last, step, body) {
       var list, head = make_params(ctx, [ name ])
@@ -495,7 +446,7 @@ object Grammar {
       }
       var e = expr_list.concat(',')
       if is_lex {
-         return "do _return = {%s}; return end ".format(e)
+         return "do __return__ = {%s}; return end ".format(e)
       }
       return "do return %s end".format(e)
    }
@@ -619,10 +570,10 @@ object Grammar {
       }
       var stmt = [ ]
       stmt.push("do${s}")
-      stmt.push("local _return;__env.try(${args.concat(',')});")
-      stmt.push('if _return then return __env.unpack(_return) end')
+      stmt.push("local __return__;__env.try(${args.concat(',')});")
+      stmt.push('if __return__ then return __env.unpack(__return__) end')
       if loopy {
-         stmt.push('if _break then break end')
+         stmt.push('if __break__ then break end')
       }
       stmt.push('end')
       return stmt.concat(' ')
@@ -707,7 +658,7 @@ object Grammar {
       { %s* '#!' (!nl .)* %s* }?
       <enter>
       ({`'__env'`} <ctx> -> static_define)
-      {`'local __env=require("lupa.predef").environ();'`}
+      {`'local __env=require("lupa.core").environ();'`}
       s <main_stmt_list>? s
       <verify>
       <leave>
@@ -787,7 +738,7 @@ object Grammar {
    }
    rule return_stmt {
       {~ (%pos "return" idsafe =scope => function(s,o,p,c) {
-            if c !== 'lexical' {
+            if c != 'lexical' {
                syntax_error("return outside of function body")(s,p)
             }
             return o, ''
@@ -818,7 +769,7 @@ object Grammar {
          {:scope: {`'lexical'`} :}
          {:loopy: {`true`} :}
          {~ s <enter> <stmt_list>? <leave> s ~}
-      '}') -> 'local _break; repeat %3 until true; if _break then break end' ~}
+      '}') -> 'local __break__; repeat %3 until true; if __break__ then break end' ~}
    }
    rule import_decl {
       {~ (
@@ -871,14 +822,14 @@ object Grammar {
          "switch" idsafe s {~ <expr> ~} s
          <{ expect("{") }> {:loopy: {`true`} :}
          {~ (s <case_stmt>)* (s <default_stmt>)? s ~}
-         <{ expect("}") }> -> "do local _switch,_break=(%1);repeat %3 until true end"
+         <{ expect("}") }> -> "do local __switch__,__break__=(%1);repeat %3 until true end"
       ~}
    }
    rule case_stmt {
       {~
          "case" idsafe {~ hs* <expr> s ~} <{ expect(":") }>
          {~ s <case_body>? ~}
-         -> " if __env.case(_switch,%1) then %2 end "
+         -> " if __env.case(__switch__,%1) then %2 end "
       ~}
    }
    rule case_body {
@@ -900,7 +851,7 @@ object Grammar {
                syntax_error("no loop to break")(s,o)
             }
             return o
-         }) -> "do _break=true; break end"
+         }) -> "do __break__=true; break end"
       ~}
    }
    rule continue_stmt {
@@ -975,7 +926,12 @@ object Grammar {
    }
 
    rule meth_name {
-      {~ {"_[]=" | "_[]"} -> mangle ~} | {~ <opname> ("=" -> mangle)? ~}
+      {~
+      | "_[]=" -> '__setitem'
+      | "_[]"  -> '__getitem'
+      | <name> "=" -> '__set_%1'
+      | <name>
+      ~}
    }
 
    rule meth_decl {
@@ -1019,7 +975,7 @@ object Grammar {
    rule short_func {
       {~ (
          ("(" s <enter> <ctx> <param_list> s ")" (s <type_list>)? s
-         | <enter> <ctx> (({`"${mangle('_')}"`} <ctx> -> define) -> [ ]))
+         | <enter> <ctx> (({`'_'`} <ctx> -> define) -> [ ]))
          '=>' s (
             | "{" {~ s <func_body> s ~} <{ expect("}") }>
             | {~ (
@@ -1150,14 +1106,11 @@ object Grammar {
    rule name {
       {~ !keyword (
          | { ('end' | 'elseif' | 'then' | 'local' | 'repeat' | 'until' | "do") idsafe } -> '%1_'
-         | { (%alpha | "_" | "$") (%alnum | "_" | "$")* } -> mangle
+         | { (%alpha | "_") (%alnum | "_")* }
       ) ~}
    }
-   rule opname {
-      {~ <name> | { punct+ } -> mangle ~}
-   }
    rule symbol {
-      {~ "`" <opname> -> '"%1"' ~}
+      {~ "`" <name> -> '"%1"' ~}
    }
    rule hexadec {
       "-"? "0x" %xdigit+ ([Uu][Ll] -> 'ULL' | [Ll] -> 'LL')?
@@ -1248,7 +1201,7 @@ object Grammar {
    }
    rule table_pair {
       (
-      | (<name> -> demangle) -> '["%1"]'
+      | <name> -> '["%1"]'
       | "[" s <expr> s <{ expect("]") }>
       ) s "=" s <expr>
    }
@@ -1275,12 +1228,10 @@ object Grammar {
    }
    rule method_expr {
       {~
-      | ("." -> ":") s <opname> (&( hs* (<paren_expr>)) | {`'()'`})
-      | "[" {~ s <expr> s ~} "]" -> ":${mangle('_[]')}(%1)"
-      | "::" hs* "[" {~ s <expr> s ~} "]" -> ":${mangle('::')}(%1)"
-      | "::" hs* <opname> -> ":${mangle('::')}('%1')"
-      | ("#" -> '') hs* "[" s <expr> s "]"
-      | ("#" -> ".") hs* {~ <name> -> demangle ~}
+      | ("." -> ":") s <name> (&(hs* (<paren_expr>)) | {`'()'`})
+      | "[" {~ s <expr> s ~} "]" -> ":__getitem(%1)"
+      | ("::" -> '') hs* "[" s <expr> s "]"
+      | ("::" -> ".") hs* <name>
       ~}
    }
 
@@ -1296,7 +1247,7 @@ object Grammar {
    }
    rule super_expr {
       {~
-         "super" idsafe hs* "." s <opname> hs* (
+         "super" idsafe hs* "." s <name> hs* (
             | "(" s (<expr_list> -> 'self,%1')? s ")"
             | {`'(self)'`}
          )
@@ -1317,40 +1268,34 @@ object Grammar {
    }
 
    rule infix_expr {
-      {~ <expr_0> ~}
-   }
-   rule expr_0 {
       <{ make_infix_expr(/ !keyword word idsafe /, /<expr_1>/) }>
    }
    rule expr_1 {
-      <{ make_infix_expr(/"|" punct* /, /<expr_2>/) }>
+      <{ make_infix_expr(/"||"/, /<expr_2>/) }>
    }
    rule expr_2 {
-      <{ make_infix_expr(/"&" punct* /, /<expr_3>/) }>
+      <{ make_infix_expr(/"&&"/, /<expr_3>/) }>
    }
    rule expr_3 {
-      <{ make_infix_expr(/"^" punct* /,  /<expr_4>/) }>
+      <{ make_infix_expr(/"^"|"|"|"&"/,  /<expr_4>/) }>
    }
    rule expr_4 {
-      <{ make_infix_expr(/("<"|">") punct* /, /<expr_5>/) }>
+      <{ make_infix_expr(/"<<"|"<"|">>>"|">>"|">"/, /<expr_5>/) }>
    }
    rule expr_5 {
-      <{ make_infix_expr(/("="|"!") punct+ /, /<expr_6>/) }>
+      <{ make_infix_expr(/"=="|"!="|'<='|'>='/, /<expr_6>/) }>
    }
    rule expr_6 {
-      <{ make_infix_expr(/("?") punct* /, /<expr_7>/) }>
+      <{ make_infix_expr(/"+"|"-"|"~"/, /<expr_7>/) }>
    }
    rule expr_7 {
-      <{ make_infix_expr(/("+"|"-"|"~") punct* /, /<expr_8>/) }>
+      <{ make_infix_expr(/"*"|"/"|"%"/, /<expr_8>/) }>
    }
    rule expr_8 {
-      <{ make_infix_expr(/("*"|"/"!('/'|'*')|"%") punct* /, /<expr_9>/) }>
-   }
-   rule expr_9 {
-      <{ make_infix_expr(/"#" punct* /, /<prefix_expr>/) }>
+      <{ make_infix_expr(/"**"/, /<prefix_expr>/) }>
    }
 
-   var prefix_punct = / "..."|"$"|"@"|"!"|"#"|"-"|"~"|"*"|"?" /
+   var prefix_punct = / "..."|"!"|"#"|"-"|"~"|"?" /
    rule prefix_expr {
       | {: { prefix_punct } {~ hs* <term> ~} :} -> fold_prefix
       | {~ <term> ~}
@@ -1368,7 +1313,8 @@ object Grammar {
       ) -> make_bind_expr ~}
    }
    rule bind_binop {
-      !('>=' | '<=' | '!==' | '===' | '!=' | '==') { (!'=' punct)+ } '='
+      !('>=' | '<=' | '!==' | '===' | '!=' | '==')
+      {'+'|'-'|'**'|'*'|'/'|'%'|'^'|'~'|'||'|'|'|'&&'|'&'|'<<'|'>>'|'>>>'}'='
    }
    rule bind_binop_expr {
       {~ <ctx> { <bind_term> hs* } <bind_binop> s <expr> -> make_binop_bind ~}
@@ -1377,14 +1323,9 @@ object Grammar {
       <bind_term> (hs* "," s <bind_term>)*
    }
 
-   rule bind_prefix_expr {
-      {: { prefix_punct } {~ hs* <term> ~} :} -> fold_bind_prefix
-   }
-
    rule bind_term {
       {~
       | <primary> (hs* <bind_member>)+
-      | <bind_prefix_expr>
       | %pos <name> <ctx> -> update
       ~}
    }
@@ -1396,23 +1337,23 @@ object Grammar {
    }
    rule bind_suffix {
       {~
-      | "." {hs*} <opname> ->":%1%2${mangle('=')}(%%s)"
-      | "[" {~ s <expr> s ~} "]" -> ":${mangle('_[]=')}(%1,%%s)"
-      | "#" {hs*} {~ (<name> -> demangle) -> (s) => { s.gsub('%%','%%%%') } ~} -> '.%1%2=%%s'
-      | "#" {hs*} "[" {~ s (<expr> -> (s) => { s.gsub('%%','%%%%') }) s ~} "]" -> '%1[%2]=%%s'
+      | "." {hs*} <name> ->":%1__set_%2(%%s)"
+      | "[" {~ s <expr> s ~} "]" -> ":__setitem(%1,%%s)"
+      | "::" {hs*} {~ <name> -> (s) => { s.gsub('%%','%%%%') } ~} -> '.%1%2=%%s'
+      | "::" {hs*} "[" {~ s (<expr> -> (s) => { s.gsub('%%','%%%%') }) s ~} "]" -> '%1[%2]=%%s'
       ~}
    }
 
    // PEG grammar and pattern rules
    rule pattern {
-      "/" {~ s <rule_body> s ~} <{ expect("/") }> -> '__env._patt.P(%1)'
+      "/" {~ s <rule_body> s ~} <{ expect("/") }> -> '__env.Pattern.P(%1)'
    }
    rule rule_decl {
       "rule" idsafe s <name> s "{" {~ s <rule_body> s ~} "}"
       -> '__env.rule(self,"%1",%2);'
    }
    rule rule_body {
-      <rule_alt> | {`'__env._patt.P(nil)'`}
+      <rule_alt> | {`'__env.Pattern.P(nil)'`}
    }
 
    rule rule_alt {
@@ -1431,17 +1372,17 @@ object Grammar {
    rule rule_suffix {
       ({~ <rule_patt> ~} {: {s} {prod_oper} {s} <rule_prod> :}*) ~> function(a,s1,o,s2,b,t) {
          if o == "=>" {
-            return '__env._patt.Cmt(%s%s,%s%s)'.format(a,s1,s2,b)
+            return '__env.Pattern.Cmt(%s%s,%s%s)'.format(a,s1,s2,b)
          }
          else if o == "~>" {
-            return '__env._patt.Cf(%s%s,%s%s)'.format(a,s1,s2,b)
+            return '__env.Pattern.Cf(%s%s,%s%s)'.format(a,s1,s2,b)
          }
          else {
             if t == 'table' {
-               return '__env._patt.Ch(%s%s,%s%s)'.format(a,s1,s2,b)
+               return '__env.Pattern.Ch(%s%s,%s%s)'.format(a,s1,s2,b)
             }
             else if t == 'array' {
-               return '__env._patt.Ca(%s%s,%s%s)'.format(a,s1,s2,b)
+               return '__env.Pattern.Ca(%s%s,%s%s)'.format(a,s1,s2,b)
             }
             else {
                return '(%s)%s/%s(%s)'.format(a,s1,s2,b)
@@ -1480,40 +1421,40 @@ object Grammar {
       ~}
    }
    rule rule_term {
-      {~ <string> -> '__env._patt.P(%1)' ~}
+      {~ <string> -> '__env.Pattern.P(%1)' ~}
    }
    rule rule_class {
       {~
-         ("[" -> '(') ("^" -> '__env._patt.P(1)-')?
+         ("[" -> '(') ("^" -> '__env.Pattern.P(1)-')?
          (((!"]" <rule_item>)+ -> [ ]) -> function(a) { "("+a.concat("+")+")" })
          ("]" -> ')')
       ~}
    }
    rule rule_item {
       {~ <rule_predef> | <rule_range>
-      | {.} -> function(c) { '__env._patt.P(%q)'.format(c) }
+      | {.} -> function(c) { '__env.Pattern.P(%q)'.format(c) }
       ~}
    }
    rule rule_predef {
       {~ ('%' -> '') (
-         | { [0-9]+ } -> '__env._patt.Carg(%1)'
-         | <name> -> '__env._patt.Def("%1")'
+         | { [0-9]+ } -> '__env.Pattern.Carg(%1)'
+         | <name> -> '__env.Pattern.Def("%1")'
       ) ~}
    }
    rule rule_range {
-      {~ . ("-"->'') !"]" . ~} -> function(r) { '__env._patt.R(%q)'.format(r) }
+      {~ . ("-"->'') !"]" . ~} -> function(r) { '__env.Pattern.R(%q)'.format(r) }
    }
    rule rule_any {
-      {~ "." -> '__env._patt.P(1)' ~}
+      {~ "." -> '__env.Pattern.P(1)' ~}
    }
    rule rule_ref {
       {~
       ("<" -> '') s
-         ( <name> -> '__env._patt.V("%1")'
-         | {~ ("{" -> '__env._patt.P(') s <expr> s ("}" -> ")") ~}
+         ( <name> -> '__env.Pattern.V("%1")'
+         | {~ ("{" -> '__env.Pattern.P(') s <expr> s ("}" -> ")") ~}
          ) s
       (">" -> '')
-      | !punct <ident>
+      | <ident> -> '__env.Pattern.P(%1)'
       ~}
    }
    rule rule_capt {
@@ -1525,23 +1466,23 @@ object Grammar {
    }
    rule rule_group_capt {
       {~ "{:" ((<name> -> quote ":") | {`'nil'`}) {~ s <rule_alt> s ~} <{ expect(":}") }>
-      -> '__env._patt.Cg(%2,%1)'
+      -> '__env.Pattern.Cg(%2,%1)'
       ~}
    }
    rule rule_back_capt {
-      "=" (<name> -> quote) -> '__env._patt.Cb(%1)'
+      "=" (<name> -> quote) -> '__env.Pattern.Cb(%1)'
    }
    rule rule_sub_capt {
-      "{~" {~ s <rule_alt> s ~} <{ expect("~}") }> -> '__env._patt.Cs(%1)'
+      "{~" {~ s <rule_alt> s ~} <{ expect("~}") }> -> '__env.Pattern.Cs(%1)'
    }
    rule rule_const_capt {
-      "{:" {~ s <rule_alt> s ~} <{ expect(":}") }> -> '__env._patt.Cg(%1)'
+      "{:" {~ s <rule_alt> s ~} <{ expect(":}") }> -> '__env.Pattern.Cg(%1)'
    }
    rule rule_const_capt {
-      "{`" {~ s <expr_list> s ~} <{ expect("`}") }> -> '__env._patt.Cc(%1)'
+      "{`" {~ s <expr_list> s ~} <{ expect("`}") }> -> '__env.Pattern.Cc(%1)'
    }
    rule rule_simple_capt {
-      "{" {~ s <rule_alt> s ~} <{ expect("}") }> -> '__env._patt.C(%1)'
+      "{" {~ s <rule_alt> s ~} <{ expect("}") }> -> '__env.Pattern.C(%1)'
    }
 }
 
@@ -1562,24 +1503,9 @@ object Compiler {
       assert(ctx.scope.outer == nil, "scope is unbalanced")
       return lua
    }
-
-   method eval(src) {
-      var ctx = Context.new()
-      ctx.enter()
-      var lua = Grammar.eval(src, 1, ctx)
-      ctx.leave()
-      var eval = assert(loadstring(lua,'=eval:'+src))
-
-      var eenv = newtable()
-      var meta = newtable()
-      meta#__index = global#require("lupa.predef")
-      global#setmetatable(eenv, meta)
-
-      return eval(eenv)
-   }
 }
 
-global#['package']#loaded#['lupa.lang'] = {
+package::loaded::['lupa.lang'] = {
    Compiler = Compiler,
    Grammar  = Grammar,
    Context  = Context,

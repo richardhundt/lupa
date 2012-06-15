@@ -7,8 +7,8 @@
 #include "lualib.h"
 #include "lauxlib.h"
 
-#include "predef.h"
-#include "compiler.h"
+#include "core.h"
+#include "lang.h"
 #include "lupa.h"
 
 static int traceback(lua_State *L) {
@@ -36,10 +36,10 @@ static int lupa_run(lua_State *L) {
     lua_pushcfunction(L, traceback);
     errfn = nargs + 1;
 
-    if (luaL_loadbuffer(L, luaJIT_BC_predef, luaJIT_BC_predef_SIZE, "=predef")) return 1;
+    if (luaL_loadbuffer(L, luaJIT_BC_core, luaJIT_BC_core_SIZE, "=core")) return 1;
     if (lua_pcall(L, 0, 0, errfn)) return 1;
 
-    if (luaL_loadbuffer(L, luaJIT_BC_compiler, luaJIT_BC_compiler_SIZE, "=compiler")) return 1;
+    if (luaL_loadbuffer(L, luaJIT_BC_lang, luaJIT_BC_lang_SIZE, "=lang")) return 1;
     if (lua_pcall(L, 0, 0, errfn)) return 1;
 
     if (luaL_loadbuffer(L, luaJIT_BC_lupa, luaJIT_BC_lupa_SIZE, "=lupa")) return 1;

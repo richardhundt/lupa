@@ -1,7 +1,7 @@
 import Compiler from lupa.lang
 
-global#['package']#path  = ";;./lib/?.lua;${global#['package']#path}"
-global#['package']#cpath = ";;./lib/?.so;${global#['package']#cpath}"
+global::package::path  = ";;./lib/?.lua;${global::package::path}"
+global::package::cpath = ";;./lib/?.so;${global::package::cpath}"
 
 var getopt = function(...args) {
    var opt = { files = [ ] }
@@ -36,10 +36,10 @@ var run = function(...a) {
    if a.len == 0 {
       var repl = require("lupa.repl")
       repl.run()
-      os#exit(0)
+      os::exit(0)
    }
    var opt = getopt(...a)
-   var sfh = assert(io#open(opt['files'][1]))
+   var sfh = assert(io::open(opt['files'][1]))
    var src = sfh.read('*a')
    sfh.close()
 
@@ -49,16 +49,16 @@ var run = function(...a) {
    }
    catch (e) {
       print(tostring(e))
-      os#exit(-1)
+      os::exit(-1)
    }
    if opt['l'] {
-      io#stdout.write(lua, "\n")
-      os#exit(0)
+      io::stdout.write(lua, "\n")
+      os::exit(0)
    }
 
    if opt['o'] {
       var out = opt['files'][2] || 'a.lua'
-      out = io#open(out, "w+")
+      out = io::open(out, "w+")
       out.write(lua)
       out.close()
    }
@@ -67,19 +67,19 @@ var run = function(...a) {
       var main = assert(loadstring(lua,'='+opt['files'][1]))
       if opt['b'] {
          var out = opt['files'][2] || 'a.luac'
-         out = io#open(out, "wb+")
-         out.write(string#dump(main))
+         out = io::open(out, "wb+")
+         out.write(string::dump(main))
          out.close()
       }
       else {
-         var main_env  = require('lupa.predef')#environ()
+         var main_env  = require('lupa.core')::environ()
          xpcall(main, function(err) {
-            io#stderr.write(debug#traceback(tostring(err)).demangle, "\n")
-            os#exit(1)
+            io::stderr.write(debug::traceback(tostring(err)), "\n")
+            os::exit(1)
          }, main_env, opt['files'][1], ...a)
       }
    }
 }
 
-if global#arg#[1] { run(global#unpack(arg)) }
+if global::arg::[1] { run(global::unpack(arg)) }
 

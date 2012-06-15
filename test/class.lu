@@ -26,10 +26,6 @@ class Point3D from Point {
    method greet() {
       print("Hello World!")
    }
-
-   method >>+<<(b) {
-      print("funny operator:", b)
-   }
    method move(x = 0, y = 0, z = 0) {
       super.move(x, y)
       .z = z
@@ -44,8 +40,6 @@ print("APPLY:", o)
 
 var p = Point.new
 var p = Point3D.new
-
-var a = p >>+<< 42
 
 print("HERE:", p)
 p.move()
@@ -70,7 +64,4 @@ try {
 catch (e : TypeError) {
    print("caught => ${e}")
 }
-
-var h = { }
-h#__index = h
 

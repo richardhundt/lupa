@@ -15,7 +15,7 @@ trait Pet {
 }
 
 guard Int(i : Number) {
-   return math#floor(i)
+   return math::floor(i)
 }
 
 class Mammal {

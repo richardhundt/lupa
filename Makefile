@@ -60,15 +60,15 @@ clean:
 
 bootstrap: all
 	${BINDIR}/lupa ./src/lupa.lu -o ${BUILDDIR}/lupa.lua
-	${BINDIR}/lupa ./src/lupa/compiler.lu -o ${BUILDDIR}/compiler.lua
-	cp ./src/lupa/predef.lua ${BUILDDIR}/predef.lua
-	mv ./src/lupa.h ./src/lupa.h.bak
-	mv ./src/predef.h ./src/predef.h.bak
-	mv ./src/compiler.h ./src/compiler.h.bak
-	mv ${BINDIR}/lupa ${BINDIR}/lupa.bak
-	${LUADIR}/src/luajit -b ${BUILDDIR}/lupa.lua ./src/lupa.h
-	${LUADIR}/src/luajit -b ${BUILDDIR}/predef.lua ./src/predef.h
-	${LUADIR}/src/luajit -b ${BUILDDIR}/compiler.lua ./src/compiler.h
+	${BINDIR}/lupa ./src/lupa/lang.lu -o ${BUILDDIR}/lang.lua
+	cp ./src/lupa/core.lua ${BUILDDIR}/core.lua
+	cp ./src/lupa.h ./src/lupa.h.bak
+	cp ./src/core.h ./src/core.h.bak
+	cp ./src/lang.h ./src/lang.h.bak
+	cp ${BINDIR}/lupa ${BINDIR}/lupa.bak
+	${LUADIR}/src/luajit -b -g ${BUILDDIR}/lupa.lua ./src/lupa.h
+	${LUADIR}/src/luajit -b -g ${BUILDDIR}/core.lua ./src/core.h
+	${LUADIR}/src/luajit -b -g ${BUILDDIR}/lang.lua ./src/lang.h
 	cp ${BUILDDIR}/bin/lupa ${BINDIR}
 
 install: all

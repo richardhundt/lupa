@@ -1206,7 +1206,7 @@ Pattern.__from = Any
 Pattern.__with = { }
 Pattern.__slots = setmetatable(Pattern.__index, { __index = Any.__slots })
 Pattern.__index = lookup(Pattern.__slots)
-Pattern.toString = function() return '<type '..name..'>' end
+Pattern.toString = function() return '<type Pattern>' end
 for k,v in pairs(Meta) do
    Pattern[k] = v
 end
