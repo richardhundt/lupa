@@ -440,6 +440,16 @@ end
 
 throw = error
 
+function __len__(this)
+   if type(this) == 'table' then
+      local mt = typeof(this)
+      local __len = mt and rawget(mt, '__len')
+      if __len then return __len(this) end
+      return #this
+   else
+      return #this
+   end
+end
 function __spread__(this)
    local mt = typeof(this)
    local __spread = mt and rawget(mt, '__spread')
