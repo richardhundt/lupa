@@ -78,15 +78,7 @@ local Meta = {
 
 function environ(outer)
    if not outer then outer = __env end
-   local declared = { }
-   return setmetatable({ }, {
-      __index    = outer,
-      __declared = declared,
-      __newindex = function(env, key, val)
-         declared[key] = true
-         rawset(env, key, val)
-      end
-   })
+   return setmetatable({ }, { __index = outer })
 end
 
 local function lookup(slots)
@@ -99,7 +91,7 @@ local function lookup(slots)
    end
 end
 
-function class(into, name, from, with, body)
+function class(outer, name, from, with, body)
    if from == nil then
       from = Any
    else
@@ -124,7 +116,15 @@ function class(into, name, from, with, body)
    class.__slots = setmetatable(slots, { __index = from.__slots })
    class.__index = lookup(slots)
 
-   class.__inner = environ(into)
+   local inner = { }
+   setmetatable(inner, { __index = outer })
+   class.__inner = setmetatable({ }, {
+      __index = inner;
+      __newindex = function(env, key, val)
+         inner[key] = val
+         class[key] = val
+      end;
+   })
    class.__inner[name] = class
 
    class.__rules = { }
@@ -376,7 +376,11 @@ function import(into, from, what, dest)
       throw(ImportError:new("'"..tostring(from).."' does not export any symbols."), 2)
    end
    if dest then
-      into[dest] = setmetatable({ }, { __index = lookup({ }) })
+      if #what == 0 then
+         into[dest] = setmetatable({ }, { __index = lookup(mod) })
+      else
+         into[dest] = setmetatable({ }, { __index = lookup({ }) })
+      end
       into = into[dest]
    end 
    for i=1, #what do

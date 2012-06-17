@@ -1,22 +1,22 @@
 class Point {
     has x : Number = 0
     has y : Number = 0
-    method move(x : Number, y : Number) {
-        self.x = x
-        self.y = y
+    method move(x : Number = 0, y : Number = 0) {
+        .x = x
+        .y = y
     }
 }
 
 class Point3D from Point {
     has z : Number = 0
-    method move(x : Number, y : Number, z : Number) {
+    method move(x, y, z : Number = 0) {
         super.move(x, y)
-        self.z = z
+        .z = z
     }
 }
 
 var p = Point3D.new
-for i=1,100_000_000 {
+for i=1,10_000_000 {
     p.move(i, i+1, i+2)
 }
 print(p.x, p.y, p.z)
