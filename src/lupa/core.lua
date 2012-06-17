@@ -6,7 +6,7 @@ for k,v in pairs(_G) do __env[k] = v end
 local bit = require("bit")
 local ffi = require('ffi')
 
-package.path  = ';;./lib/?.lua;'..package.path
+package.path  = ';;./lib/?.lua;./src/?.lua;'..package.path
 package.cpath = ';;./lib/?.so;'..package.cpath
 
 do

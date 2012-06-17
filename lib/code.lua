@@ -488,6 +488,7 @@ function Proto.__index:newvar(name, reg, ofs)
       name     = name;
    }
    self.actvars[name] = var
+   self.actvars[#self.actvars + 1] = var
    self.varinfo[name] = var
    self.varinfo[#self.varinfo + 1] = var
    return var

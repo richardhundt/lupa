@@ -51,7 +51,6 @@ object ASTUtil {
 }
 
 
-
 object Parser {
 
    function error_line(src, pos) {
@@ -583,12 +582,13 @@ object Parser {
    }
 
    rule paren_expr {
-      "(" s (<expr_list> | {`nil`}) s <{ expect(")") }> -> { tag = 'paren_expr' }
+      "(" s (<expr_list> | {`nil`} -> [ ]) s <{ expect(")") }>
+      -> { tag = 'paren_expr' }
    }
 
    rule member_expr {
       (
-      | {:oper: "." :} s <name> (hs* <paren_expr>)?
+      | {:oper: "." :} s <name>
       | {:oper: "[" :} s <expr> s "]"
       | {:oper: "::":} hs* "[" s <expr> s "]"
       | {:oper: "::":} hs* <name>
@@ -843,6 +843,7 @@ object Parser {
    }
 }
 
+
 object Compiler {
 
    method predef(ctx, env) {
@@ -861,6 +862,7 @@ object Compiler {
       return lua
    }
 }
+
 
 class Scope {
    has entries = { }
@@ -898,6 +900,7 @@ class Scope {
       return code
    }
 }
+
 
 import Proto, Dump from code
 
@@ -1023,32 +1026,31 @@ class Context {
    }
 }
 
+
 object Handler {
    method expr(ctx, node, _1, _2, _3) {
       ctx.emit(node[1], _1, _2, _3)
    }
-   method infix_expr(ctx, node, d, a, b) {
+   method infix_expr(ctx, node, dest) {
       var free = ctx.freereg
-      a ||= ctx.nextreg
-      b ||= ctx.nextreg
-      d ||= ctx.nextreg
-      a = ctx.emit(node[1], a)
-      b = ctx.emit(node[2], b)
+      dest ||= ctx.nextreg
+      var a = ctx.emit(node[1], ctx.nextreg)
+      var b = ctx.emit(node[2], ctx.nextreg)
       var o = node['oper']
 
-      if      o == '+'  { ctx.op_add(d, a, b) }
-      else if o == '-'  { ctx.op_sub(d, a, b) }
-      else if o == '*'  { ctx.op_mul(d, a, b) }
-      else if o == '/'  { ctx.op_div(d, a, b) }
-      else if o == '%'  { ctx.op_mod(d, a, b) }
-      else if o == '**' { ctx.op_pow(d, a, b) }
-      else if o == '~'  { ctx.op_cat(d, a, b) }
+      if      o == '+'  { ctx.op_add(dest, a, b) }
+      else if o == '-'  { ctx.op_sub(dest, a, b) }
+      else if o == '*'  { ctx.op_mul(dest, a, b) }
+      else if o == '/'  { ctx.op_div(dest, a, b) }
+      else if o == '%'  { ctx.op_mod(dest, a, b) }
+      else if o == '**' { ctx.op_pow(dest, a, b) }
+      else if o == '~'  { ctx.op_cat(dest, a, b) }
       else {
-         ctx.call('paren_expr', { a, { tag = 'name', { o } }, [ b ] })
+         error("NYI")
       }
 
       ctx.freereg = free
-      return d, a, b
+      return dest
    }
    method number(ctx, node, dest) {
       dest ||= ctx.nextreg
@@ -1074,54 +1076,18 @@ object Handler {
 
    method member_expr(ctx, node, base, want) {
       var free = ctx.freereg
-      var oper = node::oper
-      var base = ctx.emit(node[1], base || ctx.nextreg)
+      base ||= ctx.nextreg
+      var base = ctx.emit(node[1], base)
       var name = ctx.emit(node[2])
-      if oper == '::' {
-         ctx.op_tget(base, base, name)
-      }
-      else {
-         want ||= 0
+      if node::oper == '.' {
          var recv = ctx.nextreg
          ctx.op_move(recv, base)
          ctx.op_tget(base, base, name)
-         var args = [ recv ]
-         var mres = false
-         var narg = 1
-         if node[3] {
-            narg = node[3].len + 1
-            ctx.nextreg(narg)
-            for i=1, node[3].len {
-               if i == node[3].len {
-                  args[i + 1] = ctx.emit(node[3][i], base + i + 1, MULTIRES)
-               }
-               else {
-                  args[i + 1] = ctx.emit(node[3][i], base + i + 1, 1)
-               }
-            }
-         }
-         for i=1, args.len {
-            var arg = args[i]
-            if arg == MULTIRES {
-               mres = true
-               break
-            }
-            if arg != nil && arg < base {
-               ctx.op_move(ctx.nextreg, args[i])
-            }
-         }
-         ctx.freereg = free
-         if want == MULTIRES {
-            ctx.op_call(base, want, narg)
-            return MULTIRES
-         }
-         else if mres {
-            ctx.op_callm(base, 0, narg - 1)
-         }
-         else {
-            ctx.op_call(base, want, narg)
-         }
-         return base
+         base = recv
+         free += 1
+      }
+      else {
+         ctx.op_tget(base, base, name)
       }
       ctx.freereg = free
       return base
@@ -1134,16 +1100,29 @@ object Handler {
       var args = [ ]
       var free = ctx.freereg
       base ||= ctx.nextreg
-      base = ctx.emit(node[1], base)
+
       var narg = node[2].len
+      var offs = 0
+
+      if node[1]::oper == '.' {
+         var this = ctx.emit(node[1], base)
+         args.push(this)
+         narg += 1
+         offs += 1
+      }
+      else {
+         base = ctx.emit(node[1], base)
+      }
+
       ctx.nextreg(narg)
       var mres = false
-      for i=1, narg {
-         if i == narg {
-            args[i] = ctx.emit(node[2][i], base + i, MULTIRES)
+      var last = node[2].len
+      for i=1, last {
+         if i == last {
+            args.push(ctx.emit(node[2][i], base + i + offs, MULTIRES))
          }
          else {
-            args[i] = ctx.emit(node[2][i], base + i, 1)
+            args.push(ctx.emit(node[2][i], base + i + offs, 1))
          }
       }
       for i=1, args.len {
@@ -1156,6 +1135,7 @@ object Handler {
             ctx.op_move(ctx.nextreg, args[i])
          }
       }
+
       ctx.freereg = free
       if want == MULTIRES {
          ctx.op_call(base, want, narg)
@@ -1267,14 +1247,14 @@ object Handler {
       }
       return proto::idx
    }
-   method term(ctx, node, _1, _2) {
-      return ctx.emit(node[1], _1, _2)
+   method term(ctx, node, _1, _2, _3) {
+      return ctx.emit(node[1], _1, _2, _3)
    }
    method name(ctx, node) {
       return node[1]
    }
-   method stmt(ctx, node, _1, _2) {
-      return ctx.emit(node[1], _1, _2)
+   method stmt(ctx, node, _1, _2, _3) {
+      return ctx.emit(node[1], _1, _2, _3)
    }
    method unit(ctx, node) {
       ctx.enter('main')
@@ -1310,16 +1290,17 @@ package::loaded::['lupa.lang'] = {
    Context  = Context,
 }
 
-var src = '''
+var src1 = '''
 var mesg = "Hello"
 function greet(whom) {
    print(mesg, whom, "!")
 }
 greet("World")
 var a, b = 1, 40 + 2
+print(a, b)
 '''
 
-var src = '''
+var src2 = '''
 function a() {
    function c() {
       return 'Hi'
@@ -1331,10 +1312,10 @@ function b() {
 }
 print(a(), b())
 '''
-var src = '''
-_G::print(_G::table::foreach)
-_G.print()
+var src3 = '''
+_G::print("Hello World!")
 '''
+var src = src2
 /*
 for i=1, 1000 {
    var ast = Parser.script(src)
