@@ -1,0 +1,1513 @@
+export Compiler, Grammar, Context
+
+class Scope {
+   has entries = { }
+   has resolve = { }
+   has exports = [ ]
+   has hoists  = [ ]
+   has inner   = [ ]
+   has outer
+
+   method init(outer) {
+      .outer = outer
+      if outer {
+         outer.inner.push(self)
+      }
+   }
+   method lookup(name, pos, orig) {
+      orig ||= self
+      if .entries[name] {
+         return .entries[name]
+      }
+      else if .outer {
+         return .outer.lookup(name, pos, orig)
+      }
+      orig.resolve[name] = pos
+   }
+   method define(name, info) {
+      .entries[name] = info || { }
+   }
+   method unhoist(sep) {
+      var code = .hoists.concat(sep)
+      if .hoists.len > 0 {
+         .hoists = [ ]
+      }
+      return code
+   }
+}
+
+class Context {
+   has scope   = Scope.new
+   has source  = ''
+
+   method init(source = '') {
+      .source = source
+   }
+   method enter() {
+      .scope = Scope.new(.scope)
+   }
+   method leave() {
+      if .scope.hoists.len > 0 {
+         error("unhoisted code: ${.scope.hoists}", 2)
+      }
+      var outer = .scope.outer
+      var inner = .scope
+      if outer != nil {
+         .scope = outer
+         return inner
+      }
+      Error raise "no outer scope"
+   }
+   method define(name, info) {
+      .scope.define(name, info)
+   }
+   method lookup(name, pos) {
+      .scope.lookup(name, pos)
+   }
+}
+
+object Grammar {
+
+   function error_line(src, pos) {
+      var line = 1
+      var index, limit = 1, pos
+      while index <= limit {
+         var s, e = src.find("\n", index, true)
+         if s == nil || e > limit { break }
+         index = e + 1
+         line  = line + 1
+      }
+      return line
+   }
+   function error_near(src, pos) {
+      if (src.len < pos + 20) {
+         return src.sub(pos)
+      }
+      else {
+         return src.sub(pos, pos + 20)+"..."
+      }
+   }
+   function syntax_error(m) {
+      return function(src, pos) {
+         var line, near = error_line(src, pos), error_near(src, pos)
+         error("SyntaxError: ${m||''} on line ${line} near '${near}'")
+      }
+   }
+   function expect(p,m) {
+      if !m { m = p }
+      return / p | <{ syntax_error("expected '"+m+"'") }> /
+   }
+
+   var id_counter = 9
+   function genid() {
+      id_counter += 1
+      return '_'+id_counter
+   }
+
+   function define(name, ctx, base, type, expr) {
+      if name is Array {
+         for i=1, name.len {
+            ctx.define(name[i], { base = base, type = type, expr = expr })
+         }
+      }
+      else {
+         ctx.define(name, { base = base, type = type, expr = expr })
+      }
+      return name
+   }
+   function static_define(name, ctx, ...a) {
+      ctx.define(name, ...a)
+      return
+   }
+   function enter(ctx) {
+      ctx.enter()
+      return
+   }
+   function leave(ctx) {
+      var scope = ctx.scope
+      if scope.exports.len > 0 {
+         var buf = [ ]
+         for _, k in scope.exports {
+            if !scope.lookup(k) {
+               SyntaxError.raise("export '${k}' was never defined", 2)
+            }
+            buf.push('{%q,%s}'.format(k, lookup(0, k, ctx)))
+         }
+         ctx.leave()
+         return " return __env:export(${buf.concat(',')});"
+      }
+      ctx.leave()
+      return
+   }
+   function lookup(pos, name, ctx) {
+      var info = ctx.lookup(name, pos)
+      if info {
+         if info['base'] {
+            if info['base'] == 'self' {
+               return 'self:%s()'.format(name)
+            }
+            return info['base']+'.'+name
+         }
+         return name
+      }
+      return '__env.'+name
+   }
+   function update(pos, name, ctx) {
+      var info = ctx.lookup(name, pos)
+      if !info {
+         return '__env.'+name+'=%s'
+      }
+      if info['base'] {
+         if info['base'] == 'self' {
+            return info['base']+':__set_'+name+'(%s)'
+         }
+         return info['base']+'.'+name+'=%s'
+      }
+      return name+"=%s"
+   }
+
+   function hoist(lvl) {
+      lvl ||= 1
+      return function(ctx, expr) {
+         var curr = ctx.scope
+         for i=1, lvl {
+            curr = curr.outer
+         }
+         var tyid = genid()
+         curr.hoists.push('local %s=%s;'.format(tyid, expr))
+         return tyid
+      }
+   }
+
+   function quote(c) { return "%q".format(c) }
+
+   var nl      = / "\n" /
+   var line_comment = /
+      ((!nl %s)* ("//" -> '--') (!nl .)* nl)
+   /
+   var long_comment = /
+      ("/*" -> '--[=[') (']=]' -> ']\=]' | !"*/" .)* ("*/" -> ']=]')
+   /
+   var comment = / {~ line_comment | long_comment ~} /
+   var idsafe  = / !(%alnum | "_") /
+   var s       = / (comment | %s)* /
+   var S       = / (comment | %s)+ /
+   var hs      = / !nl %s /
+   var udigit  = / %digit {~ "_" -> "" ~}? /
+   var digits  = / %digit udigit* /
+   var word    = / ((%alpha | "_") (%alnum | "_")*) /
+
+   var keyword = / (
+      | "var" | "function" | "class" | "with" | "in" | "our"
+      | "nil" | "true" | "false" | "return" | "static"
+      | "for" | "throw" | "method" | "has" | "from" | "break" | "guard"
+      | "switch" | "case" | "default" | "do" | "while" | "needs"
+      | "continue" | "import" | "export" | "try" | "catch" | "super"
+      | "default" | "finally" | "if" | "else" | "rule" | "enum"
+   ) idsafe /
+
+   var unrops = {
+      ["!"] = "not(%s)",
+      ["-"] = "-(%s)",
+      ["~"] = "__env.__bnot__(%s)",
+      ["?"] = '__env.__maybe__(%s)',
+      ["..."] = "__env.__spread__(%s)",
+   }
+
+   var binops = {
+      ['can']  = "__env.__can__(%s,%s)",
+      ['is']   = "__env.__is__(%s,%s)",
+      ['as']   = "__env.__as__(%s,%s)",
+      ['does'] = "__env.__does__(%s,%s)",
+
+      ["+"] = "(%s)+(%s)",
+      ["-"] = "(%s)-(%s)",
+      ["*"] = "(%s)*(%s)",
+      ["/"] = "(%s)/(%s)",
+      ["**"] = "(%s)^(%s)",
+      ["%"] = "(%s)%%(%s)",
+      ["~"] = "(%s)..(%s)",
+
+      ['<<'] = '__env.__lshift__(%s,%s)',
+      ['>>'] = '__env.__rshift__(%s,%s)',
+      ['>>>'] = '__env.__arshift__(%s,%s)',
+      ['&'] = '__env.__band__(%s,%s)',
+      ['|'] = '__env.__bor__(%s,%s)',
+      ['^'] = '__env.__bxor__(%s,%s)',
+
+      ["<="] = "(%s)<=(%s)",
+      [">="] = "(%s)>=(%s)",
+      [">"] = "(%s)>(%s)",
+      ["<"] = "(%s)<(%s)",
+      ["=="] = "(%s)==(%s)",
+      ["!="] = "(%s)~=(%s)",
+
+      ["~~"] = "__env.__match__(%s,%s)",
+
+      ["&&"] = "(%s)and(%s)",
+      ["||"] = "(%s)or(%s)",
+   }
+
+   function make_binop_bind(ctx, a1, a2, o, b) {
+      a1 = Grammar.expr.match(a1, nil, ctx)
+      var info = ctx.lookup(a1)
+      var oper
+      if binops[o] {
+         oper = binops[o]
+      }
+      else {
+         error("invalid operator ${o}")
+      }
+      if info && info['type'] {
+         var type = info['type']
+         oper = (type+':coerce(%s)').format(oper)
+      }
+      return a2.format(oper.format(a1,b))
+   }
+
+   var name_patt =  / "__env." ? { (%alnum | "_")+ } hs* "=" /
+
+   function make_bind_expr(ctx, l, s1, s2, r) {
+      var hoist = ctx.scope.unhoist()
+      if l.len == 1 {
+         var name = name_patt.match(l[1])
+         if name {
+            var info = ctx.lookup(name)
+            if info && info['type'] {
+               var type = info['type']
+               r[1] = (type+':coerce(%s)').format(r[1])
+            }
+         }
+         return hoist+l[1].format(s2 + r.concat(','))
+      }
+      var t = [ ]
+      for i = 1, l.len {
+         t.push(genid())
+         var name = name_patt.match(l[i])
+         if name {
+            var info = ctx.lookup(name)
+            if info && info['type'] {
+               var type = info['type']
+               t[i] = (type+':coerce(%s)').format(t[i])
+            }
+         }
+
+         l[i] = l[i].format(t[i])
+      }
+      var b = [ ]
+      b.push('%slocal %s%s=%s%s;'.format(hoist,t.concat(','), s1, s2, r.concat(',')))
+      b.push(l.concat(';'))
+      return b.concat()
+   }
+
+   var infix_punct = /
+      |'||'|'|'|'&&'|'&'|'~~'|'~'|'**'|'*'|'/'|'%'
+      |'+'|'-'|'>>>'|'>>'|'>='|'>'|'<<'|'<='|'<'|'^'
+   /
+
+   function fold_prefix(o,e) {
+      unrops[o].format(e)
+   }
+
+   function fold_infix(a,o,b) {
+      if binops[o] {
+         return binops[o].format(a, b)
+      }
+      else {
+         return '%s:%s(%s)'.format(a, o, b)
+      }
+   }
+
+   function make_infix_expr(oper, term) {
+      / (({~ term (&(hs+ oper) s)? ~} {: hs* {oper} {~ s term ~} :}*) ~> fold_infix) /
+   }
+
+   function make_var_decl(ctx, kind, lhs, rhs) {
+      rhs = rhs || [ ]
+      var tmp = [ ]
+      var buf = [ ]
+      var hoist = ctx.scope.unhoist()
+      if rhs.len == 0 {
+         if kind == nil {
+            return '%slocal %s'.format(hoist, lhs.concat(','))
+         }
+         else {
+            for i=1, lhs.len {
+               lhs[i] = '__env.'+lhs[i]+'=nil'
+            }
+            return '%s%s'.format(hoist,lhs.concat(';'))
+         }
+      }
+
+      if lhs.len == 1 {
+         var info = ctx.lookup(lhs[1])
+         if info['type'] {
+            var type = info['type']
+            rhs[1] = (type+':coerce(%s)').format(rhs[1] || '')
+         }
+         if kind == nil {
+            return "%slocal %s=%s;".format(hoist, lhs[1], rhs[1] || 'nil')
+         }
+         else {
+            return "%s__env.%s=%s;".format(hoist, lhs[1], rhs[1] || 'nil')
+         }
+      }
+
+      for i = 1, lhs.len {
+         tmp.push(genid())
+      }
+
+      if rhs.len > 0 {
+         buf.push('%slocal %s=%s'.format(hoist, tmp.concat(','), rhs.concat(',')))
+      }
+
+      var head = ''
+      if kind == nil {
+         head = 'local '
+      }
+      for i=1, lhs.len {
+         var info = ctx.lookup(lhs[i])
+         if info['type'] {
+            var type = info['type']
+            tmp[i] = (type+':coerce(%s)').format(tmp[i])
+         }
+         if kind != nil {
+            lhs[i] = '__env.'+lhs[i]
+         }
+      }
+
+      buf.push('%s%s=%s;'.format(head, lhs.concat(','), tmp.concat(',')))
+      return buf.concat(';')
+   }
+
+   function make_has_decl(ctx, name, type, body, scope, attr) {
+      define(name, ctx, nil, type, body)
+      type ||= 'nil'
+      return '__env.has(self,"%s",%s,function(self) return %s end,%s);'.format(name,type,body,attr)
+   }
+
+   function make_params(ctx, list) {
+      var head = [ ]
+      if list.len > 0 {
+         for i=1, list.len {
+            var name = list[i]
+            if !name.find('...', 1, true) {
+               name = name.match('^%s*([^%s]+)%s*$')
+               var info = ctx.lookup(name) 
+               if info['expr'] {
+                  head.push('if %s==nil then %s=%s else %s=%s end'.format(
+                     name, name, info['expr'], name, name
+                  ))
+               }
+               if info['type'] {
+                  var type = info['type']
+                  head.push('%s=%s:coerce(%s)'.format(name,type,name))
+               }
+            }
+         }
+         if list[list.len].find('...', 1, true) {
+            var last = list[list.len]
+            var name = last.match('^%.%.%.(.+)$')
+            list[list.len] = "..."
+            if name {
+               var info = ctx.lookup(name) 
+               if info['type'] {
+                  var type = info['type']
+                  head.push('local %s=__env.Array:new(...):inject(function(...) return %s:coerce(...) end)'.format(name,type))
+               }
+               else {
+                  head.push("local %s=__env.Array:new(...)".format(name))
+               }
+            }
+         }
+      }
+      return list.concat(","), head.concat(';')
+   }
+
+   function make_for_in_stmt(ctx, name_list, expr, body) {
+      var list, head = make_params(ctx, name_list)
+      var hoist = ctx.scope.unhoist()
+      return '%sfor %s in __env.__each__(%s) do %s%s end'.format(hoist, list, expr, head, body)
+   }
+   function make_for_stmt(ctx, name, init, last, step, body) {
+      var list, head = make_params(ctx, [ name ])
+      var hoist = ctx.scope.unhoist()
+      return '%sfor %s=%s,%s,%s do %s%s end'.format(hoist, name, init, last, step, head, body)
+   }
+
+   function make_return_stmt(ctx, is_lex, expr_list, scope, ...type_list) {
+      expr_list = expr_list || [ ]
+      if type_list {
+         for i=1, type_list.len {
+            var type = type_list[i]
+            var expr = expr_list[i] || ''
+            expr_list[i] = (type+":coerce(%s)".format(expr))
+         }
+      }
+      var e = expr_list.concat(',')
+      if is_lex {
+         return "do __return__ = {%s}; return end ".format(e)
+      }
+      return "do return %s end".format(e)
+   }
+
+   function make_func(c,p,b) {
+      var p, h = make_params(c, p)
+      var t = c.scope.unhoist()
+      if t != '' {
+         return "(function()%s return function(%s) %s%s end end)()".format(t,p,h,b)
+      }
+      else {
+         return 'function(%s) %s%s end'.format(p,h,b)
+      }
+   }
+
+   function make_func_decl(c,n,p,b,s) {
+      var p, h = make_params(c, p)
+      var t = c.scope.outer.unhoist()
+      if s == 'lexical' {
+         c.scope.outer.define(n)
+         return "%slocal function %s(%s)%s %s end".format(t,n,p,h,b)
+      }
+      else {
+         c.scope.outer.define(n, { base = '__env' })
+         return "%sfunction __env.%s(%s)%s %s end".format(t,n,p,h,b)
+      }
+   }
+
+   function make_enum_decl(c,n,b,s) {
+      var decl = '__env.enum(%q,{%s});'
+      if s == 'lexical' {
+         c.define(n, { type = 'Enum' })
+         decl = 'local %s='+decl
+      }
+      else {
+         c.define(n, { type = 'Enum', base = '__env' })
+         decl = '__env.%s='+decl
+      }
+      return decl.format(n,n,b)
+   }
+   function make_with_decl(w) {
+      return "__env.with(self,{%s})".format(w)
+   }
+   function make_meth_decl(c,n,p,b,s,a) {
+      p = [ 'self', ...p ]
+      var p, h = make_params(c,p)
+      var t = c.scope.outer.unhoist()
+      return "%s__env.method(self,%q,function(%s)%s %s end,%s);".format(t,n,p,h,b,a)
+   }
+   function make_class_decl(c,n,f,w,b,s) {
+      var decl = '__env.class(__env,%q,%s,{%s},function(__env,self,super) %s end);'
+      if s == 'lexical' {
+         c.define(n, { type = 'Class' })
+         decl = 'local %s='+decl
+      }
+      else {
+         c.define(n, { type = 'Class', base = '__env' })
+         decl = "__env.%s="+decl
+      }
+      return decl.format(n,n,f,w,b)
+   }
+   function make_obj_decl(c,n,f,w,b,s) {
+      var decl = '__env.object(__env,%q,%s,{%s},function(__env,self,super) %s end);'
+      if s == 'lexical' {
+         c.define(n, { type = n })
+         decl = 'local %s='+decl
+      }
+      else {
+         c.define(n, { type = n, base = '__env' })
+         decl = "__env.%s="+decl
+      }
+      return decl.format(n,n,f,w,b)
+   }
+   function make_obj(c,f,w,b,s) {
+      var decl = '__env.object(__env,%q,%s,{%s},function(__env,self,super) %s end)'
+      return decl.format("object${genid()}",f,w,b)
+   }
+   function make_trait_decl(c,n,p,w,b) {
+      var decl = '__env.trait(__env,%q,{%s},%s,function(__env,self,%s)%s end);'
+      var a = '...'
+      if p.len > 0 {
+         a = p.concat(',')
+      }
+      if s == 'lexical' {
+         c.scope.outer.define(n, { type = 'Trait' })
+         decl = 'local %s='+decl
+      }
+      else {
+         c.scope.outer.define(n, { type = 'Trait', base = '__env' })
+         decl = "__env.%s="+decl
+      }
+      return decl.format(n,n,w,p.len,a,b)
+   }
+
+   function make_guard_decl(c,n,p,b,s) {
+      p = [ 'self', ...p ]
+      var p, h = make_params(c, p)
+      var decl = '__env.guard(%q,function(%s)%s %s end)'
+      var hoist = c.scope.outer.unhoist()
+      if s == 'lexical' {
+         c.scope.outer.define(n)
+         decl = "%slocal %s="+decl
+      }
+      else {
+         c.scope.outer.define(n, { base = '__env' })
+         decl = "%s__env.%s="+decl
+      }
+      return decl.format(hoist,n,n,p,h,b)
+   }
+
+   function make_try_stmt(s,ctx, try_body, catch_blocks, loopy) {
+      var args = [ ]
+      if loopy {
+         args.push("function() repeat ${try_body} until true end")
+      }
+      else {
+         args.push("function() ${try_body} end")
+      }
+      for i=1, catch_blocks.len {
+         args.push(catch_blocks[i])
+      }
+      var stmt = [ ]
+      stmt.push("do${s}")
+      stmt.push("local __return__;__env.try(${args.concat(',')});")
+      stmt.push('if __return__ then return __env.unpack(__return__) end')
+      if loopy {
+         stmt.push('if __break__ then break end')
+      }
+      stmt.push('end')
+      return stmt.concat(' ')
+   }
+
+   function make_catch_stmt(ctx, s1, s2, head, s3, body, loopy) {
+      var head = head || '__err'
+      var name = head.match('^%s*([^%s]+)%s*$')
+      var info = ctx.lookup(name)
+      var type = info['type']
+      if loopy {
+         return "{body=${s1}function(${s2}${name}) ${s3} repeat ${body} until true end, type=${type}}"
+      }
+      else {
+         return "{body=${s1}function(${s2}${name}) ${s3} ${body} end, type=${type}}"
+      }
+   }
+   function make_import_decl(ctx, names, path, dest) {
+      var qnames = [ ]
+      if names == nil { names = [ ] }
+      if dest {
+         ctx.define(dest, { base = '__env' })
+         dest = quote(dest)
+         for i=1, names.len {
+            qnames[i] = quote(names[i])
+         }
+      }
+      else {
+         // XXX: import from <dotted_path> (i.e. no names, no dest)
+         dest = 'nil'
+         for i=1, names.len {
+            ctx.define(names[i], { base = '__env' })
+            qnames[i] = quote(names[i])
+         }
+      }
+      return "__env:import(%q,{%s},%s);".format(path, qnames.concat(','), dest)
+   }
+   function make_export_decl(c,n) {
+      var b = [ ]
+      for i=1, n.len {
+         c.scope.exports.push(n[i])
+      }
+      return ''
+   }
+
+   method match(...a) {
+      self.script.match(...a)
+   }
+
+   rule script {
+      {~ <unit> ~} (!. | <{syntax_error("invalid syntax")}>)
+   }
+   rule verify {
+      <ctx> -> function(ctx) {
+         var stack = [ ctx.scope ]
+         while stack.len > 0 {
+            var curr = stack.pop
+            for k,v in curr.resolve {
+               var info = curr.lookup(k)
+               if !(info && info['base'] == '__env') {
+                  SyntaxError.raise(
+                     "symbol '${k}' was never defined on"+
+                     " line: ${error_line(ctx.source,v)}"+
+                     " near: ${error_near(ctx.source,v)}",
+                  2)
+               }
+            }
+            for i=1, curr.inner.len {
+               stack.push(curr.inner[i])
+            }
+         }
+      }
+   }
+   rule preamble {
+      {:set_return: {`false`} :}
+      {:type_list: {`nil`} :}
+      {:scope: {`'__env'`} :}
+      {:loopy: {`false`} :}
+   }
+   rule unit {
+      <preamble>
+      { %s* '#!' (!nl .)* %s* }?
+      <enter>
+      ({`'__env'`} <ctx> -> static_define)
+      {`'local __env=require("lupa.core").environ();'`}
+      s <main_stmt_list>? s
+      <verify>
+      <leave>
+   }
+   rule eval {
+      {~ 
+         {:set_return: {`false`} :}
+         {:type_list: {`nil`} :}
+         {:scope: {`'lexical'`} :}
+         {:loopy: {`false`} :}
+         {`'local __env=...;'`}
+         <enter>
+         ({`'__env'`} <ctx> -> static_define)
+         {~ s <func_body> s ~}
+         <leave>
+      ~} (!. | <{syntax_error("invalid syntax")}>)
+   }
+
+   rule ctx   { %1 }
+   rule enter { <ctx> -> enter }
+   rule leave { <ctx> -> leave }
+
+   rule sep {
+      long_comment? ("\n" | ";" | &"}" | line_comment) | [\t ] <sep>
+   }
+
+   rule decl_stmt {
+      | <var_decl>
+      | <enum_decl>
+      | <func_decl>
+      | <class_decl>
+      | <trait_decl>
+      | <guard_decl>
+      | <object_decl>
+   }
+   rule main_decl_stmt {
+      | <import_decl>
+      | <export_decl>
+   }
+   rule body_decl_stmt {
+      | <import_decl>
+   }
+   rule stmt {
+      | <if_stmt>
+      | <switch_stmt>
+      | <throw_stmt>
+      | <break_stmt>
+      | <continue_stmt>
+      | <for_stmt>
+      | <for_in_stmt>
+      | <do_while_stmt>
+      | <while_stmt>
+      | <try_stmt>
+      | <decl_stmt>
+      | <bind_stmt>
+      | <expr_stmt>
+      | <block_stmt>
+      | <return_stmt>
+   }
+   rule main_stmt {
+      | <main_decl_stmt>
+      | <stmt>
+   }
+   rule body_stmt {
+      | <body_decl_stmt>
+      | &<export_decl> <{ syntax_error("export in nested scope") }>
+      | <stmt>
+   }
+   rule stmt_list {
+      {~ <stmt> (<sep> s <stmt>)* <sep>? ~}
+   }
+   rule main_stmt_list {
+      {~ <main_stmt> (<sep> s <main_stmt>)* <sep>? ~}
+   }
+   rule body_stmt_list {
+      {~ <body_stmt> (<sep> s <body_stmt>)* <sep>? ~}
+   }
+   rule return_stmt {
+      {~ (%pos "return" idsafe =scope => function(s,o,p,c) {
+            if c != 'lexical' {
+               syntax_error("return outside of function body")(s,p)
+            }
+            return o, ''
+         }) s (
+         <ctx>
+         =set_return ((<expr> (s "," s <expr>)*)? -> [ ])
+         =type_list
+         -> make_return_stmt)
+      ~}
+   }
+   rule block_stmt {
+      {~ <block> -> 'do %1 end' ~}
+   }
+   rule block_expr {
+      {~ <func_body> -> '(function() %1 end)()' ~}
+   }
+   rule block {
+      '{' <block_body> <{ expect("}") }> -> '%1'
+   }
+   rule block_body {
+      {~ (
+         {:scope: {`'lexical'`} :}
+         {~ s <enter> <stmt_list>? <leave> s ~}
+      ) -> '%2' ~}
+   }
+   rule loop_block {
+      {~ ('{'
+         {:scope: {`'lexical'`} :}
+         {:loopy: {`true`} :}
+         {~ s <enter> <stmt_list>? <leave> s ~}
+      '}') -> 'local __break__; repeat %3 until true; if __break__ then break end' ~}
+   }
+   rule import_decl {
+      {~ (
+         "import" idsafe s
+         <ctx> ((<name> (s "," s <name>)*)? -> [ ]) s
+         "from" idsafe s {~ <name> ("." <name>)* ~}
+         (s "in" idsafe s <name>)?
+      ) -> make_import_decl ~}
+   }
+   rule export_decl {
+      {~ "export" idsafe s <ctx>
+         (<name> (s "," s <name>)* -> [ ]) -> make_export_decl
+      ~}
+   }
+   rule for_name {
+      <name> <ctx> {`nil`} (s <ctx> <type_expr> -> hoist(0))? -> define
+   }
+   rule for_in_stmt {
+      {~ "for" idsafe s <enter> <ctx>
+         (<for_name> (s "," s <for_name>)* -> [ ]) s
+         "in" idsafe s <expr> s
+         <loop_block> -> make_for_in_stmt <leave>
+      ~}
+   }
+   rule for_stmt {
+      {~ "for" idsafe s <enter> <ctx> <for_name> s "=" s <expr> s "," s <expr>
+         (s "," s <expr> | {`1`}) s <loop_block> -> make_for_stmt <leave>
+      ~}
+   }
+   rule while_stmt {
+      {~ "while" idsafe s <expr> {~ s <loop_block> ~}
+      -> 'while %1 do %2 end' ~}
+   }
+   rule do_while_stmt {
+      {~
+         "do" idsafe {~ s <loop_block> s ~}
+         "while" idsafe {~ s <expr> ~} -> 'repeat %1 until not(%2)'
+      ~}
+   }
+   rule if_stmt {
+      {~ "if" idsafe s <expr> s {`" then "`} s <block> (
+         (s ({"else" idsafe s "if" idsafe} -> " elseif") s
+            <expr> {`" then "`} s <block>
+         )*
+         (s "else" idsafe s <block> {`" end "`} | {`" end "`})
+      ) ~}
+   }
+   rule switch_stmt {
+      {~
+         "switch" idsafe s {~ <expr> ~} s
+         <{ expect("{") }> {:loopy: {`true`} :}
+         {~ (s <case_stmt>)* (s <default_stmt>)? s ~}
+         <{ expect("}") }> -> "do local __switch__,__break__=(%1);repeat %3 until true end"
+      ~}
+   }
+   rule case_stmt {
+      {~
+         "case" idsafe {~ hs* <expr> s ~} <{ expect(":") }>
+         {~ s <case_body>? ~}
+         -> " if __env.case(__switch__,%1) then %2 end "
+      ~}
+   }
+   rule case_body {
+      {~ <case_body_stmt> (<sep> s <case_body_stmt>)* <sep>? ~}
+   }
+   rule case_body_stmt {
+      {~ !(("case" | "default") idsafe) <stmt> ~}
+   }
+   rule default_stmt {
+      {~ "default" idsafe hs* ":" {~ s <stmt_list>? ~} -> "%1" ~}
+   }
+   rule throw_stmt {
+      "throw" idsafe {~ s <expr> ~} -> '__env.throw(%1)'
+   }
+   rule break_stmt {
+      {~ { "break" idsafe } (
+         =loopy => function(s,o,l) {
+            if !l {
+               syntax_error("no loop to break")(s,o)
+            }
+            return o
+         }) -> "do __break__=true; break end"
+      ~}
+   }
+   rule continue_stmt {
+      {~ { "continue" idsafe } -> "do break end" ~}
+   }
+   rule try_stmt {
+      {~
+         "try" idsafe {s} <ctx> <enter>
+         "{" {~ s <lambda_body> s ~} <{ expect("}") }>
+         ({~ s <catch_stmt> ~}* -> [ ]) =loopy
+         -> make_try_stmt <leave>
+      ~}
+   }
+   rule catch_stmt {
+      {~
+         "catch" idsafe <ctx> <enter> {s}
+         "(" {s} (<name> <ctx> {`nil`} (hs* <type_expr> | {`nil`}) -> define)
+         ")" {s} "{" {~ s <lambda_body> s ~} "}"
+         =loopy -> make_catch_stmt <leave>
+      ~}
+   }
+   rule lambda_body {
+      {:set_return: {`true`} :}
+      <block_body>
+   }
+
+   rule name_list {
+      <name> (hs* "," s <name>)*
+   }
+   rule type_term {
+      <expr>
+   }
+   rule type_term_list {
+      <type_term> (hs* "," s <type_term>)*
+   }
+   rule type_expr {
+      ":" hs* <type_term>
+   }
+   rule type_list {
+      ":" hs* {:type_list: <hoist_type_term> (s "," s <hoist_type_term>)* :}
+   }
+   rule hoist_type_term {
+      {~ <ctx> <type_term> -> hoist(1) ~}
+   }
+
+   rule var_decl {
+      {:kind: ("var" {`nil`} | "our" {`'__env'`}) idsafe :} hs* {:
+         <ctx> =kind (<var_list> -> [ ])
+         (hs* "=" ({~ s <expr> ~} {~ s ("," -> '') s <expr> ~}* -> [ ]))?
+      :} -> make_var_decl
+   }
+   rule var_list {
+      (<name> <ctx> =kind (s (<ctx> <type_expr> -> hoist(0)))? -> define)
+      (hs* "," s (<name> <ctx> =kind (s (<ctx> <type_expr> -> hoist(0)))? -> define))*
+   }
+
+   rule attr {
+      {:attr: {~ "static" idsafe hs* -> 'true' ~} | {`'false'`} :}
+   }
+   rule has_decl {
+      {~ (<attr> "has" idsafe s <ctx> <name>
+            (s <type_expr> | {`nil`})
+            (s "=" s <expr> | {`""`})
+            =scope =attr
+      ) -> make_has_decl ~}
+   }
+
+   rule needs_decl {
+      {~
+         <attr> "needs" idsafe hs* <meth_name> =attr -> '__env.needs(self,"%2",%3)'
+      ~}
+   }
+
+   rule meth_name {
+      {~
+      | "_[]=" -> '__setitem'
+      | "_[]"  -> '__getitem'
+      | <name> "=" -> '__set_%1'
+      | <name>
+      ~}
+   }
+
+   rule meth_decl {
+      {~ (<attr> "method" idsafe hs* <ctx> <meth_name> s
+      <enter>
+      ({`'self'`} <ctx> -> static_define)
+      ("(" s <param_list> s <{ expect(")") }> s | {`[]`})
+      <type_list>? s
+      "{" {~ s <func_body> s ~} <{ expect("}") }>
+      =scope =attr) -> make_meth_decl ~} <leave>
+   }
+   rule func_decl {
+      {~ ("function" idsafe <ctx> s <name> s
+      <enter>
+      ("(" s <param_list> s <{ expect(")") }> s | {`[]`})
+      <type_list>? s
+      "{" {~ s <func_body> s ~} <{ expect("}") }>
+      ) -> make_func_decl ~} <leave>
+   }
+   rule func_body {
+      {~ {:scope: {`'lexical'`} :} {:loopy: {`false`} :} <func_stmt_list>? ~}
+   }
+   rule func_stmt_list {
+      {~ <func_stmt> (<sep> s <func_stmt>)* <sep>? ~}
+   }
+   rule func_stmt {
+      | ((&(<expr> s "}") <ctx> // last expr implies return
+        =set_return (<expr> -> [ ])
+        =type_list
+        ) -> make_return_stmt)
+      | <stmt>
+   }
+   rule func {
+      {~ (
+         "function" idsafe s <enter>
+         "(" s <ctx> <param_list> s <{ expect(")") }> (s <type_list>)? s "{"
+         {~ s <func_body> s ~}
+         <{ expect("}") }>
+      ) -> make_func ~} <leave>
+   }
+   rule short_func {
+      {~ (
+         ("(" s <enter> <ctx> <param_list> s ")" (s <type_list>)? s
+         | <enter> <ctx> (({`'_'`} <ctx> -> define) -> [ ]))
+         '=>' s (
+            | "{" {~ s <func_body> s ~} <{ expect("}") }>
+            | {~ (
+               <ctx>
+               =set_return (<expr_stmt> -> [ ])
+               =type_list
+               -> make_return_stmt
+            ) (s <sep>)? ~}
+         )
+      ) -> make_func ~} <leave>
+   }
+
+   rule guard_decl {
+      {~ (
+         "guard" idsafe hs+ <ctx> <name> s
+         <enter>
+         ({`'self'`} <ctx> -> static_define)
+         ("(" s <param_list> s <{ expect(")") }> s | {`[]`})
+         <type_list>? s "{"
+         {~ s <func_body> s ~}
+         <{ expect("}") }>
+      ) -> make_guard_decl ~} <leave>
+   }
+
+   rule enum_decl {
+      "enum" idsafe hs* <ctx> <name> hs* "{"
+      {~ s <enum_members>* s ~} <{ expect("}") }>
+      =scope
+      -> make_enum_decl
+   }
+   rule enum_members {
+      <enum_member> (hs* "," s <enum_member>)* (hs* ",")?
+   }
+   rule enum_member {
+      <name> (hs* "=" hs* <number> | {`'nil'`}) -> '{"%1",%2}'
+   }
+
+   rule class_decl {
+      "class" idsafe hs* <ctx> <name> s
+      (<class_from> | {`"nil"`}) s
+      (<class_with> | {`""`}) s
+      "{" {~ s <class_body> s ~} <{ expect("}") }>
+      =scope
+      -> make_class_decl
+   }
+   rule trait_decl {
+      "trait" idsafe hs* <ctx> <name> hs*
+      <enter>
+      ("[" hs* ((<name_list> -> [ ]) <ctx> -> define) hs* "]" | {`[]`}) s
+      (<class_with> | {`""`}) hs*
+      "{" {~ s <trait_body> s ~} <{ expect("}") }>
+      -> make_trait_decl <leave>
+   }
+   rule object_decl {
+      "object" idsafe hs* <ctx> <name> hs*
+      (<class_from> | {`"nil"`}) hs*
+      (<class_with> | {`""`}) hs*
+      "{" {~ s <class_body> s ~} <{ expect("}") }>
+      =scope
+      -> make_obj_decl
+   }
+   rule object_expr {
+      "object" idsafe hs* <ctx>
+      (<class_from> | {`"nil"`}) hs*
+      (<class_with> | {`""`}) hs*
+      "{" {~ s <class_body> s ~} <{ expect("}") }>
+      =scope
+      -> make_obj
+   }
+   rule class_body {
+      {:scope: {`'self'`} :}
+      <enter>
+      ({`'self'`} <ctx> -> static_define)
+      {~ (<class_body_stmt> (<sep> s <class_body_stmt>)* <sep>?)? ~}
+      <leave>
+   }
+   rule trait_body {
+      {:scope: {`'self'`} :}
+      <enter>
+      ({`'self'`} <ctx> -> static_define)
+      {~ (<trait_body_stmt> (<sep> s <trait_body_stmt>)* <sep>?)? ~}
+      <leave>
+   }
+   rule class_from {
+      "from" idsafe {~ hs* <type_term> ~}
+   }
+   rule class_with {
+      "with" idsafe {~ hs* <type_term> (hs* "," s <type_term>)* ~}
+   }
+   rule with_decl {
+      <class_with> -> make_with_decl
+   }
+   rule class_body_stmt {
+      | <has_decl>
+      | <meth_decl>
+      | <rule_decl>
+      | <with_decl>
+      | <body_stmt>
+   }
+   rule trait_body_stmt {
+      <class_body_stmt> | <needs_decl>
+   }
+   rule rest {
+      {~
+         {'...'} (<name> <ctx> {`nil`}
+         (hs* <type_expr> | {`nil`}) &(s ")") -> define)
+      ~}
+   }
+   rule param_list {
+      (
+      | <params>
+      | {`nil`}
+      ) -> [ ]
+   }
+   rule params {
+      | <rest>
+      | <param> s "," s <params>
+      | <param>
+   }
+   rule ident {
+      {~ %pos <name> <ctx> -> lookup ~}
+   }
+   rule param {
+      <name> <ctx> {`nil`} (s
+         <ctx> <type_expr> -> hoist(1) | {`nil`}
+      ) (s "=" s <expr>)? -> define
+   }
+   rule name {
+      {~ !keyword (
+         | { ('end' | 'elseif' | 'then' | 'local' | 'repeat' | 'until' | "do") idsafe } -> '%1_'
+         | { (%alpha | "_") (%alnum | "_")* }
+      ) ~}
+   }
+   rule symbol {
+      {~ "`" <name> -> '"%1"' ~}
+   }
+   rule hexadec {
+      "-"? "0x" %xdigit+ ([Uu][Ll] -> 'ULL' | [Ll] -> 'LL')?
+   }
+   rule decimal {
+      "-"? digits "." digits (("e"|"E") "-"? digits)?
+   }
+   rule integer {
+      "-"? digits ([Uu][Ll] -> 'ULL' | [Ll] -> 'LL')?
+   }
+   rule octal {
+      {~ { "-"? "0" [0-7]+ } -> function(s) { tostring(tonumber(s, 8)) } ~}
+   }
+   rule number {
+      {~ <hexadec> | <octal> | <decimal> | <integer> ~} -> '(%1)'
+   }
+   rule string {
+      {~ (<qstring> | <astring>) ~} -> '(%1)'
+   }
+   rule special {
+      {~
+      | "\n"  -> "\\\n"
+      | "\\$" -> "$"
+      | "\\\\"
+      | "\\" .
+      ~}
+   }
+   rule qstring {
+      | '"""' -> '"' {~ (
+         | <string_expr>
+         | {~ (<special> | !'"""'('"' -> '\"') | !(<string_expr> | "\"\"\"") .)+ ~}
+      )* ~} ('"""' -> '"' | <{ syntax_error("expected '\"\"\"'") }>)
+      | '"' {~ (
+         | <string_expr>
+         | {~ (<special> | !(<string_expr> | "\"") .)+ ~}
+      )* ~} ('"' | <{ syntax_error("expected '\"'") }>)
+   }
+   rule astring {
+      {~
+         | ("'''" -> "") ('\\' | '\'' | (!"'''" .))* ("'''" -> "")
+         | ("'"   -> "") ('\\' | '\'' | (!"'"   .))* ("'"   -> "")
+      ~} -> quote
+   }
+   rule string_expr {
+      ('${' -> '"..') {~ s (<expr> -> 'tostring(%1)') s ~} ("}" -> '.."')
+   }
+   rule vnil {
+      {~ { "nil" } idsafe -> '(nil)' ~}
+   }
+   rule vtrue {
+      {~ { "true" } idsafe -> '(true)' ~}
+   }
+   rule vfalse {
+      {~ { "false" } idsafe -> '(false)' ~}
+   }
+   rule range {
+      {~ (
+         "[" s <expr> s ";" s <expr> ( s ";" s <expr> | {`"1"`} ) s "]"
+      ) -> "__env.Range:new(%1,%2,%3)" ~}
+   }
+   rule array {
+      {~
+         ("[" -> "__env.Array:new(") s
+         (<array_elements> | {`""`}) s
+         ("]" -> ")" | <{syntax_error("expected ']'")}>)
+      ~}
+   }
+   rule array_elements {
+      <expr> ( s "," s <expr> )* (s ("," -> ''))?
+   }
+
+   rule table {
+      {~
+         ("{" -> "__env.Table:new({") s
+         (<table_elems> | {`""`}) s
+         ("}" -> "})" | <{syntax_error("expected '}'")}>)
+      ~}
+   }
+   rule table_elems {
+      <table_elem> ( s "," s <table_elem> )* (s ",")?
+   }
+   rule table_elem {
+      | <table_pair>
+      | <table_item>
+   }
+   rule table_item {
+      <expr>
+   }
+   rule table_pair {
+      (
+      | <name> -> '["%1"]'
+      | "[" s <expr> s <{ expect("]") }>
+      ) s "=" s <expr>
+   }
+   rule primary {
+      | <range>
+      | <array>
+      | <func>
+      | <short_func>
+      | <object_expr>
+      | <pattern>
+      | <ident>
+      | <symbol>
+      | &"." {`'self'`}
+      | <number>
+      | <string>
+      | <vnil>
+      | <vtrue>
+      | <vfalse>
+      | <table>
+      | "(" s <expr> s <{ expect(")") }>
+   }
+   rule paren_expr {
+      "(" s ( <expr_list> | {`""`} ) s <{ expect(")") }>
+   }
+   rule method_expr {
+      {~
+      | ("." -> ":") s <name> (&(hs* (<paren_expr>)) | {`'()'`})
+      | "[" {~ s <expr> s ~} "]" -> ":__getitem(%1)"
+      | ("::" -> '') hs* "[" s <expr> s "]"
+      | ("::" -> ".") hs* <name>
+      ~}
+   }
+
+   rule suffix_expr {
+      | <method_expr>
+      | <paren_expr>
+   }
+   rule term {
+      {~
+      | <super_expr> (hs* <suffix_expr>)*
+      | <primary> (hs* <suffix_expr>)*
+      ~}
+   }
+   rule super_expr {
+      {~
+         "super" idsafe hs* "." s <name> hs* (
+            | "(" s (<expr_list> -> 'self,%1')? s ")"
+            | {`'(self)'`}
+         )
+      ~}
+   }
+   rule expr_stmt {
+      {~ (
+         | <super_expr> (hs* <suffix_expr>)*
+         | <expr>
+         ) (&(s ';') | {`';'`})
+      ~}
+   }
+   rule expr_list {
+      {~ <expr> (s "," s <expr>)* ~}
+   }
+   rule expr {
+      {~ (!<bind_binop_expr> <infix_expr> | <prefix_expr>) ~}
+   }
+
+   rule infix_expr {
+      <{ make_infix_expr(/ !keyword word idsafe /, /<expr_1>/) }>
+   }
+   rule expr_1 {
+      <{ make_infix_expr(/"||"/, /<expr_2>/) }>
+   }
+   rule expr_2 {
+      <{ make_infix_expr(/"&&"/, /<expr_3>/) }>
+   }
+   rule expr_3 {
+      <{ make_infix_expr(/"^"|"|"|"&"/,  /<expr_4>/) }>
+   }
+   rule expr_4 {
+      <{ make_infix_expr(/"<<"|"<"|">>>"|">>"|">"/, /<expr_5>/) }>
+   }
+   rule expr_5 {
+      <{ make_infix_expr(/"=="|"!="|'<='|'>='/, /<expr_6>/) }>
+   }
+   rule expr_6 {
+      <{ make_infix_expr(/"+"|"-"|"~"/, /<expr_7>/) }>
+   }
+   rule expr_7 {
+      <{ make_infix_expr(/"*"|"/"|"%"/, /<expr_8>/) }>
+   }
+   rule expr_8 {
+      <{ make_infix_expr(/"**"/, /<prefix_expr>/) }>
+   }
+
+   var prefix_punct = / "..."|"!"|"#"|"-"|"~"|"?" /
+   rule prefix_expr {
+      | {: { prefix_punct } {~ hs* <term> ~} :} -> fold_prefix
+      | {~ <term> ~}
+   }
+
+   // binding expression rules
+   rule bind_stmt {
+      {~ (<bind_expr> | <bind_binop_expr>) -> '%1;' ~}
+   }
+   rule bind_expr {
+      {~ (
+         <ctx> (<bind_list> -> [ ])
+         {hs*} "=" {s}
+         (<expr_list> -> [ ])
+      ) -> make_bind_expr ~}
+   }
+   rule bind_binop {
+      !('>=' | '<=' | '!==' | '===' | '!=' | '==')
+      {'+'|'-'|'**'|'*'|'/'|'%'|'^'|'~'|'||'|'|'|'&&'|'&'|'<<'|'>>'|'>>>'}'='
+   }
+   rule bind_binop_expr {
+      {~ <ctx> { <bind_term> hs* } <bind_binop> s <expr> -> make_binop_bind ~}
+   }
+   rule bind_list {
+      <bind_term> (hs* "," s <bind_term>)*
+   }
+
+   rule bind_term {
+      {~
+      | <primary> (hs* <bind_member>)+
+      | %pos <name> <ctx> -> update
+      ~}
+   }
+   rule bind_member {
+      {~
+      | <suffix_expr> <bind_member>
+      | <bind_suffix>
+      ~}
+   }
+   rule bind_suffix {
+      {~
+      | "." {hs*} <name> ->":%1__set_%2(%%s)"
+      | "[" {~ s <expr> s ~} "]" -> ":__setitem(%1,%%s)"
+      | "::" {hs*} {~ <name> -> (s) => { s.gsub('%%','%%%%') } ~} -> '.%1%2=%%s'
+      | "::" {hs*} "[" {~ s (<expr> -> (s) => { s.gsub('%%','%%%%') }) s ~} "]" -> '%1[%2]=%%s'
+      ~}
+   }
+
+   // PEG grammar and pattern rules
+   rule pattern {
+      "/" {~ s <rule_body> s ~} <{ expect("/") }> -> '__env.Pattern.P(%1)'
+   }
+   rule rule_decl {
+      "rule" idsafe s <name> s "{" {~ s <rule_body> s ~} "}"
+      -> '__env.rule(self,"%1",%2);'
+   }
+   rule rule_body {
+      <rule_alt> | {`'__env.Pattern.P(nil)'`}
+   }
+
+   rule rule_alt {
+      {~ ("|" -> '' s)? <rule_seq> (s ("|" -> "+") s <rule_seq>)* ~}
+   }
+
+   rule rule_seq {
+      ({~ s <rule_suffix> ~}+ -> [ ]) -> function(a) { a.concat('*') }
+   }
+   rule rule_patt {
+      ({~ s <rule_prefix> ~}+ -> [ ]) -> function(a) { a.concat('*') }
+   }
+
+   var prod_oper = / "->" | "~>" | "=>" /
+
+   rule rule_suffix {
+      ({~ <rule_patt> ~} {: {s} {prod_oper} {s} <rule_prod> :}*) ~> function(a,s1,o,s2,b,t) {
+         if o == "=>" {
+            return '__env.Pattern.Cmt(%s%s,%s%s)'.format(a,s1,s2,b)
+         }
+         else if o == "~>" {
+            return '__env.Pattern.Cf(%s%s,%s%s)'.format(a,s1,s2,b)
+         }
+         else {
+            if t == 'table' {
+               return '__env.Pattern.Ch(%s%s,%s%s)'.format(a,s1,s2,b)
+            }
+            else if t == 'array' {
+               return '__env.Pattern.Ca(%s%s,%s%s)'.format(a,s1,s2,b)
+            }
+            else {
+               return '(%s)%s/%s(%s)'.format(a,s1,s2,b)
+            }
+         }
+      }
+   }
+
+   rule rule_rep {
+      {~ "+" -> "^1" | "*" -> "^0" | "?" -> "^-1" | "^"s("+"|"-")?s[0-9]+ ~}
+   }
+   rule rule_prefix {
+      {~ (("&" -> "#") | ("!" -> "-")) {~ s <rule_prefix> ~} -> '%1%2'
+      | <rule_primary>
+      ~}
+   }
+
+   rule rule_prod {
+      | <table> {`'table'`}
+      | <array> {`'array'`}
+      | <term>  {`'term'`}
+   }
+   rule rule_primary {
+      ( <rule_group>
+      | <rule_term>
+      | <rule_class>
+      | <rule_predef>
+      | <rule_capt>
+      | <rule_any>
+      | <rule_ref>
+      ) (s <rule_rep>)*
+   }
+   rule rule_group {
+      {~ "(" s (<rule_alt> | <{ syntax_error("expected <rule_alt>") }>) s
+         <{ expect(")") }>
+      ~}
+   }
+   rule rule_term {
+      {~ <string> -> '__env.Pattern.P(%1)' ~}
+   }
+   rule rule_class {
+      {~
+         ("[" -> '(') ("^" -> '__env.Pattern.P(1)-')?
+         (((!"]" <rule_item>)+ -> [ ]) -> function(a) { "("+a.concat("+")+")" })
+         ("]" -> ')')
+      ~}
+   }
+   rule rule_item {
+      {~ <rule_predef> | <rule_range>
+      | {.} -> function(c) { '__env.Pattern.P(%q)'.format(c) }
+      ~}
+   }
+   rule rule_predef {
+      {~ ('%' -> '') (
+         | { [0-9]+ } -> '__env.Pattern.Carg(%1)'
+         | <name> -> '__env.Pattern.Def("%1")'
+      ) ~}
+   }
+   rule rule_range {
+      {~ . ("-"->'') !"]" . ~} -> function(r) { '__env.Pattern.R(%q)'.format(r) }
+   }
+   rule rule_any {
+      {~ "." -> '__env.Pattern.P(1)' ~}
+   }
+   rule rule_ref {
+      {~
+      ("<" -> '') s
+         ( <name> -> '__env.Pattern.V("%1")'
+         | {~ ("{" -> '__env.Pattern.P(') s <expr> s ("}" -> ")") ~}
+         ) s
+      (">" -> '')
+      | <ident> -> '__env.Pattern.P(%1)'
+      ~}
+   }
+   rule rule_capt {
+      | <rule_sub_capt>
+      | <rule_const_capt>
+      | <rule_simple_capt>
+      | <rule_back_capt>
+      | <rule_group_capt>
+   }
+   rule rule_group_capt {
+      {~ "{:" ((<name> -> quote ":") | {`'nil'`}) {~ s <rule_alt> s ~} <{ expect(":}") }>
+      -> '__env.Pattern.Cg(%2,%1)'
+      ~}
+   }
+   rule rule_back_capt {
+      "=" (<name> -> quote) -> '__env.Pattern.Cb(%1)'
+   }
+   rule rule_sub_capt {
+      "{~" {~ s <rule_alt> s ~} <{ expect("~}") }> -> '__env.Pattern.Cs(%1)'
+   }
+   rule rule_const_capt {
+      "{:" {~ s <rule_alt> s ~} <{ expect(":}") }> -> '__env.Pattern.Cg(%1)'
+   }
+   rule rule_const_capt {
+      "{`" {~ s <expr_list> s ~} <{ expect("`}") }> -> '__env.Pattern.Cc(%1)'
+   }
+   rule rule_simple_capt {
+      "{" {~ s <rule_alt> s ~} <{ expect("}") }> -> '__env.Pattern.C(%1)'
+   }
+}
+
+object Compiler {
+
+   method predef(ctx, env) {
+      for k,v in (env || global)  {
+         ctx.define(k, { base = '__env' })
+      }
+   }
+
+   method compile(lupa, name, env) {
+      var ctx = Context.new(lupa)
+      ctx.enter()
+      self.predef(ctx, env || global)
+      var lua = Grammar.match(lupa, 1, ctx)
+      ctx.leave()
+      assert(ctx.scope.outer == nil, "scope is unbalanced")
+      return lua
+   }
+}
+
+package::loaded::['lupa.lang'] = {
+   Compiler = Compiler,
+   Grammar  = Grammar,
+   Context  = Context,
+}
+
