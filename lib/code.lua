@@ -299,13 +299,14 @@ function Proto:new(flags, outer)
       debug  = { };
       lninfo = { };
       labels = { };
+      tohere = { };
       kcache = { };
       varinfo = { };
       actvars = { };
       freereg   = 0;
       currline  = 0;
-      firstline = -1;
-      numlines  = -1;
+      firstline = 0;
+      numlines  = 0;
       framesize = 0;
    }, Proto)
 end
@@ -359,7 +360,7 @@ function Proto.__index:const(val)
    return self.kcache[val].idx
 end
 function Proto.__index:line(ln)
-   if self.firstline < 0 then
+   if self.firstline == 0 then
       self.firstline = ln
    end
    self.currline = ln
@@ -418,8 +419,8 @@ function Proto.__index:write_head(buf, size_debug)
    buf:put_uleb128(#self.knum)
    buf:put_uleb128(#self.code)
    buf:put_uleb128(size_debug or 0)
-   buf:put_uleb128(self.firstline < 0 and 0 or self.firstline - 1)
-   buf:put_uleb128(self.numlines  < 0 and 0 or self.numlines)
+   buf:put_uleb128(self.firstline)
+   buf:put_uleb128(self.numlines)
 end
 function Proto.__index:write_body(buf)
    for i=1, #self.code do
@@ -528,24 +529,33 @@ function Proto.__index:upval(name)
 end
 function Proto.__index:here(name)
    if name == nil then name = genid() end
-   if self.labels[name] then
-      -- forward jump
-      local offs = self.labels[name]
-      self.code[offs][3] = #self.code - offs
+   if self.tohere[name] then
+      -- forward jump, so back patch
+      local back = self.tohere[name]
+      for i=1, #back do
+         local offs = back[i]
+         self.code[offs][3] = #self.code - offs
+      end
+      self.tohere[name] = nil
    else
-      -- backward jump
+      -- declare label before jumps (backward jump follows)
       self.labels[name] = #self.code - 1
    end
    return name
 end
 function Proto.__index:jump(name)
    if self.labels[name] then
-      -- backward jump
+      -- jump seen after declared label (backward jump)
       local offs = self.labels[name]
       return self:emit(BC.JMP, self.freereg, offs - #self.code)
    else
-      -- forward jump
-      self.labels[name] = #self.code + 1
+      -- unknown label, so remember the location and patch after
+      local here = self.tohere[name]
+      if not here then
+         here = { }
+         self.tohere[name] = here
+      end
+      here[#here + 1] = #self.code + 1
       return self:emit(BC.JMP, self.freereg, NO_JMP)
    end
 end
@@ -631,9 +641,20 @@ end
 function Proto.__index:op_gset(from, name)
    return self:emit(BC.GSET, from, self:const(name))
 end
+
+function Proto.__index:op_not(dest, var1)
+   return self:emit(BC.NOT, dest, var1)
+end
+function Proto.__index:op_unm(dest, var1)
+   return self:emit(BC.UNM, dest, var1)
+end
+function Proto.__index:op_len(dest, var1)
+   return self:emit(BC.LEN, dest, var1)
+end
 function Proto.__index:op_move(dest, from)
    return self:emit(BC.MOV, dest, from)
 end
+
 function Proto.__index:op_load(dest, val)
    local tv = type(val)
    if tv == 'nil' then
@@ -819,5 +840,6 @@ return {
    KObj  = KObj;
    Proto = Proto;
    Dump  = Dump;
+   genid = genid;
 }
 
