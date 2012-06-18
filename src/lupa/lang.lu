@@ -543,7 +543,7 @@ object Parser {
    }
 
    rule table {
-      "{" s (<table_elems> | {`""`}) s <{expect('}')}>
+      "{" s <table_elems>? s <{expect('}')}>
       -> { tag = 'table' }
    }
    rule table_elems {
@@ -588,15 +588,17 @@ object Parser {
 
    rule member_expr {
       (
-      | {:oper: "." :} s <name>
       | {:oper: "[" :} s <expr> s "]"
       | {:oper: "::":} hs* "[" s <expr> s "]"
       | {:oper: "::":} hs* <name>
       ) -> { tag = 'member_expr' }
    }
-
+   rule method_expr {
+      {:oper: "." :} s <name> (hs* <paren_expr>)? -> { tag = 'method_expr' }
+   }
    rule suffix_expr {
       | <member_expr>
+      | <method_expr>
       | <paren_expr>
    }
 
@@ -659,16 +661,16 @@ object Parser {
 
    var prefix_punct = / "..."|"!"|"#"|"-"|"~"|"?" /
    rule prefix_expr {
-      | {: { prefix_punct } hs* <term> :} -> { tag = 'prefix_expr' }
+      | {:oper: { prefix_punct } :} hs* <prefix_expr> -> { tag = 'prefix_expr' }
       | <term> -> { tag = 'term' }
    }
 
    // binding expression rules
    rule bind_stmt {
-      (<bind_expr> | <bind_binop_expr>) -> { tag = 'bind_stmt' }
+      <bind_expr> | <bind_binop_expr>
    }
    rule bind_expr {
-      ((<bind_list> -> [ ]) hs* "=" s (<expr_list> -> [ ]))
+      <bind_list> hs* "=" s <expr_list>
       -> { tag = 'bind_expr' }
    }
    rule bind_binop {
@@ -902,7 +904,7 @@ class Scope {
 }
 
 
-import Proto, Dump from code
+import Proto, Dump, genid from code
 
 class Context {
 
@@ -956,7 +958,7 @@ class Context {
       }
       return info
    }
-   method update(name, pos) {
+   method update(name, pos, reg) {
       var info = self.lookup(name, pos)
       if info && info::base != '(environ)' && info::proto == self.proto {
          self.proto.getvar(name)
@@ -1028,42 +1030,122 @@ class Context {
 
 
 object Handler {
+   our BINOP = {
+      ['+'] = true,
+      ['-'] = true,
+      ['*'] = true,
+      ['/'] = true,
+      ['%'] = true,
+      ['~'] = true,
+      ['**'] = true,
+   }
+   our UNOP = {
+      ['-'] = true,
+      ['!'] = true,
+      ['#'] = true,
+   }
    method expr(ctx, node, _1, _2, _3) {
       ctx.emit(node[1], _1, _2, _3)
    }
-   method infix_expr(ctx, node, dest) {
+   method prefix_expr(ctx, node, dest) {
       var free = ctx.freereg
       dest ||= ctx.nextreg
-      var a = ctx.emit(node[1], ctx.nextreg)
-      var b = ctx.emit(node[2], ctx.nextreg)
-      var o = node['oper']
-
-      if      o == '+'  { ctx.op_add(dest, a, b) }
-      else if o == '-'  { ctx.op_sub(dest, a, b) }
-      else if o == '*'  { ctx.op_mul(dest, a, b) }
-      else if o == '/'  { ctx.op_div(dest, a, b) }
-      else if o == '%'  { ctx.op_mod(dest, a, b) }
-      else if o == '**' { ctx.op_pow(dest, a, b) }
-      else if o == '~'  { ctx.op_cat(dest, a, b) }
+      var oper = node::oper
+      if UNOP[oper] {
+         var a = ctx.emit(node[1], nil, 1)
+         if      oper == '-' { ctx.op_unm(dest, a) }
+         else if oper == '!' { ctx.op_not(dest, a) }
+         else if oper == '#' { ctx.op_len(dest, a) }
+      }
       else {
          error("NYI")
+      }
+      ctx.freereg = free
+      return dest
+   }
+   method infix_expr(ctx, node, dest, want) {
+      var free = ctx.freereg
+      dest ||= ctx.nextreg
+      var oper = node::oper
+
+      if BINOP[oper] {
+         var a = ctx.emit(node[1], ctx.nextreg, 1)
+         var b = ctx.emit(node[2], ctx.nextreg, 1)
+         if      oper == '+'  { ctx.op_add(dest, a, b) }
+         else if oper == '-'  { ctx.op_sub(dest, a, b) }
+         else if oper == '*'  { ctx.op_mul(dest, a, b) }
+         else if oper == '/'  { ctx.op_div(dest, a, b) }
+         else if oper == '%'  { ctx.op_mod(dest, a, b) }
+         else if oper == '**' { ctx.op_pow(dest, a, b) }
+         else if oper == '~'  { ctx.op_cat(dest, a, b) }
+      }
+      else {
+         var expr = {
+            oper = '.',
+            node[1], { tag = 'name', oper },
+            { [ node[2] ] }
+         }
+         ctx.call('method_expr', expr, dest, want)
       }
 
       ctx.freereg = free
       return dest
    }
-   method number(ctx, node, dest) {
-      dest ||= ctx.nextreg
-      ctx.op_load(dest, tonumber(node[1]))
-      return dest
-   }
-   method bind_stmt(ctx, node, dest) {
-   }
    method bind_expr(ctx, node, dest) {
-   }
-   method bind_list(ctx, node, dest) {
+      var free = ctx.freereg
+      var left_list = node[1]
+      var expr_list = node[2]
+      var want = expr_list.len
+      for i=1, expr_list.len {
+         want -= (i - 1)
+         expr_list[i] = ctx.emit(expr_list[i], ctx.nextreg, want)
+      }
+      for i=1, left_list.len {
+         ctx.emit(left_list[i], expr_list[i])
+      }
+      ctx.freereg = free
    }
    method bind_term(ctx, node, dest) {
+      if node[1]::tag == 'name' {
+         var name = ctx.call('name', node[1])
+         var info = ctx.lookup(name)
+         if info {
+            if info::proto != ctx.proto {
+               ctx.op_uset(name, dest)
+            }
+            else {
+               ctx.update(name, ctx.offs, dest)
+               if dest && dest != info::idx {
+                  ctx.op_move(info::idx, dest)
+               }
+            }
+            return info::idx
+         }
+         else {
+            return ctx.op_gset(dest, name)
+         }
+      }
+      else if node[2]::tag == 'bind_member' {
+         var base = ctx.emit(node[1], nil, 1)
+         var bind = node[2][1]
+         var tkey = ctx.emit(bind[1], nil, 1)
+         if bind::oper == '::' {
+            ctx.op_tset(base, tkey, dest)
+            return dest
+         }
+         else if bind::oper == '.' {
+            var free = ctx.freereg
+            var recv = ctx.nextreg
+            var varg = ctx.nextreg
+            ctx.op_move(recv, base)
+            ctx.op_tget(base, base, tkey~'=')
+            ctx.op_move(varg, dest)
+            ctx.op_call(base, 0, 2)
+            ctx.freereg = free
+            return dest
+         }
+      }
+      return ctx.emit(node[1], dest)
    }
    method return_stmt(ctx, node) {
       var list = node[1]
@@ -1074,22 +1156,61 @@ object Handler {
       ctx.op_ret(vars[1], vars.len)
    }
 
-   method member_expr(ctx, node, base, want) {
+   method member_expr(ctx, node, base) {
       var free = ctx.freereg
       base ||= ctx.nextreg
       var base = ctx.emit(node[1], base)
+      var expr = ctx.emit(node[2])
+      ctx.op_tget(base, base, expr)
+      ctx.freereg = free
+      return base
+   }
+   method method_expr(ctx, node, base, want) {
+      want ||= 0
+      var args = [ ]
+      var free = ctx.freereg
+      base = ctx.emit(node[1], base, 1)
+      var recv = ctx.nextreg
+      ctx.op_move(recv, base)
+      args.push(recv)
+
+      var mres = false
+      var narg = 0
+      if node[3] && node[3][1] {
+         var list = node[3][1]
+         narg = list.len
+         ctx.nextreg(narg)
+         for i=1, narg {
+            if i == narg {
+               args.push(ctx.emit(list[i], recv + i, MULTIRES))
+            }
+            else {
+               args.push(ctx.emit(list[i], recv + i, 1))
+            }
+         }
+      }
+      for i=1, args.len {
+         var arg = args[i]
+         if arg == MULTIRES {
+            mres = true
+            break
+         }
+      }
+      narg = args.len
       var name = ctx.emit(node[2])
-      if node::oper == '.' {
-         var recv = ctx.nextreg
-         ctx.op_move(recv, base)
-         ctx.op_tget(base, base, name)
-         base = recv
-         free += 1
+      ctx.op_tget(base, base, name)
+
+      ctx.freereg = free
+      if want == MULTIRES {
+         ctx.op_call(base, want, narg)
+         return MULTIRES
+      }
+      else if mres {
+         ctx.op_callm(base, 0, narg - 1)
       }
       else {
-         ctx.op_tget(base, base, name)
+         ctx.op_call(base, want, narg)
       }
-      ctx.freereg = free
       return base
    }
 
@@ -1099,30 +1220,21 @@ object Handler {
       want ||= 0
       var args = [ ]
       var free = ctx.freereg
+
       base ||= ctx.nextreg
+      base = ctx.emit(node[1], base)
 
       var narg = node[2].len
-      var offs = 0
-
-      if node[1]::oper == '.' {
-         var this = ctx.emit(node[1], base)
-         args.push(this)
-         narg += 1
-         offs += 1
-      }
-      else {
-         base = ctx.emit(node[1], base)
-      }
 
       ctx.nextreg(narg)
       var mres = false
       var last = node[2].len
       for i=1, last {
          if i == last {
-            args.push(ctx.emit(node[2][i], base + i + offs, MULTIRES))
+            args.push(ctx.emit(node[2][i], base + i, MULTIRES))
          }
          else {
-            args.push(ctx.emit(node[2][i], base + i + offs, 1))
+            args.push(ctx.emit(node[2][i], base + i, 1))
          }
       }
       for i=1, args.len {
@@ -1130,9 +1242,6 @@ object Handler {
          if arg == MULTIRES {
             mres = true
             break
-         }
-         if arg != nil && arg < base {
-            ctx.op_move(ctx.nextreg, args[i])
          }
       }
 
@@ -1149,9 +1258,105 @@ object Handler {
       }
       return base
    }
-   method string(ctx, node, dest) {
+   method array(ctx, node, dest) {
+      var free = ctx.freereg
       dest ||= ctx.nextreg
-      ctx.op_load(dest, node[1])
+
+      var base = ctx.nextreg
+      var recv = ctx.nextreg
+      ctx.op_gget(base, 'Array')
+      ctx.op_move(recv, base)
+      ctx.op_tget(base, base, 'new')
+
+      ctx.nextreg(node.len)
+      for i=1, node.len {
+         ctx.emit(node[i], recv + i)
+      }
+      ctx.op_call(base, 1, 1 + node.len)
+      ctx.op_move(dest, base)
+      ctx.freereg = free
+
+      return dest
+   }
+   method table(ctx, node, dest) {
+      var free = ctx.freereg
+      dest ||= ctx.nextreg
+      var base = dest
+
+      var iarry, ihash = [ ], [ ]
+      for i=1, node.len {
+         var n = node[i]
+         if n::tag == 'table_item' {
+            iarry.push(n)
+         }
+         else {
+            ihash.push(n)
+         }
+      }
+      ctx.op_tnew(base, iarry.len, ihash.len)
+
+      var tkey = ctx.nextreg
+      var tval = ctx.nextreg
+      for i=1, iarry.len {
+         ctx.op_load(tkey, i)
+         ctx.emit(iarry[i][1], tval)
+         ctx.op_tset(base, tkey, tval)
+      }
+      for i=1, ihash.len {
+         var temp = ctx.emit(ihash[i][1], tkey)
+         ctx.emit(ihash[i][2], tval)
+         ctx.op_tset(base, temp, tval)
+      }
+      ctx.freereg = base
+      var ctor = ctx.nextreg
+      var recv = ctx.nextreg
+      var this = ctx.nextreg
+      ctx.op_move(this, base)
+      ctx.op_gget(ctor, 'Table')
+      ctx.op_move(recv, ctor)
+      ctx.op_tget(ctor, ctor, 'new')
+      ctx.op_call(ctor, 1, 2)
+      ctx.freereg = free
+
+      return dest
+   }
+   method string(ctx, node, dest) {
+      var free = ctx.freereg
+      dest ||= ctx.nextreg
+      ctx.nextreg(node.len)
+      for i=1, node.len {
+         var frag = node[i]
+         if type(frag) == 'string' {
+            ctx.op_load(dest + i - 1, node[i])
+         }
+         else {
+            ctx.emit(node[i], dest + i - 1)
+         }
+      }
+      if node.len > 1 {
+         ctx.op_cat(dest, dest, dest + node.len - 1)
+      }
+      ctx.freereg = free
+      return dest
+   }
+   method number(ctx, node, dest) {
+      dest ||= ctx.nextreg
+      ctx.op_load(dest, tonumber(node[1]))
+      return dest
+   }
+   method vtrue(ctx, node, dest) {
+      dest ||= ctx.nextreg
+      ctx.op_load(dest, true)
+      return dest
+   }
+   method vfalse(ctx, node, dest) {
+      dest ||= ctx.nextreg
+      ctx.op_load(dest, false)
+      return dest
+   }
+   method vnil(ctx, node, dest) {
+      dest ||= ctx.nextreg
+      ctx.op_load(dest, nil)
       return dest
    }
    method ident(ctx, node, dest) {
@@ -1256,6 +1461,32 @@ object Handler {
    method stmt(ctx, node, _1, _2, _3) {
       return ctx.emit(node[1], _1, _2, _3)
    }
+   method if_stmt(ctx, node) {
+      var free = ctx.freereg
+      var last = genid()
+      for i=1, node.len {
+         var cond, body = node[i][1], node[i][2]
+         if body == nil {
+            body = cond
+            ctx.emit(body)
+         }
+         else {
+            var expr = ctx.emit(cond, nil, 1)
+            var exit = genid()
+            ctx.op_test(false, expr, exit)
+            ctx.emit(body)
+            ctx.jump(last)
+            ctx.here(exit)
+         }
+      }
+      ctx.here(last)
+      ctx.freereg = free
+   }
+   method block(ctx, node) {
+      for i=1, node.len {
+         ctx.emit(node[i])
+      }
+   }
    method unit(ctx, node) {
       ctx.enter('main')
       for k,v in pairs(global) {
@@ -1290,7 +1521,46 @@ package::loaded::['lupa.lang'] = {
    Context  = Context,
 }
 
-var src1 = '''
+var tests = [ ]
+
+function runtest(tnum, dump) {
+   var test = tests[tnum]
+   print('TEST:', tnum)
+   print(test)
+   var src = test
+   var ast = Parser.script(src)
+   if dump {
+      print(ASTUtil.dump(ast))
+   }
+   var ctx = Context.new("test", src)
+   var out = ctx.transform(ast)
+   var fun = assert(loadstring(out))
+   var bc  = require('jit.bc')
+   bc::dump(fun, nil, true)
+   var glo = setmetatable({ }, { __index = _G })
+   glo::_G = glo
+   var env = {
+      print = print,
+      Array = Array,
+      Table = Table,
+      _G    = glo,
+      obj   = {
+         ['foo='] = function(self, val) {
+            self::_foo = val
+         },
+         ['foo'] = function(self) {
+            return self::_foo
+         },
+         ['greet'] = function(self, mesg) {
+            print(mesg)
+         },
+      }
+   }
+   setfenv(fun, env)
+   fun()
+} 
+
+tests push '''
 var mesg = "Hello"
 function greet(whom) {
    print(mesg, whom, "!")
@@ -1300,7 +1570,7 @@ var a, b = 1, 40 + 2
 print(a, b)
 '''
 
-var src2 = '''
+tests push '''
 function a() {
    function c() {
       return 'Hi'
@@ -1312,27 +1582,73 @@ function b() {
 }
 print(a(), b())
 '''
-var src3 = '''
+
+tests push '''
 _G::print("Hello World!")
 '''
-var src = src2
-/*
-for i=1, 1000 {
-   var ast = Parser.script(src)
-   var ctx = Context.new("test", src)
-   var out = ctx.transform(ast)
-   var fun = assert(loadstring(out))
+
+tests push '''
+var a = [ 1, 2 ]
+print(a)
+var b = 'bee'
+var s = "a${b}c"
+print(s)
+'''
+
+tests push '''
+var l = "Hello".len::toString("foo","bar")
+print(l)
+'''
+
+tests push '''
+var h = { 1, 2, foo = "bar", 3}
+print(h)
+'''
+
+tests push '''
+a = 42
+a = 12
+print(a)
+'''
+
+tests push '''
+var h = { }
+h::foo = 42
+print(h::foo)
+'''
+
+tests push '''
+obj.foo = 42
+print(obj.foo)
+'''
+
+tests push '''
+obj greet "Hello World!"
+'''
+
+tests push '''
+var a = true
+if !!a {
+   print("OK")
 }
-*/
-//Dump::DEBUG = true
-var ast = Parser.script(src)
-print(ASTUtil.dump(ast))
-var ctx = Context.new("test", src)
-var out = ctx.transform(ast)
-var fun = assert(loadstring(out))
-var bc  = require('jit.bc')
-bc::dump(fun, nil, true)
-setfenv(fun, setmetatable({ }, { __index = _G }))
-fun()
-//Compiler.compile(ast)
+else if !a {
+   print("NOT OK")
+}
+else {
+   print("WTF?!")
+}
+'''
+
+tests push '''
+var a = 69
+function answer() {
+   a = 42
+}
+answer()
+print("answer:", a)
+'''
+
+for i=1, tests.len {
+   runtest(i, i == tests.len)
+}
 
