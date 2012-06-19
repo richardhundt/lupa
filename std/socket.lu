@@ -2,7 +2,8 @@ import FFI from std.system
 
 export SockAddr, Socket, Buffer, TCP, SOCK, AF, PROTO, SocketError, AcceptError
 
-FFI::CDEF << """
+var int32 = FFI.typeof('int32_t')
+FFI cdef """
    typedef uint16_t in_port_t;
    typedef uint32_t socklen_t;
    typedef unsigned short int sa_family_t;
@@ -55,6 +56,16 @@ FFI::CDEF << """
    int getsockname(int sockfd, SockAddr *addr, socklen_t *addrlen);
    int getpeername(int sockfd, SockAddr *addr, socklen_t *addrlen);
    int shutdown(int sockfd, int how);
+
+   typedef struct HostEnt {
+      char    *h_name;        /* official name of host */
+      char    **h_aliases;    /* alias list */
+      int     h_addrtype;     /* host address type */
+      int     h_length;       /* length of address */
+      char    **h_addr_list;  /* list of addresses from name server */
+   } HostEnt;
+
+   HostEnt * gethostbyname(const char *name);
 
    int inet_aton(const char *cp, INET_Addr *pin);
    char * inet_ntoa(INET_Addr in);
@@ -132,11 +143,11 @@ class SockAddr with FFI::MetaType['SockAddr'] {
    var ffi = require('ffi')
    var C = FFI::C
 
-   method family { self#sa_family }
-   method family=(f : AF) { self#sa_family = f }
+   method family { self::sa_family }
+   method family=(f : AF) { self::sa_family = f }
 
-   method data { self#sa_data }
-   method data=(d) { self#sa_data = d }
+   method data { self::sa_data }
+   method data=(d) { self::sa_data = d }
 
    method len {
       switch self.family {
@@ -153,7 +164,7 @@ class SockAddr with FFI::MetaType['SockAddr'] {
 
    static method coerce(that) {
       if that does SockAddr::Common {
-         var v = ffi#cast('SockAddr*', ffi#cast('void*', that))
+         var v = ffi::cast('SockAddr*', ffi::cast('void*', that))
          return v
       }
       throw TypeError.new("cannot coerce ${that} to ${self}")
@@ -169,28 +180,28 @@ class SockAddr with FFI::MetaType['SockAddr'] {
    class INET with FFI::MetaType['SockAddr_INET'], Common {
       var C = FFI::C
 
-      method family { self#sin_family }
-      method family=(f : AF) { self#sin_family = f }
+      method family { self::sin_family }
+      method family=(f : AF) { self::sin_family = f }
 
       method init(host, port) {
-         self#sin_family = AF.INET
+         self::sin_family = AF.INET
          if port {
-            self#sin_port = C#htons(port)
+            self::sin_port = C::htons(port)
          }
          if host {
-            self#sin_addr = SockAddr::INET::Addr.new(host)
+            self::sin_addr = SockAddr::INET::Addr.new(host)
          }
       }
       class Addr with FFI::MetaType['INET_Addr'] {
          method init(host) {
             if host is String {
                var stat = Socket.inet_aton(host, self)
-               if stat !== 1 {
+               if stat != 1 {
                   Error raise FFI.strerror(FFI.errno)
                }
             }
             else if host is int32 {
-               self#s_addr = host
+               self::s_addr = host
             }
             else {
                TypeError raise "host ${host} not valid"
@@ -211,50 +222,50 @@ class Socket with FFI::MetaType['Socket'] {
    var C = FFI::C
 
    method init(domain : AF, type : SOCK, proto : PROTO) {
-      var fd = C#socket(domain, type, proto)
-      if fd === -1 { return nil, FFI.strerror(FFI.errno) }
-      self#so_fd   = fd
-      self#so_addr = nil
+      var fd = C::socket(domain, type, proto)
+      if fd == -1 { return nil, FFI.strerror(FFI.errno) }
+      self::so_fd   = fd
+      self::so_addr = nil
    }
 
    method bind(addr : SockAddr) {
-      var stat = C#bind(self#so_fd, addr, addr.len)
-      if stat === -1 { SocketError raise FFI.strerror(FFI.errno) }
-      self#so_addr = addr
+      var stat = C::bind(self::so_fd, addr, addr.len)
+      if stat == -1 { SocketError raise FFI.strerror(FFI.errno) }
+      self::so_addr = addr
       return stat
    }
    method connect(addr : SockAddr) {
-      var stat = C#connect(self#so_fd, addr, addr.len)
-      if stat === -1 { SocketError raise FFI.strerror(FFI.errno) }
-      self#so_addr = addr
+      var stat = C::connect(self::so_fd, addr, addr.len)
+      if stat == -1 { SocketError raise FFI.strerror(FFI.errno) }
+      self::so_addr = addr
    }
    method listen(backlog = 16) {
-      C#listen(self#so_fd, backlog)
+      C::listen(self::so_fd, backlog)
    }
 
    method accept {
       var cli_addr     = FFI.new('SockAddr')
-      cli_addr.family  = self#so_addr.family
+      cli_addr.family  = self::so_addr.family
 
-      var cli_addr_len = FFI.new('socklen_t[1]', self#so_addr.len)
-      var so_fd = C#accept(self#so_fd, cli_addr, cli_addr_len)
+      var cli_addr_len = FFI.new('socklen_t[1]', self::so_addr.len)
+      var so_fd = C::accept(self::so_fd, cli_addr, cli_addr_len)
 
-      if so_fd === -1 {
+      if so_fd == -1 {
          AcceptError raise FFI.strerror(FFI.errno)
       }
       var sock = FFI.new('Socket')
 
-      sock#so_fd   = so_fd
-      sock#so_addr = cli_addr
+      sock::so_fd   = so_fd
+      sock::so_addr = cli_addr
 
       return sock
    }
 
    static method inet_aton(cp : String, pin : SockAddr::INET::Addr) {
-      C#inet_aton(cp, pin)
+      C::inet_aton(cp, pin)
    }
    static method inet_ntoa(n) {
-      C#inet_ntoa(n)
+      C::inet_ntoa(n)
    }
 
    class INET from self {
@@ -275,14 +286,15 @@ object TCP {
       }
       method connect(host, port) {
          var addr = FFI.new('SockAddr_INET')
-         if C#inet_aton(host, addr) === 0 {
-            var hostent = C#gethostbyname(host)
-            var host = FFI.cast('INET_Addr*', hostent#h_addr_list#[0])
+         var inet = FFI.new('INET_Addr')
+         if C::inet_aton(host, inet) == 0 {
+            var hostent = C::gethostbyname(host)
+            var host = FFI.cast('INET_Addr*', hostent::h_addr_list::[0])
             addr = FFI.new('SockAddr_INET')
-            addr#sin_family = AF.INET
-            addr#sin_addr = host#[0]
+            addr::sin_family = AF.INET
+            addr::sin_addr = host::[0]
             if port {
-               addr#sin_port = C#htons(port)
+               addr::sin_port = C::htons(port)
             }
          }
          else {
@@ -291,10 +303,10 @@ object TCP {
          super.connect(addr)
       }
       method read(buf, len) {
-         C#read(self#so_fd, buf, len)
+         C::read(self::so_fd, buf, len)
       }
       method write(buf, len) {
-         C#write(self#so_fd, buf, len)
+         C::write(self::so_fd, buf, len)
       }
    }
    class Server from Socket::INET {
@@ -309,7 +321,7 @@ object TCP {
 }
 
 class AddrInfo {
-   FFI::CDEF << """
+   FFI cdef """
       typedef struct AddrInfo {
          int ai_flags;           /* input flags */
          int ai_family;          /* protocol family for socket */
@@ -325,19 +337,19 @@ class AddrInfo {
       void freeaddrinfo(AddrInfo *ai);
    """
 
-   with MetaType['AddrInfo']
+   with FFI::MetaType['AddrInfo']
 
    method init(host : String, port : Number, hint : AddrInfo) {
       var info = FFI.new('AddrInfo[1]')
-      var retv = FFI::C#getaddrinfo(host, FFI::C#htons(port), hint, info)
-      if retv === -1 {
+      var retv = FFI::C::getaddrinfo(host, FFI::C::htons(port), hint, info)
+      if retv == -1 {
          Error raise FFI.strerror(FFI.errno)
       }
    }
 }
 
 class Buffer {
-   FFI::CDEF << """
+   FFI cdef """
       typedef struct Buffer {
          size_t  size;
          size_t  offs;
@@ -348,22 +360,22 @@ class Buffer {
    with FFI::MetaType['Buffer']
 
    method init(size : Number = 512) {
-      self#size = size
-      self#data = FFI::C#malloc(size)
-      self#offs = 0
+      self::size = size
+      self::data = FFI::C::malloc(size)
+      self::offs = 0
    }
    method need(size) {
-      if self#size < self#offs + size {
-         var new_size = self#offs + size
-         while new_size < self#size {
+      if self::size < self::offs + size {
+         var new_size = self::offs + size
+         while new_size < self::size {
             new_size = new_size * 2
          }
-         self#data = FFI::C#realloc(FFI.cast('void*', self#data), new_size)
-         self#size = new_size
+         self::data = FFI::C::realloc(FFI.cast('void*', self::data), new_size)
+         self::size = new_size
       }
    }
-   self#__gc = function(self) {
-      FFI::C#free(self#data)
+   self::__gc = function(self) {
+      FFI::C::free(self::data)
    }
 }
 

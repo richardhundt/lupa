@@ -1,147 +1,144 @@
-
 export FFI, C
 
 var ffi  = require('ffi')
-var OS   = ffi#os
-var ARCH = ffi#arch
-var C    = ffi#C
+var OS   = ffi::os
+var ARCH = ffi::arch
+var C    = ffi::C
 
 object FFI {
 
-   our OS   = ffi#os
-   our ARCH = ffi#arch
-   our C    = ffi#C
+   our OS   = ffi::os
+   our ARCH = ffi::arch
+   our C    = ffi::C
 
-   object CDEF {
-      method << (defs : String) {
-         ffi#cdef(defs)
-      }
+   method cdef(defs) {
+      ffi::cdef(defs)
    }
 
    trait MetaType[T] {
 
       var ffi   = require('ffi')
-      var C     = ffi#C
-      our CTYPE = ffi#typeof(T)
+      var C     = ffi::C
+      our CTYPE = ffi::typeof(T)
 
       static method new(...args) {
          var inst = CTYPE()
-         if self#__slots#init {
-            self#__slots#init(inst, ...args)
+         if self::__slots::init {
+            self::__slots::init(inst, ...args)
          }
          return inst
       }
 
       static method apply(arg) {
-         return ffi#cast(CTYPE, arg)
+         return ffi::cast(CTYPE, arg)
       }
 
       static method check(that) {
-         return ffi#istype(T, that)
+         return ffi::istype(T, that)
       }
       static method __finalize__ {
          FFI.metatype(CTYPE, self)
       }
 
-      self#__tostring = nil
+      self::__tostring = nil
       method toString {
          return tostring(CTYPE)+': %p'.format(self)
       }
 
       var meta = self
       method does(that) {
-         meta#__with#[that#__body] !== nil
+         meta::__with::[that::__body] != nil
       }
       method can(that) {
-         meta#__slots#[that] !== nil
+         meta::__slots::[that] != nil
       }
    }
 
    method new(ctype, ...args) {
-      ffi#new(ctype, ...args)
+      ffi::new(ctype, ...args)
    }
    method cast(this, that) {
-      ffi#cast(this, that)
+      ffi::cast(this, that)
    }
    method typeof(obj, nelem) {
-      if nelem !== nil {
-         return ffi#typeof(obj, nelem)
+      if nelem != nil {
+         return ffi::typeof(obj, nelem)
       }
       else {
-         return ffi#typeof(obj)
+         return ffi::typeof(obj)
       }
    }
    method sizeof(obj) {
-      ffi#sizeof(obj)
+      ffi::sizeof(obj)
    }
    method alignof(obj) {
-      ffi#sizeof(obj)
+      ffi::sizeof(obj)
    }
    method istype(this, that) {
-      ffi#istype(this, that)
+      ffi::istype(this, that)
    }
    method fill(dst, len, c) {
-      if c !== nil {
-         return ffi#fill(dst, len, c)
+      if c != nil {
+         return ffi::fill(dst, len, c)
       }
       else {
-         return ffi#fill(dst, len)
+         return ffi::fill(dst, len)
       }
    }
    method cdef(defs) {
-      ffi#cdef(defs)
+      ffi::cdef(defs)
    }
    method abi(param) {
-      ffi#abi(param)
+      ffi::abi(param)
    }
 
    method metatype(ct, metatable) {
-      ffi#metatype(ct, metatable)
+      ffi::metatype(ct, metatable)
    }
 
    method copy(dst, src, len) {
-      if len !== nil {
-         return ffi#copy(dst, src, len)
+      if len != nil {
+         return ffi::copy(dst, src, len)
       }
       else {
-         return ffi#copy(dst, src, len)
+         return ffi::copy(dst, src, len)
       }
    }
    method string(obj, len) {
-      if len !== nil {
-         return ffi#string(obj, len)
+      if len != nil {
+         return ffi::string(obj, len)
       }
       else {
-         return ffi#string(obj)
+         return ffi::string(obj)
       }
    }
    method gc(obj, fun) {
-      ffi#gc(obj, fun)
+      ffi::gc(obj, fun)
    }
    method load(path, global) {
-      ffi#load(path, global)
+      ffi::load(path, global)
    }
    method errno(newerr) {
-      if newerr !== nil {
-         return ffi#errno(newerr)
+      if newerr != nil {
+         return ffi::errno(newerr)
       }
       else {
-         return ffi#errno()
+         return ffi::errno()
       }
    }
    method offsetof(ct, field) {
-      ffi#offsetof(ct, field)
+      ffi::offsetof(ct, field)
    }
    method strerror(errnum) {
       var len = 256
       var buf = FFI.new('char[?]', len)
-      FFI::C#strerror_r(errnum, buf, len)
+      FFI::C::strerror_r(errnum, buf, len)
       return FFI.string(buf)
    }
 }
 
-if FFI::OS === 'OSX' {
-   FFI::CDEF << """
+if FFI::OS == 'OSX' {
+   FFI cdef """
       typedef uint32_t ino_t;
       typedef int64_t  off_t;
       typedef int32_t  dev_t;
@@ -155,11 +152,11 @@ if FFI::OS === 'OSX' {
       typedef uint32_t useconds_t;
    """
 }
-else if FFI::OS === 'Windows' {
+else if FFI::OS == 'Windows' {
    throw "NYI: ${FFI::OS} support"
 }
 else {
-   FFI::CDEF << """
+   FFI cdef """
       typedef unsigned long ino_t;
       typedef unsigned long nlink_t;
 
@@ -176,7 +173,7 @@ else {
       typedef unsigned long useconds_t;
    """
 }
-FFI::CDEF << """
+FFI cdef """
    typedef uint32_t id_t;
    typedef int32_t  pid_t;
    typedef int32_t  clockid_t;

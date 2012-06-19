@@ -461,6 +461,9 @@ function __each__(a, ...)
    return pairs(a)
 end
 function __is__(this, that)
+   if type(this) == 'cdata' then
+      return ffi.istype(this, that)
+   end
    return this:is(that)
 end
 function __does__(this, that)
@@ -1160,6 +1163,18 @@ function evaluate(lua)
       os.exit(1)
    end, __env)
 end
+
+int8 = ffi.typeof('int8_t')
+uint8 = ffi.typeof('uint8_t')
+
+int16 = ffi.typeof('int16_t')
+uint16 = ffi.typeof('uint16_t')
+
+int32 = ffi.typeof('int32_t')
+uint32 = ffi.typeof('uint32_t')
+
+int64 = ffi.typeof('int64_t')
+uint64 = ffi.typeof('uint64_t')
 
 do
    -- from strict.lua
