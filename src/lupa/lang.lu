@@ -227,7 +227,7 @@ object Parser {
    }
    rule for_stmt {
       "for" idsafe s <for_name> s "=" s <expr> s "," s <expr>
-      (s "," s <expr> | {`1`}) s <block> -> { tag = 'for_stmt' }
+      (s "," s <expr>)? s <block> -> { tag = 'for_stmt' }
    }
    rule while_stmt {
       "while" idsafe s <expr> s <block>
@@ -1482,6 +1482,33 @@ object Handler {
       ctx.here(last)
       ctx.freereg = free
    }
+   method for_stmt(ctx, node) {
+      var free = ctx.freereg
+      ctx.enter("loop")
+      ctx.proto.enter()
+      var base = ctx.nextreg(3)
+      var name = ctx.emit(node[1][1])
+      var info = ctx.newvar(name, base)
+      ctx.define(name, info)
+      ctx.emit(node[2], base, 1)
+      var stop = ctx.emit(node[3], base + 1, 1)
+      var step = base + 2
+      var body
+      if node[5] {
+         ctx.emit(node[4], step, 1)
+         body = node[5]
+      }
+      else {
+         ctx.op_load(step, 1)
+         body = node[4]
+      }
+      var loop = ctx.op_fori(base)
+      ctx.emit(body)
+      ctx.op_forl(loop)
+      ctx.proto.leave()
+      ctx.leave()
+      ctx.freereg = free
+   }
    method block(ctx, node) {
       for i=1, node.len {
          ctx.emit(node[i])
@@ -1627,8 +1654,17 @@ obj greet "Hello World!"
 '''
 
 tests push '''
+var a = 69
+function answer() {
+   a = 42
+}
+answer()
+print("answer:", a)
+'''
+
+tests push '''
 var a = true
-if !!a {
+if a {
    print("OK")
 }
 else if !a {
@@ -1640,12 +1676,9 @@ else {
 '''
 
 tests push '''
-var a = 69
-function answer() {
-   a = 42
+for i=1, 10 {
+   print("tick:", i)
 }
-answer()
-print("answer:", a)
 '''
 
 for i=1, tests.len {
