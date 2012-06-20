@@ -496,6 +496,7 @@ function Proto.__index:newvar(name, reg, ofs)
 end
 function Proto.__index:getvar(name)
    local info = self.actvars[name]
+   if not info then return nil end
    if not info.startpc then
       info.startpc = #self.code
    end

@@ -296,20 +296,26 @@ object Parser {
       <type_term> (hs* "," s <type_term>)* -> { tag = 'type_term_list' }
    }
    rule type_expr {
-      ":" hs* <type_term> -> { tag = 'type_expr' }
+      ":" hs* <type_term>
    }
    rule type_list {
       ":" hs* <type_term> (s "," s <type_term>)* -> { tag = 'type_list' }
    }
+   rule typed_name {
+      <name> (s <type_expr>)? -> function(node, type) {
+         node::type = type
+         return node
+      }
+   }
 
    rule var_decl {
       {:kind: {"var" | "our"} idsafe :} hs* (
-         (<var_list> -> [ ])
-         (hs* "=" (s <expr> (s "," s <expr>)* -> [ ]))?
+         <var_list> (hs* "=" s <expr_list>)?
       ) -> { tag = 'var_decl' }
    }
    rule var_list {
-      <name> (s <type_expr>)? (hs* "," s (<name> (s <type_expr>)?))*
+      <typed_name> (hs* "," s <typed_name>)*
+      -> { tag = 'var_list' }
    }
 
    rule attr {
@@ -653,7 +659,7 @@ object Parser {
       <{ make_infix_expr(/"+"|"-"|"~"/, /<expr_7>/) }>
    }
    rule expr_7 {
-      <{ make_infix_expr(/"*"|"/"|"%"/, /<expr_8>/) }>
+      <{ make_infix_expr(/"*"|(!"//")"/"|"%"/, /<expr_8>/) }>
    }
    rule expr_8 {
       <{ make_infix_expr(/"**"/, /<prefix_expr>/) }>
@@ -946,23 +952,66 @@ class Context {
    }
    method define(name, info) {
       info ||= { }
-      if info['base'] != '(environ)' {
-         info['proto'] = self.proto
+      if info::base != '(environ)' {
+         info::proto = self.proto
       }
       .scope.define(name, info)
    }
    method lookup(name, pos) {
       var info = .scope.lookup(name, pos || .offs)
-      if info && info::base != '(environ)' && info::proto == self.proto {
-         self.proto.getvar(name)
+      if info && info::base != '(environ)' {
+         if info::proto == self.proto {
+            self.proto.getvar(name)
+         }
+         else {
+            self.proto.upval(name)
+         }
       }
       return info
    }
    method update(name, pos, reg) {
       var info = self.lookup(name, pos)
-      if info && info::base != '(environ)' && info::proto == self.proto {
-         self.proto.getvar(name)
+      if info && info::base != '(environ)' {
+         if info::proto == self.proto {
+            self.proto.getvar(name)
+         }
+         else {
+            self.proto.upval(name)
+         }
       }
+   }
+   method getvar(name, dest) {
+      dest ||= self.nextreg
+      var info = self.scope.lookup(name, self.offs)
+      if info == nil || info::base == '(environ)' {
+         self.op_gget(dest, name)
+         return dest
+      }
+      if info::proto == self.proto {
+         self.proto.getvar(name)
+         if info::idx != dest {
+            self.op_move(dest, info::idx)
+         }
+      }
+      else {
+         self.op_uget(dest, name)
+      }
+      return dest
+   }
+   method invoke(base, meth, want, ...args) {
+      var free = self.freereg
+      var recv = self.nextreg
+      self.op_move(recv, base)
+      self.op_tget(base, base, meth)
+      self.nextreg(args.len)
+      for i=1, args.len {
+         if args[i] != recv + i {
+            self.op_move(recv + i, args[i])
+         }
+      }
+      self.op_call(base, want, 1 + args.len)
+      self.freereg = free
+      return base
    }
 
    function count_lines(src, pos, idx) {
@@ -1093,23 +1142,37 @@ object Handler {
    }
    method bind_expr(ctx, node, dest) {
       var free = ctx.freereg
+
       var left_list = node[1]
       var expr_list = node[2]
-      var want = expr_list.len
+
+      var want = left_list.len
       for i=1, expr_list.len {
          want -= (i - 1)
          expr_list[i] = ctx.emit(expr_list[i], ctx.nextreg, want)
       }
+
+      want = left_list.len
       for i=1, left_list.len {
-         ctx.emit(left_list[i], expr_list[i])
+         want -= (i - 1)
+         ctx.emit(left_list[i], expr_list[i], want)
       }
+
       ctx.freereg = free
    }
-   method bind_term(ctx, node, dest) {
+   method bind_term(ctx, node, dest, want) {
       if node[1]::tag == 'name' {
          var name = ctx.call('name', node[1])
          var info = ctx.lookup(name)
          if info {
+            if info::type {
+               var free = ctx.freereg
+               var type = info::type
+               var base = ctx.getvar(type::name, ctx.nextreg)
+               ctx.invoke(base, 'coerce', 1, dest)
+               dest = base
+               ctx.freereg = free
+            }
             if info::proto != ctx.proto {
                ctx.op_uset(name, dest)
             }
@@ -1393,8 +1456,16 @@ object Handler {
       var info_list = [ ]
       for i=1, name_list.len {
          var name = ctx.call('name', name_list[i])
-         var info = ctx.newvar(name)
+         var type = name_list[i]::type
+         var info = ctx.newvar(name, ctx.nextreg)
          ctx.define(name, info)
+         if type {
+            info::type = type
+            type::name = '(type'+genid()+')'
+            type::base = ctx.emit(type, ctx.nextreg, 1)
+            type::info = ctx.newvar(type::name, type::base)
+            ctx.define(type::name, type::info)
+         }
          info_list.push(info)
       }
       var free = ctx.freereg
@@ -1402,8 +1473,18 @@ object Handler {
       for i=1, expr_list.len {
          want -= (i - 1)
          var expr = expr_list[i]
-         var dest = info_list[i]::idx
+         var info = info_list[i]
+         var dest = info::idx
          ctx.emit(expr, dest, want)
+         if info::type {
+            var type = info::type
+            var free = ctx.freereg
+            var cast = ctx.nextreg
+            ctx.op_move(cast, type::base)
+            ctx.invoke(cast, 'coerce', 1, dest)
+            ctx.op_move(dest, cast)
+            ctx.freereg = free
+         }
       }
       ctx.freereg = free
    }
@@ -1552,7 +1633,7 @@ var tests = [ ]
 
 function runtest(tnum, dump) {
    var test = tests[tnum]
-   print('TEST:', tnum)
+   print('-'.rep(30)+'TEST:'+tnum+'-'.rep(30))
    print(test)
    var src = test
    var ast = Parser.script(src)
@@ -1581,7 +1662,8 @@ function runtest(tnum, dump) {
          ['greet'] = function(self, mesg) {
             print(mesg)
          },
-      }
+      },
+      Number = Number,
    }
    setfenv(fun, env)
    fun()
@@ -1679,6 +1761,15 @@ tests push '''
 for i=1, 10 {
    print("tick:", i)
 }
+'''
+
+tests push '''
+var a : Number = 42
+function f() {
+   a = "69"
+}
+f()
+print(a)
 '''
 
 for i=1, tests.len {
