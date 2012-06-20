@@ -544,11 +544,14 @@ function Proto.__index:here(name)
    end
    return name
 end
-function Proto.__index:jump(name)
+function Proto.__index:jump(name, base)
+   local free = self.freereg
+   base = base or self:nextreg()
+   self.freereg = free
    if self.labels[name] then
       -- jump seen after declared label (backward jump)
       local offs = self.labels[name]
-      return self:emit(BC.JMP, self.freereg, offs - #self.code)
+      return self:emit(BC.JMP, base, offs - #self.code)
    else
       -- unknown label, so remember the location and patch after
       local here = self.tohere[name]
@@ -557,14 +560,14 @@ function Proto.__index:jump(name)
          self.tohere[name] = here
       end
       here[#here + 1] = #self.code + 1
-      return self:emit(BC.JMP, self.freereg, NO_JMP)
+      return self:emit(BC.JMP, base, NO_JMP)
    end
 end
-function Proto.__index:op_jump(delta)
-   return self:emit(BC.JMP, self.freereg, delta)
+function Proto.__index:op_jump(base, delta)
+   return self:emit(BC.JMP, base, delta)
 end
-function Proto.__index:op_loop(delta)
-   return self:emit(BC.LOOP, self.freereg, delta)
+function Proto.__index:op_loop(base, delta)
+   return self:emit(BC.LOOP, base, delta)
 end
 
 -- branch if condition
@@ -772,17 +775,16 @@ function Proto.__index:op_fori(base, stop, step)
    self:here(loop)
    return loop
 end
-function Proto.__index:op_forl(loop)
+function Proto.__index:op_forl(base, loop)
    local offs = self.labels[loop]
    loop[3] = #self.code - offs
-   return self:emit(BC.FORL, 0, offs - #self.code)
+   return self:emit(BC.FORL, base, offs - #self.code)
 end
 function Proto.__index:op_iterc(base, want)
    return self:emit(BC.ITERC, base, want + 1, 3)
 end
-function Proto.__index:op_iterl(loop)
+function Proto.__index:op_iterl(base, loop)
    local offs = self.labels[loop]
-   loop[3] = #self.code - offs
    return self:emit(BC.ITERL, base, offs - #self.code, 3)
 end
 function Proto.__index:op_cat(base, rbot, rtop)
