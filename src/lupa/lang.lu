@@ -84,7 +84,7 @@ object Grammar {
          return src.sub(pos)
       }
       else {
-         return src.sub(pos, pos + 20)+"..."
+         return src.sub(pos, pos + 20)~"..."
       }
    }
    function syntax_error(m) {
@@ -95,13 +95,13 @@ object Grammar {
    }
    function expect(p,m) {
       if !m { m = p }
-      return / p | <{ syntax_error("expected '"+m+"'") }> /
+      return / p | <{ syntax_error("expected '"~m~"'") }> /
    }
 
    var id_counter = 9
    function genid() {
       id_counter += 1
-      return '_'+id_counter
+      return '_'~id_counter
    }
 
    function define(name, ctx, base, type, expr) {
@@ -146,24 +146,24 @@ object Grammar {
             if info['base'] == 'self' {
                return 'self:%s()'.format(name)
             }
-            return info['base']+'.'+name
+            return info['base']~'.'~name
          }
          return name
       }
-      return '__env.'+name
+      return '__env.'~name
    }
    function update(pos, name, ctx) {
       var info = ctx.lookup(name, pos)
       if !info {
-         return '__env.'+name+'=%s'
+         return '__env.'~name~'=%s'
       }
       if info['base'] {
          if info['base'] == 'self' {
-            return info['base']+':__set_'+name+'(%s)'
+            return info['base']~':__set_'~name~'(%s)'
          }
-         return info['base']+'.'+name+'=%s'
+         return info['base']~'.'~name~'=%s'
       }
-      return name+"=%s"
+      return name~"=%s"
    }
 
    function hoist(lvl) {
@@ -243,6 +243,7 @@ object Grammar {
       ["!="] = "(%s)~=(%s)",
 
       ["~~"] = "__env.__match__(%s,%s)",
+      ["!~"] = "not(__env.__match__(%s,%s))",
 
       ["&&"] = "(%s)and(%s)",
       ["||"] = "(%s)or(%s)",
@@ -260,7 +261,7 @@ object Grammar {
       }
       if info && info['type'] {
          var type = info['type']
-         oper = (type+':coerce(%s)').format(oper)
+         oper = (type~':coerce(%s)').format(oper)
       }
       return a2.format(oper.format(a1,b))
    }
@@ -275,10 +276,10 @@ object Grammar {
             var info = ctx.lookup(name)
             if info && info['type'] {
                var type = info['type']
-               r[1] = (type+':coerce(%s)').format(r[1])
+               r[1] = (type~':coerce(%s)').format(r[1])
             }
          }
-         return hoist+l[1].format(s2 + r.concat(','))
+         return hoist~l[1].format(s2 ~ r.concat(','))
       }
       var t = [ ]
       for i = 1, l.len {
@@ -288,7 +289,7 @@ object Grammar {
             var info = ctx.lookup(name)
             if info && info['type'] {
                var type = info['type']
-               t[i] = (type+':coerce(%s)').format(t[i])
+               t[i] = (type~':coerce(%s)').format(t[i])
             }
          }
 
@@ -301,7 +302,7 @@ object Grammar {
    }
 
    var infix_punct = /
-      |'||'|'|'|'&&'|'&'|'~~'|'~'|'**'|'*'|'/'|'%'
+      |'||'|'|'|'&&'|'&'|'!~'|'~~'|'~'|'**'|'*'|'/'|'%'
       |'+'|'-'|'>>>'|'>>'|'>='|'>'|'<<'|'<='|'<'|'^'
    /
 
@@ -333,7 +334,7 @@ object Grammar {
          }
          else {
             for i=1, lhs.len {
-               lhs[i] = '__env.'+lhs[i]+'=nil'
+               lhs[i] = '__env.'~lhs[i]~'=nil'
             }
             return '%s%s'.format(hoist,lhs.concat(';'))
          }
@@ -343,7 +344,7 @@ object Grammar {
          var info = ctx.lookup(lhs[1])
          if info['type'] {
             var type = info['type']
-            rhs[1] = (type+':coerce(%s)').format(rhs[1] || '')
+            rhs[1] = (type~':coerce(%s)').format(rhs[1] || '')
          }
          if kind == nil {
             return "%slocal %s=%s;".format(hoist, lhs[1], rhs[1] || 'nil')
@@ -369,10 +370,10 @@ object Grammar {
          var info = ctx.lookup(lhs[i])
          if info['type'] {
             var type = info['type']
-            tmp[i] = (type+':coerce(%s)').format(tmp[i])
+            tmp[i] = (type~':coerce(%s)').format(tmp[i])
          }
          if kind != nil {
-            lhs[i] = '__env.'+lhs[i]
+            lhs[i] = '__env.'~lhs[i]
          }
       }
 
@@ -441,7 +442,7 @@ object Grammar {
          for i=1, type_list.len {
             var type = type_list[i]
             var expr = expr_list[i] || ''
-            expr_list[i] = (type+":coerce(%s)".format(expr))
+            expr_list[i] = (type~":coerce(%s)".format(expr))
          }
       }
       var e = expr_list.concat(',')
@@ -479,11 +480,11 @@ object Grammar {
       var decl = '__env.enum(%q,{%s});'
       if s == 'lexical' {
          c.define(n, { type = 'Enum' })
-         decl = 'local %s='+decl
+         decl = 'local %s='~decl
       }
       else {
          c.define(n, { type = 'Enum', base = '__env' })
-         decl = '__env.%s='+decl
+         decl = '__env.%s='~decl
       }
       return decl.format(n,n,b)
    }
@@ -500,11 +501,11 @@ object Grammar {
       var decl = '__env.class(__env,%q,%s,{%s},function(__env,self,super) %s end);'
       if s == 'lexical' {
          c.define(n, { type = 'Class' })
-         decl = 'local %s='+decl
+         decl = 'local %s='~decl
       }
       else {
          c.define(n, { type = 'Class', base = '__env' })
-         decl = "__env.%s="+decl
+         decl = "__env.%s="~decl
       }
       return decl.format(n,n,f,w,b)
    }
@@ -512,11 +513,11 @@ object Grammar {
       var decl = '__env.object(__env,%q,%s,{%s},function(__env,self,super) %s end);'
       if s == 'lexical' {
          c.define(n, { type = n })
-         decl = 'local %s='+decl
+         decl = 'local %s='~decl
       }
       else {
          c.define(n, { type = n, base = '__env' })
-         decl = "__env.%s="+decl
+         decl = "__env.%s="~decl
       }
       return decl.format(n,n,f,w,b)
    }
@@ -532,11 +533,11 @@ object Grammar {
       }
       if s == 'lexical' {
          c.scope.outer.define(n, { type = 'Trait' })
-         decl = 'local %s='+decl
+         decl = 'local %s='~decl
       }
       else {
          c.scope.outer.define(n, { type = 'Trait', base = '__env' })
-         decl = "__env.%s="+decl
+         decl = "__env.%s="~decl
       }
       return decl.format(n,n,w,p.len,a,b)
    }
@@ -548,11 +549,11 @@ object Grammar {
       var hoist = c.scope.outer.unhoist()
       if s == 'lexical' {
          c.scope.outer.define(n)
-         decl = "%slocal %s="+decl
+         decl = "%slocal %s="~decl
       }
       else {
          c.scope.outer.define(n, { base = '__env' })
-         decl = "%s__env.%s="+decl
+         decl = "%s__env.%s="~decl
       }
       return decl.format(hoist,n,n,p,h,b)
    }
@@ -635,8 +636,8 @@ object Grammar {
                var info = curr.lookup(k)
                if !(info && info['base'] == '__env') {
                   SyntaxError.raise(
-                     "symbol '${k}' was never defined on"+
-                     " line: ${error_line(ctx.source,v)}"+
+                     "symbol '${k}' was never defined on"~
+                     " line: ${error_line(ctx.source,v)}"~
                      " near: ${error_near(ctx.source,v)}",
                   2)
                }
@@ -1283,13 +1284,13 @@ object Grammar {
       <{ make_infix_expr(/"<<"|"<"|">>>"|">>"|">"/, /<expr_5>/) }>
    }
    rule expr_5 {
-      <{ make_infix_expr(/"=="|"!="|'<='|'>='/, /<expr_6>/) }>
+      <{ make_infix_expr(/"~~"|"!~"|"=="|"!="|'<='|'>='/, /<expr_6>/) }>
    }
    rule expr_6 {
-      <{ make_infix_expr(/"+"|"-"|"~"/, /<expr_7>/) }>
+      <{ make_infix_expr(/"+"|"-"|!("~~")"~"/, /<expr_7>/) }>
    }
    rule expr_7 {
-      <{ make_infix_expr(/"*"|!('//')"/"|"%"/, /<expr_8>/) }>
+      <{ make_infix_expr(/"*"|!('//'|'/*')"/"|"%"/, /<expr_8>/) }>
    }
    rule expr_8 {
       <{ make_infix_expr(/"**"/, /<prefix_expr>/) }>
@@ -1313,7 +1314,7 @@ object Grammar {
       ) -> make_bind_expr ~}
    }
    rule bind_binop {
-      !('>=' | '<=' | '!==' | '===' | '!=' | '==')
+      !('>=' | '<=' | '!=' | '==')
       {'+'|'-'|'**'|'*'|'/'|'%'|'^'|'~'|'||'|'|'|'&&'|'&'|'<<'|'>>'|'>>>'}'='
    }
    rule bind_binop_expr {
@@ -1426,7 +1427,7 @@ object Grammar {
    rule rule_class {
       {~
          ("[" -> '(') ("^" -> '__env.Pattern.P(1)-')?
-         (((!"]" <rule_item>)+ -> [ ]) -> function(a) { "("+a.concat("+")+")" })
+         (((!"]" <rule_item>)+ -> [ ]) -> function(a) { "("~a.concat("+")~")" })
          ("]" -> ')')
       ~}
    }

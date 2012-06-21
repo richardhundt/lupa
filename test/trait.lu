@@ -55,6 +55,8 @@ d.legs = 4.2
 print("LEGS:", d.legs)
 d.name = "Fido"
 
+print("is?")
 print(d is Dog)
+print("does?")
 print(d does Pet)
 

@@ -9,6 +9,9 @@ local ffi = require('ffi')
 package.path  = ';;./lib/?.lua;'..package.path
 package.cpath = ';;./lib/?.so;'..package.cpath
 
+__env.__type = { }
+__env.__type.__proto = { }
+
 do
    local paths = {
       ".",
@@ -57,6 +60,37 @@ local rawget, rawset = rawget, rawset
 rawtype = _G.type
 rawlen = function(tab) return #tab end
 
+function typeof(this)
+   local t = rawtype(this)
+   if t == 'cdata' then
+      return ffi.typeof(this)
+   elseif t == 'table' then 
+      return this.__type
+   elseif t == 'number' then
+      return Number
+   elseif t == 'string' then
+      return String
+   elseif t == 'function' then
+      return Function
+   elseif t == 'thread' then
+      return Thread
+   elseif t == 'nil' then
+      return Nil
+   elseif t == 'boolean' then
+      return Boolean
+   elseif t == 'userdata' then
+      if _patt.type(this) == 'pattern' then
+         return Pattern
+      else
+         return getmetatable(this)
+      end
+   else
+      return getmetatable(this)
+   end
+end
+
+throw = error
+
 function case(this, that)
    if this == that then
       return true
@@ -72,8 +106,8 @@ function case(this, that)
 end
 
 local Meta = {
-   __call = function(self, ...) return self:apply(...) end;
-   __tostring = function(self) return self:toString() end;
+   __tostring = function(a) return a:toString() end;
+   __call = function(a, ...) return a:apply(...) end;
 }
 
 function environ(outer)
@@ -81,9 +115,9 @@ function environ(outer)
    return setmetatable({ }, { __index = outer })
 end
 
-local function lookup(slots)
+local function lookup(proto)
    return function(self, key)
-      local val = slots[key]
+      local val = proto[key]
       if val == nil then
          throw(TypeError:new("no such member '"..tostring(key).."' via "..tostring(typeof(self)), 2))
       end
@@ -98,14 +132,15 @@ function class(outer, name, from, with, body)
       if  typeof(from) ~= from  -- object
       and typeof(from) ~= Class
       and typeof(from) ~= Type then
-         throw(TypeError:new("Cannot extend "..tostring(from), 2))
+         throw("TypeError: cannot extend "..tostring(from), 2)
       end
    end
 
    local class = { }
-   local slots = { }
+   local proto = { }
    local rules = { }
 
+   proto.__type = class
    class.__name = name
    class.__from = from
    class.__size = from.__size
@@ -113,8 +148,8 @@ function class(outer, name, from, with, body)
    class.__need = { }
    class.__body = body
 
-   class.__slots = setmetatable(slots, { __index = from.__slots })
-   class.__index = lookup(slots)
+   class.__proto = setmetatable(proto, { __index = from.__proto })
+   proto.__index = lookup(proto)
 
    local inner = { }
    setmetatable(inner, { __index = outer })
@@ -133,9 +168,9 @@ function class(outer, name, from, with, body)
    end
 
    for k,v in pairs(Meta) do
-      class[k] = v
+      class.__proto[k] = v
    end
-   setmetatable(class, Class)
+   setmetatable(class, Class.__proto)
 
    if with then
       for i=1,#with do
@@ -146,7 +181,7 @@ function class(outer, name, from, with, body)
       end
    end
 
-   local super = setmetatable({ }, from)
+   local super = setmetatable({ }, from.__proto)
    body(class.__inner, class, super)
 
    local __extend__ = rawget(from, '__extend__')
@@ -160,7 +195,7 @@ function class(outer, name, from, with, body)
             throw(ComposeError:new("static '"..tostring(k).."' is needed in "..name), 2)
          end
       else
-         if class.__slots[k] == nil then
+         if class.__proto[k] == nil then
             throw(ComposeError:new("'"..tostring(k).."' is needed in "..name), 2)
          end
       end
@@ -180,7 +215,7 @@ function trait(into, name, with, want, body)
    trait.__with = with
    trait.__want = want
    trait.__body = body
-   setmetatable(trait, Trait)
+   setmetatable(trait, Trait.__proto)
    return trait
 end
 function needs(into, name, meta)
@@ -195,15 +230,15 @@ end
 function object(into, name, from, with, body)
    local inst = class(into, name, from, with, body)
    inst.new = nil
-   inst.__slots.toString = function(self)
+   inst.__proto.toString = function(self)
       return ('%s<object %s>: %p'):format(type(self), tostring(name), self)
    end
-   inst.__slots.members = function(self)
-      return self.__slots
+   inst.__proto.members = function(self)
+      return self.__proto
    end
-   setmetatable(inst, inst)
-   if inst.__slots.init then
-      inst.__slots.init(inst)
+   setmetatable(inst, inst.__proto)
+   if inst.__proto.init then
+      inst.__proto.init(inst)
    end
    return inst
 end
@@ -241,8 +276,8 @@ function has(into, name, type, ctor, meta)
       into[name] = get
       into['__set_'..name] = set
    else
-      into.__slots[name] = get
-      into.__slots['__set_'..name] = set
+      into.__proto[name] = get
+      into.__proto['__set_'..name] = set
    end
 end
 
@@ -250,7 +285,7 @@ function method(into, name, code, meta)
    if meta then
       into[name] = code
    else
-      into.__slots[name] = code
+      into.__proto[name] = code
    end
 end
 
@@ -275,7 +310,7 @@ function rule(into, name, patt)
       return rule
    end
 
-   into.__slots[name] = get
+   into.__proto[name] = get
    into.__rules[name] = patt
 end
 
@@ -309,7 +344,7 @@ do
                end
             end
          end
-         return setmetatable(tab, Table)
+         return setmetatable(tab, Table.__proto)
       end
    end
    local function make_capt_array(init)
@@ -321,15 +356,15 @@ do
                end
             end
          end 
-         return setmetatable(tab, Array)
+         return setmetatable(tab, Array.__proto)
       end
    end
 
    _patt.Ch = function(patt,init)
-       return Pattern.__div(_patt.Ct(patt), make_capt_hash(init))
+       return Pattern.__proto.__div(_patt.Ct(patt), make_capt_hash(init))
    end
    _patt.Ca = function(patt,init)
-       return Pattern.__div(_patt.Ct(patt), make_capt_array(init))
+       return Pattern.__proto.__div(_patt.Ct(patt), make_capt_array(init))
    end
 
    local def = { }
@@ -430,16 +465,6 @@ function __load(from)
    return mod
 end
 
-function typeof(this)
-   if type(this) == 'cdata' then
-      return ffi.typeof(this)
-   else
-      return getmetatable(this)
-   end
-end
-
-throw = error
-
 function __spread__(this)
    local mt = typeof(this)
    local __spread = mt and rawget(mt, '__spread')
@@ -454,7 +479,7 @@ function __each__(a, ...)
       return a, ...
    end
    local mt = typeof(a)
-   local __each = mt and rawget(mt, "__each")
+   local __each = mt and mt.__proto.__each
    if __each then
       return __each(a)
    end
@@ -535,27 +560,28 @@ Any.__from = { }
 Any.__with = { }
 Any.__size = 0
 Any.__rules = { }
-Any.__slots = { }
-Any.__index = lookup(Any.__slots)
-Any.__match = function(a, b)
+Any.__proto = { }
+Any.__proto.__type = Any
+Any.__proto.__index = lookup(Any.__proto)
+Any.__proto.__match = function(a, b)
    if typeof(b) == Class or typeof(b) == Trait or typeof(b) == Type then
       return b:check(a)
    end
    return a == b
 end
-Any.__slots.apply = function(self)
+Any.__proto.apply = function(self)
    error(tostring(self).." is not callable", 2)
 end
-Any.__slots.toString = function(self)
+Any.__proto.toString = function(self)
    return ('%s%s: %p'):format(type(self), tostring(typeof(self)), self)
 end
-Any.__slots.is = function(self, that)
+Any.__proto.is = function(self, that)
    return that:check(self)
 end
-Any.__slots.can = function(self, key)
-   return typeof(self).__slots[key] ~= nil
+Any.__proto.can = function(self, key)
+   return typeof(self).__proto[key] ~= nil
 end
-Any.__slots.does = function(self, that)
+Any.__proto.does = function(self, that)
    return typeof(self).__with[that.__body] ~= nil
 end
 
@@ -563,6 +589,7 @@ Type = setmetatable({ }, Meta)
 Type.__name  = "Type"
 Type.new = function(meta, name)
    local type = { }
+   local proto = { }
    type.__name = name
    type.__from = Any
    type.__need = { }
@@ -570,17 +597,21 @@ Type.new = function(meta, name)
    type.__body = function() end
    type.__size = 0
    type.__rules = { }
-   type.__slots = setmetatable({ }, { __index = Any.__slots })
-   type.__index = lookup(type.__slots)
+   type.__proto = setmetatable({ }, { __index = Any.__proto })
+   type.__proto.__type  = type
+   type.__proto.__index = lookup(type.__proto)
    type.toString = function() return '<type '..name..'>' end
 
-   for k,v in pairs(Meta) do type[k] = v end
-   return setmetatable(type, meta)
+   for k,v in pairs(Meta) do
+      type.__proto[k] = v
+   end
+   return setmetatable(type, Type.__proto)
 end
 Type.toString = function() return '<type Type>' end
-Type.__slots = setmetatable({ }, { __index = Any.__slots })
-Type.__index = lookup(Type.__slots)
-Type.__slots.check = function(self, that)
+Type.__proto = setmetatable({ }, { __index = Any.__proto })
+Type.__proto.__type = Type
+Type.__proto.__index = lookup(Type.__proto)
+Type.__proto.check = function(self, that)
    local type = typeof(that)
    if type == Type then
       type = that
@@ -593,7 +624,7 @@ Type.__slots.check = function(self, that)
    end
    return false
 end
-Type.__slots.coerce = function(self, ...)
+Type.__proto.coerce = function(self, ...)
    if not self:check(...) then
       throw(TypeError:new("cannot coerce "..tostring(...).." to "..tostring(self), 2))
    end
@@ -627,7 +658,7 @@ Type.__bor = function(this, that)
    end
    return union
 end
-for k,v in pairs(Meta) do Type[k] = v end
+for k,v in pairs(Meta) do Type.__proto[k] = v end
 
 local function newtype(name)
    return Type:new(name)
@@ -650,15 +681,16 @@ Enum.new = function(class, name, proto)
    end
    return setmetatable(enum, class)
 end
-Enum.__slots = setmetatable({ }, { __index = Type.__slots })
-Enum.__index = lookup(Enum.__slots)
-Enum.__slots.coerce = function(self, that)
+Enum.__proto = setmetatable({ }, { __index = Type.__proto })
+Enum.__proto.__type = Enum
+Enum.__proto.__index = lookup(Enum.__proto)
+Enum.__proto.coerce = function(self, that)
    if not self:check(that) then
       throw(TypeError:new(tostring(that).." is not a member of "..tostring(self), 2), 2)
    end
    return that
 end
-Enum.__slots.check = function(self, that)
+Enum.__proto.check = function(self, that)
    return rawget(self,that) ~= nil
 end
 
@@ -678,37 +710,43 @@ function guard(name, body)
 end
 
 Class = newtype"Class"
-Class.__slots = setmetatable({ }, { __index = Type.__slots })
-Class.__index = lookup(Class.__slots)
-Class.__slots.toString = function(self)
+Class.__proto = setmetatable({ }, { __index = Type.__proto })
+Class.__proto.__type = Class
+Class.__proto.__index = lookup(Class.__proto)
+Class.__proto.toString = function(self)
    return "<class "..tostring(self.__name)..">"
 end
-Class.__slots.new = function(self, ...)
-   local obj = setmetatable({ }, self)
-   if self.__slots.init then
-      self.__slots.init(obj, ...)
+Class.__proto.new = function(self, ...)
+   local obj = setmetatable({ }, self.__proto)
+   if self.__proto.init then
+      self.__proto.init(obj, ...)
    end
    return obj
 end
-Class.__slots.members = function(self)
-   return self.__slots
+Class.__proto.members = function(self)
+   return self.__proto
+end
+for k,v in pairs(Meta) do
+   Class.__proto[k] = v
 end
 
 Trait = newtype"Trait"
-Trait.__index = lookup(Trait.__slots)
-Trait.__slots.toString = function(self)
+Trait.__proto = setmetatable({ }, { __index = Type.__proto })
+Trait.__proto.__type = Trait
+Trait.__proto.__index = lookup(Trait.__proto)
+Trait.__proto.toString = function(self)
    return "<trait "..tostring(self.__name)..">"
 end
-Trait.__slots.check = function(self, that)
+Trait.__proto.check = function(self, that)
    return that.__with[self.__body] ~= nil
 end
-Trait.__slots.coerce = function(self, that)
+Trait.__proto.coerce = function(self, that)
    if not self:check(that) then
       throw(TypeError:new(tostring(that).." does not compose: "..tostring(self), 2))
    end
    return that
 end
-Trait.__slots.__getitem = function(self, ...)
+Trait.__proto.__getitem = function(self, ...)
    local args = { ... }
    local want = self.__want - #args
    if want ~= 0 then
@@ -725,7 +763,7 @@ Trait.__slots.__getitem = function(self, ...)
    end
    return copy
 end
-Trait.__slots.make = function(self, into, recv, ...)
+Trait.__proto.make = function(self, into, recv, ...)
    if self.__want ~= 0 then
       throw(TypeError:new(
          "trait "..tostring(self.__name)..
@@ -742,10 +780,10 @@ end
 
 Array = newtype"Array"
 Array.new = function(self, ...)
-   return setmetatable({ ... }, self)
+   return setmetatable({ ... }, self.__proto)
 end
 Array.apply = function(self, ...)
-   return setmetatable({ ... }, self)
+   return setmetatable({ ... }, self.__proto)
 end
 Array.__getitem = function(self, type)
    return guard('Array['..tostring(type.__name)..']', function(self, samp)
@@ -755,11 +793,12 @@ Array.__getitem = function(self, type)
       return samp
    end)
 end
-Array.__index = Array.__slots
-Array.__slots.len = function(self)
+Array.__proto.__type = Array
+Array.__proto.__index = Array.__proto
+Array.__proto.len = function(self)
    return #self
 end
-Array.__slots.apply = function(self, ...)
+Array.__proto.apply = function(self, ...)
    local recv = self[1]
    local args = { unpack(self, 2) }
    for i=1, select('#', ...) do
@@ -767,7 +806,7 @@ Array.__slots.apply = function(self, ...)
    end
    return self[1](unpack(args))
 end
-Array.__slots.toString = function(self)
+Array.__proto.toString = function(self)
    local buf = { }
    for i = 1, #self do
       if rawtype(self[i]) == "string" then
@@ -778,10 +817,10 @@ Array.__slots.toString = function(self)
    end
    return "["..table.concat(buf, ",").."]"
 end
-Array.__each = ipairs
-Array.__slots.__getitem = rawget
-Array.__slots.__setitem = rawset
-Array.__match = function(a, b)
+Array.__proto.__each = ipairs
+Array.__proto.__getitem = rawget
+Array.__proto.__setitem = rawset
+Array.__proto.__match = function(a, b)
    if not __is__(b,Array) then return false end
    if a:len() ~= b:len() then return false end
    for i=1, a:len() do
@@ -792,26 +831,26 @@ Array.__match = function(a, b)
    end
    return true
 end
-Array.__add = function(a, b)
+Array.__proto.__add = function(a, b)
    local c = Array:new(unpack(a))
    for i=1, #b do c[#c + 1] = b[i] end
    return c
 end
-Array.__slots.unpack = unpack
-Array.__slots.insert = table.insert
-Array.__slots.remove = table.remove
-Array.__slots.concat = table.concat
-Array.__slots.sort = function(self, cond)
+Array.__proto.unpack = unpack
+Array.__proto.insert = table.insert
+Array.__proto.remove = table.remove
+Array.__proto.concat = table.concat
+Array.__proto.sort = function(self, cond)
    table.sort(self, cond)
    return self
 end
-Array.__slots.each = function(self, block)
+Array.__proto.each = function(self, block)
    for i=1, #self do
       block(self[i])
    end
    return self
 end
-Array.__slots.map = function(self, block)
+Array.__proto.map = function(self, block)
    local out = Array:new()
    for i = 1, #self do
       local v = self[i]
@@ -819,13 +858,13 @@ Array.__slots.map = function(self, block)
    end
    return out
 end
-Array.__slots.inject = function(self, code)
+Array.__proto.inject = function(self, code)
    for i=1, #self do
       self[i] = code(self[i])
    end
    return self
 end
-Array.__slots.grep = function(self, block)
+Array.__proto.grep = function(self, block)
    local out = Array:new()
    for i=1, #self do
       local v=self[i]
@@ -835,19 +874,19 @@ Array.__slots.grep = function(self, block)
    end
    return out
 end
-Array.__slots.push = function(self, v)
+Array.__proto.push = function(self, v)
    self[#self + 1] = v
 end
-Array.__slots.pop = function(self)
+Array.__proto.pop = function(self)
    return table.remove(self)
 end
-Array.__slots.shift = function(self)
+Array.__proto.shift = function(self)
    return table.remove(self, 1)
 end
-Array.__slots.unshift = function(self, v)
+Array.__proto.unshift = function(self, v)
    table.insert(self, 1, v)
 end
-Array.__slots.splice = function(self, offset, count, ...)
+Array.__proto.splice = function(self, offset, count, ...)
    local args = Array:new(...)
    local out  = Array:new()
    for i=offset, offset + count - 1 do
@@ -858,7 +897,7 @@ Array.__slots.splice = function(self, offset, count, ...)
    end
    return out
 end
-Array.__slots.reverse = function(self) 
+Array.__proto.reverse = function(self) 
    local out = Array:new()
    for i=1, #self do
       out[i] = self[#self - i + 1]
@@ -868,25 +907,25 @@ end
 
 Table = newtype"Table"
 Table.new = function(self, table)
-   return setmetatable(table or { }, self)
+   return setmetatable(table or { }, self.__proto)
 end
 Table.apply = function(self, ...)
    return self:new(...)
 end
 Table.MODE = { k = { }, v = { }, kv = { } } 
-Table.__index = Table.__slots
-Table.__slots.weak = function(self, mode)
+Table.__proto.__index = Table.__proto
+Table.__proto.weak = function(self, mode)
    if mode == 'k' or mode == 'kv' or mode == 'v' then
       debug.setmetatable(self, Table.MODE[mode])
       return self
    end
    error("invalid weak mode '"..tostring(mode).."', must be 'k', 'kv' or 'v'", 2)
 end
-Table.__slots.next = next
-Table.__slots.as = function(this, that)
+Table.__proto.next = next
+Table.__proto.as = function(this, that)
    return setmetatable(this, that)
 end
-Table.__slots.toString = function(self)
+Table.__proto.toString = function(self)
    local buf = { }
    for k,v in pairs(self) do
       local _v
@@ -903,15 +942,15 @@ Table.__slots.toString = function(self)
    end
    return "{"..table.concat(buf, ",").."}"
 end
-Table.__each = pairs
-Table.__slots.len = function(self) return #self end
-Table.__slots.each = function(self)
+Table.__proto.__each = pairs
+Table.__proto.len = function(self) return #self end
+Table.__proto.each = function(self)
    return pairs(self)
 end
-Table.__slots.__getitem = rawget
-Table.__slots.__setitem = rawset
+Table.__proto.__getitem = rawget
+Table.__proto.__setitem = rawset
 
-for k,v in pairs(table) do Table.__slots[k] = v end
+for k,v in pairs(table) do Table.__proto[k] = v end
 for m,t in pairs(Table.MODE) do
    t.__mode = m
    t.__from = Table
@@ -925,9 +964,9 @@ Range.new = function(self, min, max, inc)
    min = assert(tonumber(min), "range min is not a number")
    max = assert(tonumber(max), "range max is not a number")
    inc = assert(tonumber(inc or 1), "range inc is not a number")
-   return setmetatable({ min, max, inc }, self)
+   return setmetatable({ min, max, inc }, self.__proto)
 end
-Range.__each = function(self)
+Range.__proto.__each = function(self)
    local inc = self[3]
    local cur = self[1] - inc
    local max = self[2]
@@ -938,20 +977,20 @@ Range.__each = function(self)
       end
    end
 end
-Range.__slots.iter = Range.__each
-Range.__slots.each = function(self, block)
-   for i in Range.__slots.iter(self) do
+Range.__proto.iter = Range.__proto.__each
+Range.__proto.each = function(self, block)
+   for i in Range.__proto.iter(self) do
       block(i)
    end
 end
-Range.__slots.check = function(self, val)
+Range.__proto.check = function(self, val)
    if type(tonumber(val)) ~= 'number' then return false end
    if val < self[1] then return false end
    if val > self[2] then return false end
    if val % self[3] == 0 then return true end
    return false
 end
-Range.__slots.coerce = function(self, val)
+Range.__proto.coerce = function(self, val)
    if not self:check(val) then
       throw(TypeError:new(tostring(val).." is not in: "..tostring(self)))
    end
@@ -964,12 +1003,12 @@ Void.check = function(self, ...)
 end
 
 Nil = newtype"Nil"
-Nil.__tostring = nil
-Nil.__call = nil
+Nil.__proto.__tostring = nil
+Nil.__proto.__call = nil
 Nil.check = function(self, val)
    if val == nil then return true end
 end
-debug.setmetatable(nil, Nil)
+debug.setmetatable(nil, Nil.__proto)
 
 Number = newtype"Number"
 Number.check = function(self, val)
@@ -982,24 +1021,24 @@ Number.coerce = function(self, val)
    end
    return v
 end
-Number.__tostring = nil
-Number.__slots.toString = tostring
-Number.__slots.times = function(self, block)
+Number.__proto.__tostring = nil
+Number.__proto.toString = tostring
+Number.__proto.times = function(self, block)
    for i=1, self do
       block(i)
    end
 end
-Number.__bnot = bit.bnot
-Number.__bor  = bit.bor
-Number.__band = bit.band
-Number.__bxor = bit.bxor
-Number.__lshift = bit.lshift
-Number.__rshift = bit.rshift
-Number.__arshift = bit.arshift
-debug.setmetatable(0, Number)
+Number.__proto.__bnot = bit.bnot
+Number.__proto.__bor  = bit.bor
+Number.__proto.__band = bit.band
+Number.__proto.__bxor = bit.bxor
+Number.__proto.__lshift = bit.lshift
+Number.__proto.__rshift = bit.rshift
+Number.__proto.__arshift = bit.arshift
+debug.setmetatable(0, Number.__proto)
 
 String = newtype"String"
-String.__tostring = nil
+String.__proto.__tostring = nil
 String.check  = function(self, that)
    return rawtype(that) == 'string'
 end
@@ -1007,21 +1046,22 @@ String.coerce = function(self, that)
    return tostring(that)
 end
 for k,v in pairs(string) do
-   String.__slots[k] = v
+   String.__proto[k] = v
 end
-String.__slots.toString = function(self) return self end
-String.__add = function(a, b) return a .. tostring(b) end
-String.__match = function(a, b)
+String.__proto.__type = String
+String.__proto.__index = lookup(String.__proto)
+String.__proto.toString = function(self) return self end
+String.__proto.__match = function(a, b)
    if Pattern.type(b) == 'pattern' then
       return b:match(a)
    else
       return a == b
    end
 end
-String.__getitem = function(self, idx)
+String.__proto.__getitem = function(self, idx)
    return self:sub(idx, idx + 1)
 end
-String.__slots.split = function(str, sep, max)
+String.__proto.split = function(str, sep, max)
    if not str:find(sep) then
       return Array:new(str)
    end
@@ -1045,40 +1085,32 @@ String.__slots.split = function(str, sep, max)
    end 
    return list
 end
-String.__slots.len = function(self)
+String.__proto.len = function(self)
    return #self
 end
-debug.setmetatable("", String)
+debug.setmetatable("", String.__proto)
 
 Boolean = newtype"Boolean"
-Boolean.__tostring = nil
+Boolean.__proto.__tostring = nil
 Boolean.check = function(self, that)
    return rawtype(that) == 'boolean'
 end
 Boolean.coerce = function(self, v)
    return not(not(v))
 end
-Boolean.__slots.toString = function(self) return tostring(self) end
-debug.setmetatable(true, Boolean)
+Boolean.__proto.toString = function(self) return tostring(self) end
+debug.setmetatable(true, Boolean.__proto)
 
 Function = newtype"Function"
-Function.__call = nil
-Function.__tostring = nil
-Function.__slots.dump = string.dump
+Function.__proto.__call = nil
+Function.__proto.__tostring = nil
+Function.__proto.dump = string.dump
 Function.check = function(self, that)
    return rawtype(that) == 'function'
 end
-Function.__slots.__name = '<function>'
-Function.__slots.toString = function(self) return tostring(self) end
---[[
-Function.__slots.coerce = function(self, ...)
-   return self(...)
-end
-Function.__slots.check = function(self, ...)
-   return (pcall(self, ...))
-end
---]]
-debug.setmetatable(function() end, Function)
+Function.__proto.__name = '<function>'
+Function.__proto.toString = function(self) return tostring(self) end
+debug.setmetatable(function() end, Function.__proto)
 
 Thread = newtype"Thread"
 Thread.__tostring = nil
@@ -1097,31 +1129,29 @@ end
 Thread.new = function(type, ...)
    return type.create(...)
 end
-Thread.__slots.toString = function(self) return tostring(self) end
+Thread.__proto.toString = function(self) return tostring(self) end
 for k,v in pairs(coroutine) do
    if not rawget(Thread,k) then
-      Thread.__slots[k] = v
+      Thread.__proto[k] = v
    end
 end
-debug.setmetatable(coroutine.create(function() end), Thread)
+debug.setmetatable(coroutine.create(function() end), Thread.__proto)
 
-Pattern = setmetatable(typeof(_patt.P(1)), Type)
-Pattern.__name = "Pattern"
-Pattern.__from = Any
-Pattern.__with = { }
-Pattern.__slots = setmetatable(Pattern.__index, { __index = Any.__slots })
-Pattern.__index = lookup(Pattern.__slots)
+Pattern = newtype"Pattern"
+Pattern.__proto = getmetatable(_patt.P(1))
+Pattern.__proto.__type = Pattern
+Pattern.__proto.__index = lookup(Pattern.__proto.__index)
 Pattern.toString = function() return '<type Pattern>' end
 for k,v in pairs(Meta) do
-   Pattern[k] = v
+   Pattern.__proto[k] = v
 end
 for k,v in pairs(_patt) do
    Pattern[k] = v
 end
-Pattern.__slots.apply = function(patt, self, subj, ...)
+Pattern.__proto.apply = function(patt, self, subj, ...)
    return patt:match(subj, ...)
 end
-Pattern.__match = function(patt, subj)
+Pattern.__proto.__match = function(patt, subj)
    return patt:match(subj)
 end
 

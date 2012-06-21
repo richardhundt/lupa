@@ -6,10 +6,6 @@ class Point {
 
    static has DEBUG : Boolean = false
 
-   static method apply() {
-      self.new
-   }
-
    method init() {
       MODE = 'awesome!'
       print("HELLS BELLS, this is ${MODE}", self, Point3D)
@@ -35,12 +31,10 @@ class Point3D from Point {
 var a = [ ]
 a.map(function() { })
 
-var o = Point()
-print("APPLY:", o)
-
 var p = Point.new
 var p = Point3D.new
 
+print("TYPE?", p::__type)
 print("HERE:", p)
 p.move()
 p.greet()
