@@ -110,6 +110,37 @@ local Meta = {
    __call = function(a, ...) return a:apply(...) end;
 }
 
+local MetaTrait = {
+   '__add',
+   '__sub',
+   '__mul',
+   '__div',
+   '__mod',
+   '__pow',
+   '__unm',
+   '__len',
+   '__eq',
+   '__ne',
+   '__gt',
+   '__lt',
+   '__le',
+   '__ge',
+   '__tostring',
+   '__pairs',
+   '__ipairs',
+   '__each',
+   '__lshift',
+   '__rshift',
+   '__arshift',
+   '__bor',
+   '__bxor',
+   '__bnot',
+   '__band',
+   '__call',
+   '__match',
+   '__concat',
+}
+
 function environ(outer)
    if not outer then outer = __env end
    return setmetatable({ }, { __index = outer })
@@ -150,6 +181,12 @@ function class(outer, name, from, with, body)
 
    class.__proto = setmetatable(proto, { __index = from.__proto })
    proto.__index = lookup(proto)
+   for i=1, #MetaTrait do
+      local sym = MetaTrait[i]
+      if from.__proto[sym] ~= nil then
+         class.__proto[sym] = from.__proto[sym]
+      end
+   end
 
    local inner = { }
    setmetatable(inner, { __index = outer })
@@ -406,7 +443,7 @@ do
 end
 
 function import(into, from, what, dest) 
-   local mod = __load(from)
+   local mod = __load__(from)
    if mod == true then
       throw(ImportError:new("'"..tostring(from).."' does not export any symbols."), 2)
    end
@@ -443,7 +480,7 @@ function export(from, ...)
    return exporter
 end
 
-function __load(from)
+function __load__(from)
    local path = from
    if rawtype(from) == "table" then
       path = table.concat(from, ".")
@@ -499,51 +536,51 @@ function __can__(this, that)
 end
 function __match__(this, that)
    local mt = typeof(this)
-   local __match = mt and rawget(mt, '__match')
+   local __match = mt and mt.__proto.__match
    if __match then return __match(this, that) end
    return this == that
 end
 
 function __bnot__(this)
    local mt = typeof(this)
-   local __bnot = mt and rawget(mt, '__bnot')
+   local __bnot = mt and mt.__proto.__bnot
    if __bnot then return __bnot(this) end
    return bit.bnot(tonumber(this))
 end
 
 function __bor__(this, that)
    local mt = typeof(this)
-   local __bor = mt and rawget(mt, '__bor')
+   local __bor = mt and mt.__proto.__bor
    if __bor then return __bor(this, that) end
    return bit.bor(tonumber(this), tonumber(that))
 end
 function __band__(this, that)
    local mt = typeof(this)
-   local __band = mt and rawget(mt, '__band')
+   local __band = mt and mt.__proto.__band
    if __band then return __band(this, that) end
    return bit.band(tonumber(this), tonumber(that))
 end
 function __bxor__(this, that)
    local mt = typeof(this)
-   local __bxor = mt and rawget(mt, '__bxor')
+   local __bxor = mt and mt.__proto.__bxor
    if __bxor then return __bxor(this, that) end
    return bit.bxor(tonumber(this), tonumber(that))
 end
 function __lshift__(this, that)
    local mt = typeof(this)
-   local __lshift = mt and rawget(mt, '__lshift')
+   local __lshift = mt and mt.__proto.__lshift
    if __lshift then return __lshift(this, that) end
    return bit.lshift(tonumber(this), tonumber(that))
 end
 function __rshift__(this, that)
    local mt = typeof(this)
-   local __rshift = mt and rawget(mt, '__rshift')
+   local __rshift = mt and mt.__proto.__rshift
    if __rshift then return __rshift(this, that) end
    return bit.rshift(tonumber(this), tonumber(that))
 end
 function __arshift__(this, that)
    local mt = typeof(this)
-   local __arshift = mt and rawget(mt, '__arshift')
+   local __arshift = mt and mt.__proto.__arshift
    if __arshift then return __arshift(this, that) end
    return bit.arshift(tonumber(this), tonumber(that))
 end
