@@ -243,6 +243,7 @@ object Grammar {
       ["!="] = "(%s)~=(%s)",
 
       ["~~"] = "__env.__match__(%s,%s)",
+      ["!~"] = "not(__env.__match__(%s,%s))",
 
       ["&&"] = "(%s)and(%s)",
       ["||"] = "(%s)or(%s)",
@@ -299,11 +300,6 @@ object Grammar {
       b.push(l.concat(';'))
       return b.concat()
    }
-
-   var infix_punct = /
-      |'||'|'|'|'&&'|'&'|'~~'|'~'|'**'|'*'|'/'|'%'
-      |'+'|'-'|'>>>'|'>>'|'>='|'>'|'<<'|'<='|'<'|'^'
-   /
 
    function fold_prefix(o,e) {
       unrops[o].format(e)
@@ -1283,13 +1279,13 @@ object Grammar {
       <{ make_infix_expr(/"<<"|"<"|">>>"|">>"|">"/, /<expr_5>/) }>
    }
    rule expr_5 {
-      <{ make_infix_expr(/"=="|"!="|'<='|'>='/, /<expr_6>/) }>
+      <{ make_infix_expr(/"=="|"!="|"<="|">="|"~~"|"!~"/, /<expr_6>/) }>
    }
    rule expr_6 {
-      <{ make_infix_expr(/"+"|"-"|"~"/, /<expr_7>/) }>
+      <{ make_infix_expr(/"+"|"-"|!("~~")"~"/, /<expr_7>/) }>
    }
    rule expr_7 {
-      <{ make_infix_expr(/"*"|!('//')"/"|"%"/, /<expr_8>/) }>
+      <{ make_infix_expr(/"*"|!("//"|"/*")"/"|"%"/, /<expr_8>/) }>
    }
    rule expr_8 {
       <{ make_infix_expr(/"**"/, /<prefix_expr>/) }>
