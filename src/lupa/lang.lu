@@ -208,6 +208,7 @@ object Grammar {
 
    var unrops = {
       ["!"] = "not(%s)",
+      ["#"] = "#(%s)",
       ["-"] = "-(%s)",
       ["~"] = "__env.__bnot__(%s)",
       ["?"] = '__env.__maybe__(%s)',
