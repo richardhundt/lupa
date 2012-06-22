@@ -470,6 +470,9 @@ function __each__(a, ...)
    end
    return pairs(a)
 end
+
+__as__ = setmetatable
+
 function __is__(this, that)
    return this:is(that)
 end
@@ -667,6 +670,9 @@ Enum.__slots.coerce = function(self, that)
 end
 Enum.__slots.check = function(self, that)
    return rawget(self,that) ~= nil
+end
+Enum.__slots.__getitem = function(self, name)
+   return self[name]
 end
 
 function enum(name, proto)

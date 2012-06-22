@@ -1,2 +1,20 @@
-var a = 1
-a += 1
+import TestUnit from etc.test
+
+object Tests from TestUnit {
+   method test_1 {
+      var a = 1
+      a += 1
+      .assert(a == 2, 'arith binop bind')
+      a &&= 42
+      .assert(a == 42, 'logical binop bind')
+   }
+   method test_2 {
+      var a = { }
+      .assert(getmetatable(a) == Table, 'init Table instance')
+      a = a as nil
+      .assert(getmetatable(a) == nil, 'binop as')
+   }
+}
+
+Tests.run
+

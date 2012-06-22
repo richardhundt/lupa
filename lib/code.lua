@@ -713,7 +713,7 @@ function Proto.__index:op_tsetm(base, vnum)
    local vint = ffi.cast('uint8_t*', knum)
    vint[0] = bit.band(vnum, 0x00FF)
    vint[1] = bit.rshift(vnum, 8)
-   local vidx = ffi.const(tonumber(knum[0]))
+   local vidx = self:const(tonumber(knum[0]))
    return self:emit(BC.TSETM, base, vidx)
 end
 function Proto.__index:op_fnew(dest, pidx)

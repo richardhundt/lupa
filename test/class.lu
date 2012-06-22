@@ -1,3 +1,5 @@
+Number < 0
+
 class Point {
    has x : Number = 0
    has y : Number = 0
@@ -14,7 +16,7 @@ class Point {
       MODE = 'awesome!'
       print("HELLS BELLS, this is ${MODE}", self, Point3D)
    }
-   method move(x = 0, y = 0) {
+   method move(x = self.foo(), y = 0) {
       .x = x
       .y = y
    }

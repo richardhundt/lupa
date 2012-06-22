@@ -1,9 +1,6 @@
 import TestUnit from etc.test
-import Compiler from lupa.lang
 
 object Tests from TestUnit {
-   has compiler = Compiler.new
-
    method test_literal {
       var a = [1, 2, 3]
       .assert(a, 'created array')
