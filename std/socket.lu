@@ -140,7 +140,6 @@ enum PROTO {
 }
 
 class SockAddr with FFI::MetaType['SockAddr'] {
-   var ffi = require('ffi')
    var C = FFI::C
 
    method family { self::sa_family }
@@ -164,7 +163,7 @@ class SockAddr with FFI::MetaType['SockAddr'] {
 
    static method coerce(that) {
       if that does SockAddr::Common {
-         var v = ffi::cast('SockAddr*', ffi::cast('void*', that))
+         var v = FFI.cast('SockAddr*', FFI.cast('void*', that))
          return v
       }
       throw TypeError.new("cannot coerce ${that} to ${self}")
