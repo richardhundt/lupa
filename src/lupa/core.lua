@@ -460,6 +460,9 @@ function __each__(a, ...)
    end
    return pairs(a)
 end
+
+__as__ = setmetatable
+
 function __is__(this, that)
    if type(this) == 'cdata' then
       return ffi.istype(this, that)
