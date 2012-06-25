@@ -932,6 +932,7 @@ for m,t in pairs(Table.MODE) do
       t[k] = v
    end
 end
+assert(Table.coerce)
 
 Range = newtype"Range"
 Range.new = function(self, min, max, inc) 

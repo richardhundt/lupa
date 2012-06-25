@@ -861,6 +861,17 @@ object Compiler {
       assert(ctx.scope.outer == nil, "scope is unbalanced")
       return lua
    }
+   method verify(ast, ctx) {
+      var stack = [ ast ]
+      while #stack > 0 {
+         var node = stack.shift()
+         if node::tag == 'var_decl' {
+            if node::type {
+
+            }
+         }
+      }
+   }
 }
 
 
@@ -868,13 +879,14 @@ class Scope {
    has entries = { }
    has resolve = { }
    has exports = [ ]
-   has hoists  = [ ]
    has inner   = [ ]
    has outer
    has kind
+   has proto
 
-   method init(outer) {
+   method init(outer, proto) {
       .outer = outer
+      .proto = proto
       if outer {
          outer.inner.push(self)
       }
@@ -892,12 +904,67 @@ class Scope {
    method define(name, info) {
       .entries[name] = info || { }
    }
-   method unhoist(sep) {
-      var code = .hoists.concat(sep)
-      if .hoists.len > 0 {
-         .hoists = [ ]
+}
+
+class TypeInfo {
+   has name
+}
+class VarInfo from TypeInfo {
+   has name
+   method init(name) {
+      self.name = name
+   }
+}
+
+class SlotInfo from TypeInfo {
+   has kind = 'Any'
+   method init(name, kind) {
+      super.init(name)
+      self.kind = kind
+   }
+}
+class ClassInfo from TypeInfo {
+   has members = { }
+   method add_member(member : TypeInfo) {
+      self.members.insert(member)
+      self.members[member.name] = member
+   }
+   method get_member(name) {
+      self.members[name]
+   }
+   method has_member(name) {
+      self.members[name] != nil
+   }
+   method can_coerce_to(that) {
+      if typeof(that) != ClassInfo {
+         return false
       }
-      return code
+      for i=1, #that.members {
+         var mem = that.members[i]
+         if !mem.is_consistent_with(self.get_member(mem.name)) {
+            return false
+         }
+      }
+      return true
+   }
+}
+class FuncInfo from TypeInfo {
+   has params  = { }
+   has returns = [ ]
+
+   method add_param(info) {
+      self.params[info.name] = info
+      self.params.insert(info)
+   }
+   method serialize(buf) {
+
+   }
+   method is_consistent_with(that) {
+      if that == 'Any' { return true }      
+      if typeof(that) != FuncInfo { return false }
+   }
+   method can_coerce_to(that) {
+
    }
 }
 
@@ -1172,6 +1239,7 @@ object Code {
       has kcache = { }
       has varinfo = { }
       has actvars = { }
+      has nactvars = 0
       has freereg = 0
       has currline = 0
       has firstline = 0
@@ -1184,36 +1252,26 @@ object Code {
       }
 
       method nextreg(num = 1) {
-         var reg
-         if num > 1 {
-            reg = self.freereg
-            for i=1, num {
-               if self.freereg >= self.framesize {
-                  self.framesize = self.freereg
-               }
-               self.freereg += 1
-            }
-         }
-         else {
-            reg = self.freereg
-            if reg >= self.framesize {
-               self.framesize = reg
-            }
-            self.freereg += 1
+         var reg = self.freereg
+         self.freereg += num
+         if self.freereg >= self.framesize {
+            self.framesize = self.freereg
          }
          return reg
       }
       method enter {
          var outer = self.actvars
          self.actvars = setmetatable({ }, {
-            freereg = self.freereg,
-            __index = outer,
+            freereg  = self.freereg,
+            nactvars = self.nactvars,
+            __index  = outer,
          })
       }
       method leave {
          var scope = assert(getmetatable(self.actvars), "cannot leave main scope")
-         self.freereg = scope::freereg
-         self.actvars = scope::__index
+         self.freereg  = scope::freereg
+         self.actvars  = scope::__index
+         self.nactvars = scope::nactvars
       }
       method child(flags) {
          self.flags |= CHILD
@@ -1377,8 +1435,11 @@ object Code {
             endpc    = ofs,
             name     = name,
          }
+
+         self.nactvars += 1
          self.actvars::[name] = lvar
-         self.actvars::[#self.actvars + 1] = lvar
+         self.actvars::[self.nactvars] = lvar
+
          self.varinfo::[name] = lvar
          self.varinfo::[#self.varinfo + 1] = lvar
          return lvar
@@ -1444,7 +1505,7 @@ object Code {
             return self.emit(BC.JMP, base, offs - #self.code)
          }
          else {
-            // unknown label, so remember the location and patch after
+            // unknown label, note the location and patch after
             var here = self.tohere::[name]
             if !here {
                here = { }
@@ -1750,21 +1811,20 @@ class Context {
       self.dump = Code::Dump.new(self.main, '='~self.name)
       self.proto = self.main
       self.source = source
+      self.scope.proto = self.proto
    }
 
    method enter(kind) {
       kind ||= .scope.kind
-      .scope = Scope.new(.scope)
+      .scope = Scope.new(.scope, .proto)
       .scope.kind = kind
    }
    method leave() {
-      if .scope.hoists.len > 0 {
-         error("unhoisted code: ${.scope.hoists}", 2)
-      }
       var outer = .scope.outer
       var inner = .scope
       if outer != nil {
          .scope = outer
+         .proto = outer.proto
          return inner
       }
       Error raise "no outer scope"
@@ -1798,24 +1858,6 @@ class Context {
             self.proto.upval(name)
          }
       }
-   }
-   method getvar(name, dest) {
-      dest ||= self.nextreg
-      var info = self.scope.lookup(name, self.offs)
-      if info == nil || info::base == '(environ)' {
-         self.op_gget(dest, name)
-         return dest
-      }
-      if info::proto == self.proto {
-         self.proto.getvar(name)
-         if info::idx != dest {
-            self.op_move(dest, info::idx)
-         }
-      }
-      else {
-         self.op_uget(dest, name)
-      }
-      return dest
    }
    method invoke(base, meth, want, ...args) {
       var free = self.freereg
@@ -1854,15 +1896,25 @@ class Context {
       }
    }
 
-   method nextreg(num) {
-      var next = .proto.nextreg()
-      if num && num > 1 {
-         for i=2, num {
-            .proto.nextreg()
+   method getvar(name, dest) {
+      dest ||= self.nextreg
+      var info = self.scope.lookup(name, self.offs)
+      if info == nil || info::base == '(environ)' {
+         self.op_gget(dest, name)
+         return dest
+      }
+      if info::proto == self.proto {
+         self.proto.getvar(name)
+         if info::idx != dest {
+            self.op_move(dest, info::idx)
          }
       }
-      return next
+      else {
+         self.op_uget(dest, name)
+      }
+      return dest
    }
+
    method sync(node) {
       var offs = node['pos']
       if offs != nil && offs > self.offs {
@@ -2182,7 +2234,7 @@ object Handler {
          ctx.emit(ihash[i][2], tval)
          ctx.op_tset(base, temp, tval)
       }
-      ctx.freereg = base
+      ctx.freereg = free
       var ctor = ctx.nextreg
       var recv = ctx.nextreg
       var this = ctx.nextreg
@@ -2620,7 +2672,7 @@ var b = 2
 '''
 
 tests push '''
-var a = { foo = 'bar', baz = 42 }
+var a : Table = { foo = 'bar', baz = 42 }
 for k, v in pairs(a) {
    print(k, v)
 }
