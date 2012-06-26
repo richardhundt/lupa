@@ -1,16 +1,38 @@
-var x, y
-x = 42
-x,y = 42
+import TestUnit from etc.test
 
-var a = { }
-a['b'] = 42
-a::b = 42
-a::b,a::c = 69
+object Tests from TestUnit {
+   method test_1 {
+      var a = 42
+      .assert(a == 42, 'single var decl')
+      var a, b = 42, 69
+      .assert(a == 42, 'multi var decl 1')
+      .assert(b == 69, 'multi var decl 2')
+      var x, y
+      x, y = 'a', 'b'
+      .assert(x == 'a', 'multi name update 1')
+      .assert(y == 'b', 'multi name update 2')
+   }
+   method test_2 {
+      var a = { }
+      .assert(a, 'created table')
+      a['b'] = 42
+      .assert(a['b'] == 42, 'table item')
+      .assert(a::b == 42, 'table item (raw)')
+      a::b = 101
+      .assert(a::b == 101, 'table item update (raw)')
+      a::b, a::c = 69, 42
+      .assert(a::b == 69, 'table item update (raw multi)')
+      .assert(a::c == 42, 'table item update (raw multi)')
+   }
+   method test_3 {
+      var a = { foo = 1, bar = 2 }
+      var b = { baz = 3, hop = 4 }
+      a['foo'], a['bar'] = b['baz'], b['hop']
+      .assert(a['foo'] == 3, '__setitem multi lhs 1')
+      .assert(a['bar'] == 4, '__setitem multi lhs 2')
+   }
+}
 
-var a,b,c = 1,2,3
-a,b,c = 'a','b','c'
-print(a,b,c)
+Tests.run
 
-var a = { }
-var b = { }
-a['foo'], a['bar'] = b['baz'], b['quux']
+

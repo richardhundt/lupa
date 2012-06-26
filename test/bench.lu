@@ -1,23 +1,23 @@
 class Point {
-    has x : Number = 0
-    has y : Number = 0
-    method move(x : Number = 0, y : Number = 0) {
-        .x = x
-        .y = y
-    }
+   has x : Number = 0
+   has y : Number = 0
+   method move(x : Number = 0, y : Number = 0) {
+      .x = x
+      .y = y
+   }
 }
 
 class Point3D from Point {
-    has z : Number = 0
-    method move(x, y, z : Number = 0) {
-        super.move(x, y)
-        .z = z
-    }
+   has z : Number = 0
+   method move(x, y, z : Number = 0) {
+      super.move(x, y)
+      .z = z
+   }
 }
 
 var p = Point3D.new
 for i=1,10_000_000 {
-    p.move(i, i+1, i+2)
+   p.move(i, i+1, i+2)
 }
 print(p.x, p.y, p.z)
 
