@@ -1,2 +1,26 @@
-var a = 1
-a += 1
+import TestUnit from etc.test
+
+object Tests from TestUnit {
+   method test_1 {
+      var a = 1
+      a += 1
+      .assert(a == 2, '+=')
+   }
+   method test_2 {
+      var a = nil
+      a ||= 42
+      .assert(a == 42, '||=')
+   }
+   method test_3 {
+      var a = 1
+      a <<= 1
+      .assert(a == 2, '<<=')
+   }
+   method test_4 {
+      var a = 1
+      a |= 0x10
+      .assert(a == 17, '|=')
+   }
+}
+
+Tests.run
