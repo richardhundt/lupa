@@ -906,68 +906,6 @@ class Scope {
    }
 }
 
-class TypeInfo {
-   has name
-}
-class VarInfo from TypeInfo {
-   has name
-   method init(name) {
-      self.name = name
-   }
-}
-
-class SlotInfo from TypeInfo {
-   has kind = 'Any'
-   method init(name, kind) {
-      super.init(name)
-      self.kind = kind
-   }
-}
-class ClassInfo from TypeInfo {
-   has members = { }
-   method add_member(member : TypeInfo) {
-      self.members.insert(member)
-      self.members[member.name] = member
-   }
-   method get_member(name) {
-      self.members[name]
-   }
-   method has_member(name) {
-      self.members[name] != nil
-   }
-   method can_coerce_to(that) {
-      if typeof(that) != ClassInfo {
-         return false
-      }
-      for i=1, #that.members {
-         var mem = that.members[i]
-         if !mem.is_consistent_with(self.get_member(mem.name)) {
-            return false
-         }
-      }
-      return true
-   }
-}
-class FuncInfo from TypeInfo {
-   has params  = { }
-   has returns = [ ]
-
-   method add_param(info) {
-      self.params[info.name] = info
-      self.params.insert(info)
-   }
-   method serialize(buf) {
-
-   }
-   method is_consistent_with(that) {
-      if that == 'Any' { return true }      
-      if typeof(that) != FuncInfo { return false }
-   }
-   method can_coerce_to(that) {
-
-   }
-}
-
 object Code {
    var ffi = require('ffi')
 
