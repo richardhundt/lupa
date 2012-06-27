@@ -2,7 +2,6 @@ import FFI from std.system
 
 export SockAddr, Socket, Buffer, TCP, SOCK, AF, PROTO, SocketError, AcceptError
 
-var int32 = FFI.typeof('int32_t')
 FFI cdef """
    typedef uint16_t in_port_t;
    typedef uint32_t socklen_t;

@@ -221,7 +221,7 @@ function has(into, name, type, ctor, meta)
    local get, set
    if type then
       function set(obj, val)
-         rawset(obj, idx, type:coerce(val))
+         rawset(obj, idx, __coerce__(type,val))
       end
    else
       function set(obj, val)
@@ -460,6 +460,18 @@ function __each__(a, ...)
    end
    return pairs(a)
 end
+function __coerce__(kind, ...)
+   if type(kind) == 'cdata' then
+      return kind(...)
+   end
+   return kind:coerce(...)
+end
+function __check__(kind, ...)
+   if type(kind) == 'cdata' then
+      return pcall(kind, ...) == true
+   end
+   return kind:check(...)
+end
 
 __as__ = setmetatable
 
@@ -531,7 +543,7 @@ Any.coerce = function(self, ...) return ...  end
 Any.check  = function(self, ...) return true end
 Any.toString = function() return "<type Any>" end
 Any.is = function(self, that)
-   return that:check(self)
+   return __check__(that, self)
 end
 Any.__name = "Any"
 Any.__from = { }
@@ -542,7 +554,9 @@ Any.__slots = { }
 Any.__index = lookup(Any.__slots)
 Any.__match = function(a, b)
    if typeof(b) == Class or typeof(b) == Trait or typeof(b) == Type then
-      return b:check(a)
+      return __check__(b, a)
+   elseif type(b) == 'cdata' then
+      return __is__(a, b)
    end
    return a == b
 end
@@ -553,7 +567,7 @@ Any.__slots.toString = function(self)
    return ('%s%s: %p'):format(type(self), tostring(typeof(self)), self)
 end
 Any.__slots.is = function(self, that)
-   return that:check(self)
+   return __check__(that, self)
 end
 Any.__slots.can = function(self, key)
    return typeof(self).__slots[key] ~= nil
@@ -597,34 +611,34 @@ Type.__slots.check = function(self, that)
    return false
 end
 Type.__slots.coerce = function(self, ...)
-   if not self:check(...) then
+   if not __check__(self, ...) then
       throw(TypeError:new("cannot coerce "..tostring(...).." to "..tostring(self), 2))
    end
    return ...
 end
 Type.__match = function(self, that)
-   return self:check(that)
+   return __check__(self, that)
 end
 Type.__maybe = function(self, that)
    local this = self
    local maybe = Type:new('?'..tostring(self.__name))
    maybe.coerce = function(self, ...)
       if ... == nil then return ... end
-      return this:coerce(...)
+      return __coerce__(this, ...)
    end
    maybe.check = function(self, ...)
       if ... == nil then return true end
-      return this:check(...)
+      return __check__(this, ...)
    end
    return maybe
 end
 Type.__bor = function(this, that)
    local union = Type:new(this.__name..'|'..that.__name)
    union.coerce = function(self, ...)
-      if this:check(...) then
-         return this:coerce(...)
-      elseif that:check(...) then
-         return that:coerce(...)
+      if __check__(this, ...) then
+         return __coerce__(this, ...)
+      elseif __check__(that, ...) then
+         return __coerce__(that, ...)
       end
       throw(TypeError:new("cannot coerce "..tostring(typeof(...)).." to "..tostring(self), 2))
    end
@@ -965,12 +979,24 @@ Void = newtype"Void"
 Void.check = function(self, ...)
    return select("#", ...) == 0
 end
+Void.coerce = function(self, ...)
+   if not self:check(...) then
+      throw(TypeError:new("got value where Void expected", 2))
+   end
+   return ...
+end
 
 Nil = newtype"Nil"
 Nil.__tostring = nil
 Nil.__call = nil
-Nil.check = function(self, val)
-   if val == nil then return true end
+Nil.check = function(self, ...)
+   if select('#',...) > 0 and type(...) == nil then return true end
+end
+Nil.coerce = function(self, ...)
+   if not self:check(...) then
+      throw(TypeError:new("expected 'nil'", 2))
+   end
+   return ...
 end
 debug.setmetatable(nil, Nil)
 
@@ -1013,7 +1039,6 @@ for k,v in pairs(string) do
    String.__slots[k] = v
 end
 String.__slots.toString = function(self) return self end
-String.__add = function(a, b) return a .. tostring(b) end
 String.__match = function(a, b)
    if Pattern.type(b) == 'pattern' then
       return b:match(a)

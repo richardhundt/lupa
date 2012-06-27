@@ -11,9 +11,13 @@ Lupa - multi-paradigm object oriented, dynamic language
     lupa <file> -l
         list generated Lua
 
-Lupa is an object-oriented language which targets the LuaJIT2 VM. It supports a rich feature set inspired by Ruby (property access via methods), Scala (operators are methods, traits), Perl 6 (has, method, does) and Falcon.
+Lupa is an object-oriented language which targets the LuaJIT2 VM.
+It supports a rich feature set inspired by Ruby (property access
+via methods), Perl 6 (has, method, does) and Falcon.
 
-It also has some less commonly found features, such as parsing expression grammars (via LPeg) integrated into the language (instead of the traditional PCRE), and type guards.
+It also has some less commonly found features, such as parsing
+expression grammars (via LPeg) integrated into the language (instead
+of the traditional PCRE), and type guards.
 
 ## Features
 
@@ -28,7 +32,7 @@ However, Lupa adds several features, such as:
 * static symbol resolution
 * type guards and assertions
 * language integrated grammars (via LPeg)
-* operators as method calls
+* bitwise operators
 * continue statement
 * string interpolation
 * builtin Array type
