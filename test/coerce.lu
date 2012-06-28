@@ -1,0 +1,106 @@
+import TestUnit from etc.test
+
+class MyClass { }
+trait MyTrait { }
+class MyClass2 with MyTrait { }
+
+object Tests from TestUnit {
+
+   method test_basic {
+      var a = MyClass.new
+      var b : MyClass
+      b = a
+      .assert(b is MyClass, 'is MyClass')
+      .assert(b == a, 'identity assertion')
+      .assert(b ~~ MyClass, 'class match')
+   }
+   method test_type_ops {
+      var a : MyTrait
+      a = MyClass2.new
+      .assert(a does MyTrait, 'does assertion')
+      .assert(a is MyClass2, 'is assertion')
+      .assert(a is MyTrait, 'trait is assertion')
+      var seen_error
+      try {
+         a = 42
+      }
+      catch(e : TypeError) {
+         seen_error = e
+      }
+      .assert(seen_error, 'seen error')
+   }
+   method test_range {
+      var r : [1;10]
+      r = 1
+      var seen_error
+      try {
+         r = 11
+      }
+      catch (e : TypeError) {
+         seen_error = e
+      }
+      .assert(seen_error, 'seen error')
+   }
+   method test_maybe_number {
+      var a : ?Number
+      a = nil
+      a = 42
+      var seen_error
+      try {
+         a = "cheese"
+      }
+      catch (e : TypeError) {
+         seen_error = e
+      }
+      .assert(seen_error, 'seen error')
+   }
+   method test_number_type {
+      var a : Number
+      a = 42
+      var seen_error
+      try {
+         a = nil
+      }
+      catch (e : TypeError) {
+         seen_error = e
+      }
+      .assert(seen_error, 'seen error')
+   }
+   method test_maybe_class {
+      var a : ?MyClass
+      a = MyClass.new
+      var seen_error
+      try {
+         a = nil
+      }
+      catch (e : TypeError) {
+         seen_error = e
+      }
+      .assert(!seen_error, 'not seen error')
+   }
+   method test_maybe_trait {
+      var a : ?MyTrait
+      a = MyClass2.new
+      var seen_error
+      try {
+         a = nil
+      }
+      catch (e : TypeError) {
+         seen_error = e
+      }
+      .assert(!seen_error, 'not seen error')
+      try {
+         a = 42
+      }
+      catch (e : TypeError) {
+         seen_error = e
+      }
+      catch (e) {
+         print("HERE")
+      }
+      .assert(seen_error, 'seen error')
+   }
+}
+
+Tests.run
+
