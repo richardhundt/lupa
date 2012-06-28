@@ -135,6 +135,9 @@ function class(outer, name, from, with, body)
    for k,v in pairs(Meta) do
       class[k] = v
    end
+   for k,v in pairs(Type.__slots) do
+      class[k] = v
+   end
    setmetatable(class, Class)
 
    if with then
@@ -279,13 +282,15 @@ function rule(into, name, patt)
    into.__rules[name] = patt
 end
 
+try = pcall
+--[[
 function try(try,...)
    local ok, er = pcall(try)
    if not ok then
       for i=1, select("#",...) do
          local node = select(i,...)
-         local body = node.body
-         local type = node.type
+         local body = node[1] or node.body
+         local type = node[2] or node.type
          if type == nil then
             return body(er)
          end
@@ -296,6 +301,7 @@ function try(try,...)
       throw(er, 2)
    end
 end
+--]]
 
 _patt = require("lpeg")
 _patt.setmaxstack(1024)
@@ -493,6 +499,12 @@ function __match__(this, that)
    if __match then return __match(this, that) end
    return this == that
 end
+function __maybe__(this)
+   local mt = typeof(this)
+   local __maybe = mt and rawget(mt, '__maybe')
+   if __maybe then return __maybe(this) end
+   return Type.__slots.__maybe(this)
+end
 
 function __bnot__(this)
    local mt = typeof(this)
@@ -592,6 +604,7 @@ Type.new = function(meta, name)
    type.toString = function() return '<type '..name..'>' end
 
    for k,v in pairs(Meta) do type[k] = v end
+   for k,v in pairs(Type.__slots) do type[k] = v end
    return setmetatable(type, meta)
 end
 Type.toString = function() return '<type Type>' end
@@ -616,10 +629,10 @@ Type.__slots.coerce = function(self, ...)
    end
    return ...
 end
-Type.__match = function(self, that)
-   return __check__(self, that)
+Type.__slots.__match = function(self, that)
+   return that:check(self)
 end
-Type.__maybe = function(self, that)
+Type.__slots.__maybe = function(self)
    local this = self
    local maybe = Type:new('?'..tostring(self.__name))
    maybe.coerce = function(self, ...)
@@ -632,7 +645,7 @@ Type.__maybe = function(self, that)
    end
    return maybe
 end
-Type.__bor = function(this, that)
+Type.__slots.__bor = function(this, that)
    local union = Type:new(this.__name..'|'..that.__name)
    union.coerce = function(self, ...)
       if __check__(this, ...) then
@@ -717,7 +730,7 @@ Trait.__slots.toString = function(self)
    return "<trait "..tostring(self.__name)..">"
 end
 Trait.__slots.check = function(self, that)
-   return that.__with[self.__body] ~= nil
+   return typeof(that).__with[self.__body] ~= nil
 end
 Trait.__slots.coerce = function(self, that)
    if not self:check(that) then
