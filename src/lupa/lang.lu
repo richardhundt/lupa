@@ -101,7 +101,7 @@ object Grammar {
    var id_counter = 9
    function genid() {
       id_counter += 1
-      return '_'~id_counter
+      return '__auto_'~id_counter
    }
 
    function define(name, ctx, base, type, expr) {
@@ -193,8 +193,7 @@ object Grammar {
    var s       = / (comment | %s)* /
    var S       = / (comment | %s)+ /
    var hs      = / !nl %s /
-   var udigit  = / %digit {~ "_" -> "" ~}? /
-   var digits  = / %digit udigit* /
+   var digits  = / %digit (%digit | &('_' %digit) {~ '_' -> '' ~} %digit)* /
    var word    = / ((%alpha | "_") (%alnum | "_")*) /
 
    var keyword = / (
@@ -562,12 +561,33 @@ object Grammar {
       else {
          args.push("function() ${try_body} end")
       }
-      for i=1, catch_blocks.len {
-         args.push(catch_blocks[i])
-      }
       var stmt = [ ]
       stmt.push("do${s}")
-      stmt.push("local __return__;__env.try(${args.concat(',')});")
+      stmt.push("local __return__;local __try__,__err__=__env.try(${args.concat(',')});")
+      stmt.push("if not __try__ then")
+      for i=1, catch_blocks.len {
+         var blck = catch_blocks[i]
+         var name = blck[1]
+         var body = blck[2]
+         var type = blck[3]
+         stmt.push("local ${name}=__err__;")
+         if i == 1 {
+            stmt.push("if")
+         }
+         else {
+            stmt.push("elseif")
+         }
+         if type {
+            stmt.push("__env.__match__(${name},${type}) then ${body}")
+         }
+         else {
+            stmt.push("true then ${body}")
+         }
+         if i == catch_blocks.len {
+            stmt.push("end")
+         }
+      }
+      stmt.push("end")
       stmt.push('if __return__ then return __env.unpack(__return__) end')
       if loopy {
          stmt.push('if __break__ then break end')
@@ -581,12 +601,7 @@ object Grammar {
       var name = head.match('^%s*([^%s]+)%s*$')
       var info = ctx.lookup(name)
       var type = info['type']
-      if loopy {
-         return "{body=${s1}function(${s2}${name}) ${s3} repeat ${body} until true end, type=${type}}"
-      }
-      else {
-         return "{body=${s1}function(${s2}${name}) ${s3} ${body} end, type=${type}}"
-      }
+      return { name, body, type }
    }
    function make_import_decl(ctx, names, path, dest) {
       var qnames = [ ]
@@ -858,17 +873,15 @@ object Grammar {
       {~
          "try" idsafe {s} <ctx> <enter>
          "{" {~ s <lambda_body> s ~} <{ expect("}") }>
-         ({~ s <catch_stmt> ~}* -> [ ]) =loopy
+         ((s <catch_stmt>)* -> [ ]) =loopy
          -> make_try_stmt <leave>
       ~}
    }
    rule catch_stmt {
-      {~
-         "catch" idsafe <ctx> <enter> {s}
-         "(" {s} (<name> <ctx> {`nil`} (hs* <type_expr> | {`nil`}) -> define)
-         ")" {s} "{" {~ s <lambda_body> s ~} "}"
-         =loopy -> make_catch_stmt <leave>
-      ~}
+      "catch" idsafe <ctx> <enter> {s}
+      "(" {s} (<name> <ctx> {`nil`} (hs* <type_expr> | {`nil`}) -> define)
+      ")" {s} "{" {~ s <lambda_body> s ~} "}"
+      =loopy -> make_catch_stmt <leave>
    }
    rule lambda_body {
       {:set_return: {`true`} :}
