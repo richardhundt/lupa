@@ -670,31 +670,29 @@ object Grammar {
       { %s* '#!' (!nl .)* %s* }?
       <enter>
       ({`'__env'`} <ctx> -> static_define)
-      {`'local __env=require("lupa.core").environ();'`}
+      <args>
       s <main_stmt_list>? s
       <verify>
       <leave>
    }
    rule eval {
       {~ 
-         {:set_return: {`false`} :}
-         {:type_list: {`nil`} :}
-         {:scope: {`'lexical'`} :}
-         {:loopy: {`false`} :}
-         {`'local __env=...;'`}
+         <preamble>
          <enter>
          ({`'__env'`} <ctx> -> static_define)
-         {~ s <func_body> s ~}
+         <args>
+         s <main_stmt_list>? s
          <leave>
       ~} (!. | <{syntax_error("invalid syntax")}>)
    }
 
    rule ctx   { %1 }
+   rule args  { %2 }
    rule enter { <ctx> -> enter }
    rule leave { <ctx> -> leave }
 
    rule sep {
-      long_comment? ("\n" | ";" | &"}" | line_comment) | [\t ] <sep>
+      long_comment? ("\n" | ";" | &"}" | line_comment) | [\t ] <sep>?
    }
 
    rule decl_stmt {
@@ -1505,9 +1503,19 @@ object Compiler {
       var ctx = Context.new(lupa)
       ctx.enter()
       self.predef(ctx, env || global)
-      var lua = Grammar.match(lupa, 1, ctx)
+      var lua = Grammar.match(
+         lupa, 1, ctx, 'local __env=require("lupa.core").environ();'
+      )
       ctx.leave()
       assert(ctx.scope.outer == nil, "scope is unbalanced")
+      return lua
+   }
+   method translate(lupa, name, env, head) {
+      var ctx = Context.new(lupa)
+      ctx.enter()
+      self.predef(ctx, env || global)
+      var lua = Grammar.match(lupa, 1, ctx, head)
+      ctx.leave()
       return lua
    }
 }
