@@ -12,7 +12,9 @@ package.cpath = ';;./lib/?.so;'..package.cpath
 do
    local paths = {
       ".",
+      "./lupa",
       "./lib",
+      "./lib/lupa",
       "./src",
       os.getenv('HOME').."/.lupa",
       "/usr/local/lib/lupa",

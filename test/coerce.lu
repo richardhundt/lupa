@@ -95,9 +95,6 @@ object Tests from TestUnit {
       catch (e : TypeError) {
          seen_error = e
       }
-      catch (e) {
-         print("HERE")
-      }
       .assert(seen_error, 'seen error')
    }
 }

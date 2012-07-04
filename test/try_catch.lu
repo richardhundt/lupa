@@ -10,3 +10,16 @@ function doit() {
 }
 
 print("doit:", doit())
+
+var i = 0
+var b = 0
+while i < 10_000_000 {
+   i += 1
+   try {
+      //print("trying...")
+      //assert(i < 5, "i < 5")
+      //break
+      b += i
+   }
+}
+
