@@ -80,7 +80,7 @@ object Parser {
    }
    function expect(p,m) {
       if !m { m = p }
-      return / p | <{ syntax_error("expected '"+m+"'") }> /
+      return / p | <{ syntax_error("expected '"~m~"'") }> /
    }
 
    function quote(c) { return "%q".format(c) }
@@ -783,7 +783,7 @@ object Parser {
    rule rule_class {
       {~
          ("[" -> '(') ("^" -> '__env.Pattern.P(1)-')?
-         (((!"]" <rule_item>)+ -> [ ]) -> function(a) { "("+a.concat("+")+")" })
+         (((!"]" <rule_item>)+ -> [ ]) -> function(a) { "("~a.concat("+")~")" })
          ("]" -> ')')
       ~}
    }
@@ -2466,7 +2466,7 @@ var tests = [ ]
 
 function runtest(tnum, dump) {
    var test = tests[tnum]
-   print('-'.rep(30)+'TEST:'+tnum+'-'.rep(30))
+   print('-'.rep(30)~'TEST:'~tnum~'-'.rep(30))
    print(test)
    var src = test
    var ast = Parser.script(src)
