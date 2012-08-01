@@ -11,8 +11,8 @@ class TestUnit {
       if self can `set_up {
          self.set_up()
       }
-      for s, v in typeof(self).members {
-         if / 'test'/ match s {
+      for s, v in typeof(self)::__proto {
+         if / 'test_'/ match s {
             .tests.push({ name = s, test = v })
          }
       }

@@ -10,7 +10,7 @@ object Tests from TestUnit {
 
    method test_callable {
       function func(a1, a2) {
-         return a1 + a2 + "!"
+         return a1 ~ a2 ~ "!"
       }
       var a = [ func, "Hello" ]
       var b = a(" World")

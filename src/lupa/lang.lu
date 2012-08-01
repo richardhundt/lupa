@@ -584,7 +584,7 @@ object Grammar {
             stmt.push("true then ${body}")
          }
          if i == catch_blocks.len {
-            stmt.push("end")
+            stmt.push("else __env.throw(e) end")
          }
       }
       stmt.push("end")

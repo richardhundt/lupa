@@ -6,7 +6,7 @@ class Point {
 
    static has DEBUG : Boolean = false
 
-   static method apply() {
+   static method __call() {
       self.new
    }
 
