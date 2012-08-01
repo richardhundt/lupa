@@ -407,7 +407,13 @@ end
 -- Object ctor
 ---------------------------------------------------------------------------
 function object(into, name, from, with, body)
-   return class(into, name, from, with, body):new()
+   local anon = class(into, name, from, with, body)
+   anon.new = nil
+   setmetatable(anon, anon.__proto)
+   if anon.__proto.init then
+      anon.__proto.init(anon)
+   end
+   return anon
 end
 
 ---------------------------------------------------------------------------
@@ -429,6 +435,9 @@ Enum.new = function(class, name, proto)
       enum[v] = n
    end
    return setmetatable(enum, class.__proto)
+end
+Enum.__proto.__tostring = function(self)
+   return string.format('enum<%s :%p>', self.__name or '?', self)
 end
 Enum.__proto.__coerce = function(self, that)
    if not self:__check(that) then

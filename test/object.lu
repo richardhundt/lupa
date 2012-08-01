@@ -17,7 +17,7 @@ for i=1, 10_000_000 {
     p.move(i, i+1)
 }
 
-object Point3D from Point {
+object Point3D from typeof(Point) {
     has z = 0
     method greet() {
         print("Hi!")
