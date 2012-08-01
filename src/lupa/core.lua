@@ -226,7 +226,9 @@ function class(outer, name, from, with, body)
    if from == nil then
       from = Any
    else
-      if typeof(from) ~= Class and typeof(from) ~= Type then
+      if  typeof(from) ~= from -- object
+      and typeof(from) ~= Class
+      and typeof(from) ~= Type then
          throw(TypeError:new("Cannot extend "..tostring(from), 2))
       end
    end
@@ -408,8 +410,7 @@ end
 ---------------------------------------------------------------------------
 function object(into, name, from, with, body)
    local anon = class(into, name, from, with, body)
-   anon.new = nil
-   setmetatable(anon, anon.__proto)
+   anon.__type = anon
    if anon.__proto.init then
       anon.__proto.init(anon)
    end
@@ -437,7 +438,7 @@ Enum.new = function(class, name, proto)
    return setmetatable(enum, class.__proto)
 end
 Enum.__proto.__tostring = function(self)
-   return string.format('enum<%s :%p>', self.__name or '?', self)
+   return string.format('enum<%s: %p>', self.__name or '?', self)
 end
 Enum.__proto.__coerce = function(self, that)
    if not self:__check(that) then
