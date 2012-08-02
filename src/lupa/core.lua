@@ -406,10 +406,13 @@ end
 ---------------------------------------------------------------------------
 function object(into, name, from, with, body)
    local anon = class(into, name, from, with, body)
-   local inst = anon:new()
-   mixin(inst, anon)
-   inst.__type = inst
-   return inst
+   anon.new = nil
+   setmetatable(anon, anon.__proto)
+   anon.__type = anon
+   if anon.__proto.init then
+      anon.__proto.init(anon)
+   end
+   return anon
 end
 
 ---------------------------------------------------------------------------
@@ -983,8 +986,6 @@ ComposeError = class(__env, "ComposeError", Error, {}, function() end)
 ---------------------------------------------------------------------------
 
 function __spread__(this)
-   local mt = typeof(this)
-   local __spread = mt and rawget(mt, '__spread')
    if this.__spread then
       return this:__spread()
    end
@@ -1042,7 +1043,6 @@ function __does__(this, that)
    return false
 end
 function __can__(this, that)
-   print(this)
    if this.__can then
       return this:__can(that)
    end
@@ -1051,10 +1051,10 @@ end
 function __match__(this, that)
    if this.__match then
       return this:__match(that)
-   elseif __is__(this, that) then
+   elseif this == that then
       return true
    end
-   return this == that
+   return __is__(this, that)
 end
 function __maybe__(this)
    if this.__maybe then
@@ -1062,14 +1062,12 @@ function __maybe__(this)
    end
    return Type.__proto.__maybe(this)
 end
-
 function __bnot__(this)
    if this.__bnot then
       return this:__bnot()
    end
    return bit.bnot(tonumber(this))
 end
-
 function __bor__(this, that)
    if this.__bor then
       return this:__bor(that)

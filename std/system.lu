@@ -36,7 +36,7 @@ object FFI {
       static method __check(that) {
          return ffi::istype(T, that)
       }
-      static method __finalize__ {
+      static method __finalize {
          FFI.metatype(CTYPE, self)
       }
 
