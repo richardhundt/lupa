@@ -1,8 +1,13 @@
 class A {
-    method foo() : String {
-        return 'blah'
-    }
+   method foo() : String {
+      return 'blah'
+   }
+   method ~(b : String) {
+      return tostring(self) ~ b
+   }
 }
 
 var a = A.new()
 print(a.foo())
+print(a ~ "cheese")
+
