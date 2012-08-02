@@ -17,11 +17,7 @@ rawlen = function(tab) return #tab end
 throw = error
 
 function typeof(this)
-   if type(this) == 'cdata' then
-      return ffi.typeof(this)
-   else
-      return this.__type
-   end
+   return this.__type
 end
 
 local function mixin(this, that, override)
@@ -159,7 +155,7 @@ function has(into, name, type, ctor, meta)
    local get, set
    if type then
       function set(obj, val)
-         rawset(obj, idx, __coerce__(type,val))
+         rawset(obj, idx, __coerce__(type, val))
       end
    else
       function set(obj, val)
@@ -276,7 +272,7 @@ function class(outer, name, from, with, body)
       if this:__check(that) then
          return that
       end
-      throw(TypeError:new("cannot coerce '"..tostring(val).."' to "..tostring(this)), 2)
+      throw(TypeError:new("cannot coerce '"..tostring(that).."' to "..tostring(this)), 2)
    end
 
    local inner = { }
@@ -410,11 +406,10 @@ end
 ---------------------------------------------------------------------------
 function object(into, name, from, with, body)
    local anon = class(into, name, from, with, body)
-   anon.__type = anon
-   if anon.__proto.init then
-      anon.__proto.init(anon)
-   end
-   return anon
+   local inst = anon:new()
+   mixin(inst, anon)
+   inst.__type = inst
+   return inst
 end
 
 ---------------------------------------------------------------------------
@@ -1041,15 +1036,13 @@ function __does__(this, that)
    if typeof(that) ~= Trait then
       return false
    end
-   if this.__does then
-      return this:__does(that)
-   end
    if typeof(this).__with then
       return typeof(this).__with[that.__body]
    end
    return false
 end
 function __can__(this, that)
+   print(this)
    if this.__can then
       return this:__can(that)
    end

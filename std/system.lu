@@ -23,8 +23,8 @@ object FFI {
 
       static method new(...args) {
          var inst = CTYPE()
-         if self::__slots::init {
-            self::__slots::init(inst, ...args)
+         if self::__proto::init {
+            self::__proto::init(inst, ...args)
          }
          return inst
       }
@@ -33,24 +33,15 @@ object FFI {
          return ffi::cast(CTYPE, arg)
       }
 
-      static method check(that) {
+      static method __check(that) {
          return ffi::istype(T, that)
       }
       static method __finalize__ {
          FFI.metatype(CTYPE, self)
       }
 
-      self::__tostring = nil
-      method toString {
+      method __tostring {
          return tostring(CTYPE)+': %p'.format(self)
-      }
-
-      var meta = self
-      method does(that) {
-         meta::__with::[that::__body] != nil
-      }
-      method can(that) {
-         meta::__slots::[that] != nil
       }
    }
 

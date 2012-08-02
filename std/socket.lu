@@ -160,7 +160,7 @@ class SockAddr with FFI::MetaType['SockAddr'] {
       }
    }
 
-   static method coerce(that) {
+   static method __coerce(that) {
       if that does SockAddr::Common {
          var v = FFI.cast('SockAddr*', FFI.cast('void*', that))
          return v
@@ -170,7 +170,7 @@ class SockAddr with FFI::MetaType['SockAddr'] {
 
    trait Common {
       method len { FFI.sizeof(self) }
-      static method coerce(that : SockAddr) {
+      static method __coerce(that : SockAddr) {
          return FFI.cast(self, that)
       }
    }
@@ -287,6 +287,9 @@ object TCP {
          var inet = FFI.new('INET_Addr')
          if C::inet_aton(host, inet) == 0 {
             var hostent = C::gethostbyname(host)
+            if hostent == nil {
+               SocketError raise FFI.strerror(FFI.errno)
+            }
             var host = FFI.cast('INET_Addr*', hostent::h_addr_list::[0])
             addr = FFI.new('SockAddr_INET')
             addr::sin_family = AF.INET

@@ -20,6 +20,7 @@ class Point {
    }
    has deep = { hop = 'jump' }
 }
+print("CLASS:", Point)
 
 class Point3D from Point {
    has z : Number = 0
