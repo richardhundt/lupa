@@ -2,7 +2,7 @@ export Date, TimeVal, TimeZone, TimeSpec
 
 import FFI from std.system
 
-FFI::CDEF << """
+FFI cdef """
    typedef long time_t;
    typedef unsigned long clock_t;
 
@@ -52,20 +52,26 @@ FFI::CDEF << """
 """
 
 class TimeVal with FFI::MetaType['timeval_t'] {
-   method sec  { self#tv_sec  }
-   method usec { self#tv_usec }
-
+   method sec  { self::tv_sec  }
+   method usec { self::tv_usec }
+   method init(time = 0.0) {
+      if time {
+         var integ, fract = math::modf(tonumber(time))
+         self::tv_sec  = integ
+         self::tv_usec = fract * 1000000
+      }
+   }
    method toDate { Date.new(self.sec) }
 }
 
 class TimeZone with FFI::MetaType['timezone_t'] {
-   method minuteswest { self#tz_minuteswest }
-   method dsttime     { self#tz_dsttime     }
+   method minuteswest { self::tz_minuteswest }
+   method dsttime     { self::tz_dsttime     }
 }
 
 class TimeSpec with FFI::MetaType['timespec_t'] {
-   method sec  { self#tv_sec  }
-   method nsec { self#tv_nsec }
+   method sec  { self::tv_sec  }
+   method nsec { self::tv_nsec }
 
    method toDate { Date.new(self.sec) }
 }
@@ -77,25 +83,26 @@ class Date with FFI::MetaType['tm_t'] {
    static method getTimeOfDay {
       var tv = TimeVal.new
       var tz = TimeZone.new
-      var ok = C#gettimeofday(tv, tz)
-      if ok === 0 {
+      var ok = C::gettimeofday(tv, tz)
+      if ok == 0 {
          return tv, tz
       }
    }
 
-   method init(time = C#time(FFI.new('time_t[1]'))) {
+   method init(time = C::time(FFI.new('time_t[1]'))) {
       if !FFI.istype('time_t*', time) {
          var temp = FFI.new('time_t[1]')
-         temp#[0] = time
+         temp::[0] = time
          time = temp
       }
-      C#localtime_r(time, self)
+      C::localtime_r(time, self)
    }
 
    method format(fmt : String, len : Number = 256) {
       var buf = FFI.new('char[?]', len)
-      C#strftime(buf, len, fmt, self)
+      C::strftime(buf, len, fmt, self)
       return FFI.string(buf)
    }
 }
+
 
