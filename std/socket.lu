@@ -1,6 +1,7 @@
-import FFI from std.system
+import FFI     from std.system
+import TimeVal from std.time
 
-export SockAddr, Socket, Buffer, TCP, SOCK, AF, PROTO, SocketError, AcceptError
+export SockAddr, Socket, TCP, SOCK, AF, PROTO, SocketError, AcceptError
 
 FFI cdef """
    typedef uint16_t in_port_t;
@@ -56,6 +57,13 @@ FFI cdef """
    int getpeername(int sockfd, SockAddr *addr, socklen_t *addrlen);
    int shutdown(int sockfd, int how);
 
+   typedef struct FDSet {
+      int32_t fds_bits[32];
+   } fd_set;
+
+   int select(int nfds, fd_set *rfds, fd_set *wfds, fd_set *efds,
+      timeval_t *timeout);
+
    typedef struct HostEnt {
       char    *h_name;        /* official name of host */
       char    **h_aliases;    /* alias list */
@@ -72,8 +80,17 @@ FFI cdef """
    ssize_t read(int fildes, void *buf, size_t nbyte);
    ssize_t write(int fildes, const void *buf, size_t nbyte);
 
-  /* FIXME: on BE arch this is a null macro */
+   /* FIXME: on BE arch this is a null macro */
    uint16_t htons(uint16_t hostshort);
+
+   void bzero(void *s, size_t n);
+   int fcntl(int fd, int cmd, ...);
+
+   int getsockopt(int socket, int level, int option_name,
+      void *option_value, socklen_t *option_len);
+
+    int setsockopt(int socket, int level, int option_name,
+      const void *option_value, socklen_t option_len);
 """
 
 enum SOCK {
@@ -136,6 +153,38 @@ enum AF {
 enum PROTO {
    TCP = 6,
    UDP = 17,
+}
+
+// a few fcntl flags
+enum FLAGS {
+   F_GETFD = 1,
+   F_SETFD = 2,
+   F_GETFL = 3L,
+   F_SETFL = 4L,
+   O_NONBLOCK = 0x0004,
+   O_APPEND   = 0x0008,
+}
+
+our SO
+our SOL_SOCKET
+
+if FFI::OS == 'Linux' {
+   SOL_SOCKET = 1
+   enum SO {
+      REUSEADDR = 2,
+      DONTROUTE = 5,
+      BROADCAST = 6,
+      KEEPALIVE = 9,
+   }
+}
+else if FFI::OS == 'OSX' {
+   SOL_SOCKET = 0xffff
+   enum SO {
+      REUSEADDR = 0x0004,
+      KEEPALIVE = 0x0008,
+      DONTROUTE = 0x0010,
+      BROADCAST = 0x0020,
+   }
 }
 
 class SockAddr with FFI::MetaType['SockAddr'] {
@@ -216,6 +265,31 @@ class SockAddr with FFI::MetaType['SockAddr'] {
    }
 }
 
+class FDSet with FFI::MetaType['fd_set'] {
+
+   var NFDBITS     = 32
+   var NFD_SETSIZE = 1024 // TODO: allow unlimited
+
+   method insert(fd) {
+      var word = fd / NFDBITS
+      var mask = 1 << (fd % NFDBITS)
+      self::fds_bits::[word] |= mask // TODO: check and realloc
+   }
+   method remove(fd) {
+      var word = fd / NFDBITS
+      var mask = 1 << (fd % NFDBITS)
+      self::fds_bits::[word] &= ~mask
+   }
+   method contains(fd) {
+      var word = fd / NFDBITS
+      var mask = 1 << (fd % NFDBITS)
+      self::fds_bits::[word] & mask
+   }
+   method clear {
+      FFI::C::bzero(self::fds_bits, NFD_SETSIZE / 8)
+   }
+}
+
 class Socket with FFI::MetaType['Socket'] {
    var C = FFI::C
 
@@ -226,6 +300,49 @@ class Socket with FFI::MetaType['Socket'] {
       self::so_addr = nil
    }
 
+   method flags {
+      var flags = C::fcntl(self::so_fd, FLAGS.F_GETFL)
+      if flags < 0 { SocketError raise FFI.strerror(FFI.errno) }
+      return flags
+   }
+   method flags=(val : int32) {
+      var stat = C::fcntl(self::so_fd, FLAGS.F_SETFL, val)
+      if stat == -1 { SocketError raise FFI.strerror(FFI.errno) }
+      return stat
+   }
+   method setoption(key : SO, val) {
+      var len = FFI.sizeof(val)
+      var val = FFI.cast('char *', FFI.new('int[1]', val))
+      print("key:", key, "val:", val::[0], "len:", len)
+      C::setsockopt(self::so_fd, SOL_SOCKET, key, val, len)
+   }
+   method reuseAddr(val) {
+      if val {
+         var v = FFI.cast('char *', FFI.new('int[1]', 1))
+         var r = C::setsockopt(self::so_fd, SOL_SOCKET, SO.REUSEADDR, v, FFI.sizeof(v))
+         if r == -1 { SocketError raise FFI.strerror(FFI.errno) }
+         return r
+      }
+      else {
+         var v = FFI.cast('char *', FFI.new('int[1]', 0))
+         var r = C::setsockopt(self::so_fd, SOL_SOCKET, SO.REUSEADDR, v, FFI.sizeof(v))
+         if r == -1 { SocketError raise FFI.strerror(FFI.errno) }
+         return r
+      }
+   }
+
+
+   method nonblocking=(val) {
+      if val {
+         .flags |= FLAGS.O_NONBLOCK
+      }
+      else {
+         .flags &= ~FLAGS.O_NONBLOCK
+      }
+   }
+   method nonblocking {
+      .flags & FLAGS.O_NONBLOCK
+   }
    method bind(addr : SockAddr) {
       var stat = C::bind(self::so_fd, addr, addr.len)
       if stat == -1 { SocketError raise FFI.strerror(FFI.errno) }
@@ -266,10 +383,68 @@ class Socket with FFI::MetaType['Socket'] {
       C::inet_ntoa(n)
    }
 
+   static method select(rfds : FDSet, wfds : FDSet, efds : FDSet, wait : TimeVal) {
+      C::select(rfds, wfds, efds, wait)
+   }
+
    class INET from self {
       method init(type : SOCK, proto : PROTO) {
          super.init(AF.INET, type, proto)
       }
+   }
+}
+
+class Select {
+   has handles = [ ]
+   has rfds = FDSet.new
+   has wfds = FDSet.new
+   has efds = FDSet.new
+   has nfds = 0
+
+   method init {
+      .rfds.clear
+      .wfds.clear
+      .efds.clear
+   }
+   method insert(sock : Socket) {
+      if .nfds < sock::so_fd {
+         .nfds = sock::so_fd
+      }
+      self.handles.push(sock)
+   }
+   method remove(sock : Socket) {
+      for i, s in self.handles {
+         if s == sock {
+            if sock::so_fd == .nfds {
+               .nfds -= 1
+            }
+            self.handles.remove(i)
+         }
+      }
+   }
+   method can_read(timeout) {
+      for i=1, self.handles.len {
+         .rfds.insert(self.handles[i]::so_fd)
+      }
+      if timeout {
+         timeout = TimeVal.new(timeout)
+      }
+      var n = FFI::C::select(.nfds + 1, .rfds, nil, nil, timeout)
+      if n > 0 {
+         var r = [ ]
+         for i=1, self.handles.len {
+            if .rfds.contains(self.handles[i]::so_fd) {
+               r.push(self.handles[i])
+            }
+         }
+         return r
+      }
+   }
+   method can_write(timeout) {
+      var n = FFI::C::select(.nfds + 1, nil, .wfds, nil, timeout)
+   }
+   method has_exceptions(timeout) {
+      var n = FFI::C::select(.nfds + 1, nil, nil, .efds, timeout)
    }
 }
 
@@ -346,37 +521,6 @@ class AddrInfo {
       if retv == -1 {
          Error raise FFI.strerror(FFI.errno)
       }
-   }
-}
-
-class Buffer {
-   FFI cdef """
-      typedef struct Buffer {
-         size_t  size;
-         size_t  offs;
-         uint8_t *data;
-      } Buffer;
-   """
-
-   with FFI::MetaType['Buffer']
-
-   method init(size : Number = 512) {
-      self::size = size
-      self::data = FFI::C::malloc(size)
-      self::offs = 0
-   }
-   method need(size) {
-      if self::size < self::offs + size {
-         var new_size = self::offs + size
-         while new_size < self::size {
-            new_size = new_size * 2
-         }
-         self::data = FFI::C::realloc(FFI.cast('void*', self::data), new_size)
-         self::size = new_size
-      }
-   }
-   self::__gc = function(self) {
-      FFI::C::free(self::data)
    }
 }
 
