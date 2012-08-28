@@ -54,14 +54,14 @@ class Element from Node {
    }
    method prev_sibling {
       for i, node in self.parent {
-         if node === self {
+         if node == self {
             return i > 1 && self.parent.children[i - 1] || nil
          }
       }
    }
    method next_sibling {
       for i, node in self.parent {
-         if node === self {
+         if node == self {
             return i < self.parent.children.len && self.parent.children[i + 1] || nil
          }
       }
@@ -71,14 +71,14 @@ class Element from Node {
    }
    method insert(new_child, ref_child) {
       for i, node in self.children {
-         if node === ref_child {
+         if node == ref_child {
             return self.children.insert(i, new_child)
          }
       }
    }
    method remove(ref_child) {
       for i, node in self.children {
-         if node === ref_child {
+         if node == ref_child {
             return self.children.remove(i)
          }
       }
@@ -158,14 +158,14 @@ class Parser {
    }
 
    function parse_error(s, i) {
-      var msg = (s.len < i + 20) && s.sub(i) || s.sub(i, i+20)+"..."
+      var msg = (s.len < i + 20) && s.sub(i) || s.sub(i, i~20)~"..."
       throw "parse error near '%s'".format(msg)
    }
 
    function backref(s, i, c) {
       if !c is String { return nil }
       var e = c.len + i
-      if s.sub(i, e - 1) === c {
+      if s.sub(i, e - 1) == c {
          return e
       }
    }
