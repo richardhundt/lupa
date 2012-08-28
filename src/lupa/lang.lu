@@ -461,9 +461,20 @@ object Grammar {
    function make_func_decl(c,n,p,b,s) {
       var p, h = make_params(c, p)
       var t = c.scope.outer.unhoist()
+      var info = c.scope.outer.lookup(n)
       if s == 'lexical' {
-         c.scope.outer.define(n)
-         return "%slocal function %s(%s)%s %s end".format(t,n,p,h,b)
+         if info {
+            if info['base'] == nil {
+               return "%sfunction %s(%s)%s %s end".format(t,n,p,h,b)
+            }
+            else {
+               return "%sfunction __env.%s(%s)%s %s end".format(t,n,p,h,b)
+            }
+         }
+         else {
+            c.scope.outer.define(n)
+            return "%slocal function %s(%s)%s %s end".format(t,n,p,h,b)
+         }
       }
       else {
          c.scope.outer.define(n, { base = '__env' })
@@ -473,9 +484,20 @@ object Grammar {
 
    function make_enum_decl(c,n,b,s) {
       var decl = '__env.enum(%q,{%s});'
+      var info = c.scope.lookup(n)
       if s == 'lexical' {
-         c.define(n, { type = 'Enum' })
-         decl = 'local %s='~decl
+         if info {
+            if info['base'] == nil {
+               decl = '%s='~decl
+            }
+            else {
+               decl = '__env.%s='~decl
+            }
+         }
+         else {
+            c.define(n, { type = 'Enum' })
+            decl = 'local %s='~decl
+         }
       }
       else {
          c.define(n, { type = 'Enum', base = '__env' })
@@ -494,9 +516,20 @@ object Grammar {
    }
    function make_class_decl(c,n,f,w,b,s) {
       var decl = '__env.class(__env,%q,%s,{%s},function(__env,self,super) %s end);'
+      var info = c.scope.lookup(n)
       if s == 'lexical' {
-         c.define(n, { type = 'Class' })
-         decl = 'local %s='~decl
+         if info {
+            if info['base'] == nil {
+               decl = '%s='~decl
+            }
+            else {
+               decl = '__env.%s='~decl
+            }
+         }
+         else {
+            c.define(n, { type = 'Class' })
+            decl = 'local %s='~decl
+         }
       }
       else {
          c.define(n, { type = 'Class', base = '__env' })
@@ -506,9 +539,20 @@ object Grammar {
    }
    function make_obj_decl(c,n,f,w,b,s) {
       var decl = '__env.object(__env,%q,%s,{%s},function(__env,self,super) %s end);'
+      var info = c.scope.lookup(n)
       if s == 'lexical' {
-         c.define(n, { type = n })
-         decl = 'local %s='~decl
+         if info {
+            if info['base'] == nil {
+               decl = '%s='~decl
+            }
+            else {
+               decl = '__env.%s='~decl
+            }
+         }
+         else {
+            c.define(n, { type = n })
+            decl = 'local %s='~decl
+         }
       }
       else {
          c.define(n, { type = n, base = '__env' })
@@ -522,13 +566,24 @@ object Grammar {
    }
    function make_trait_decl(c,n,p,w,b) {
       var decl = '__env.trait(__env,%q,{%s},%s,function(__env,self,%s)%s end);'
+      var info = c.scope.outer.lookup(n)
       var a = '...'
       if p.len > 0 {
          a = p.concat(',')
       }
       if s == 'lexical' {
-         c.scope.outer.define(n, { type = 'Trait' })
-         decl = 'local %s='~decl
+         if info {
+            if info['base'] == nil {
+               decl = '%s='~decl
+            }
+            else {
+               decl = '__env.%s='~decl
+            }
+         }
+         else {
+            c.scope.outer.define(n, { type = 'Trait' })
+            decl = 'local %s='~decl
+         }
       }
       else {
          c.scope.outer.define(n, { type = 'Trait', base = '__env' })
@@ -541,10 +596,21 @@ object Grammar {
       p = [ 'self', ...p ]
       var p, h = make_params(c, p)
       var decl = '__env.guard(%q,function(%s)%s %s end)'
+      var info = c.score.outer.lookup(n)
       var hoist = c.scope.outer.unhoist()
       if s == 'lexical' {
-         c.scope.outer.define(n)
-         decl = "%slocal %s="~decl
+         if info {
+            if info['base'] == nil {
+               decl = '%s%s='~decl
+            }
+            else {
+               decl = '%s__env.%s='~decl
+            }
+         }
+         else {
+            c.scope.outer.define(n)
+            decl = "%slocal %s="~decl
+         }
       }
       else {
          c.scope.outer.define(n, { base = '__env' })

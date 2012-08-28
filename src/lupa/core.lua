@@ -233,9 +233,9 @@ function class(outer, name, from, with, body)
    local proto = { }
    local rules = { }
 
-   class.__name = name
    class.__type = Class
    proto.__type = class
+   proto.__name = name
 
    class.__from = from
    class.__body = body
@@ -533,6 +533,12 @@ end
 Array.__proto.each = function(self, block)
    for i=1, #self do
       block(self[i])
+   end
+   return self
+end
+Array.__proto.pairs = function(self, block)
+   for i=1, #self do
+      block(i, self[i])
    end
    return self
 end
