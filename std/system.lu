@@ -37,11 +37,11 @@ object FFI {
          return ffi::istype(T, that)
       }
       static method __finalize {
-         FFI.metatype(CTYPE, self)
+         FFI.metatype(CTYPE, self::__proto)
       }
 
       method __tostring {
-         return tostring(CTYPE)+': %p'.format(self)
+         return tostring(CTYPE)~': %p'.format(self)
       }
    }
 
@@ -92,7 +92,7 @@ object FFI {
          return ffi::copy(dst, src, len)
       }
       else {
-         return ffi::copy(dst, src, len)
+         return ffi::copy(dst, src)
       }
    }
    method string(obj, len) {
