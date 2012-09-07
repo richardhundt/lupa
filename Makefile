@@ -10,7 +10,7 @@ LUADIR=${DEPSDIR}/luajit
 OS_NAME=$(shell uname -s)
 MH_NAME=$(shell uname -m)
 
-CFLAGS=-O2 -fomit-frame-pointer -Wall -g -fno-stack-protector
+CFLAGS=-O2 -fomit-frame-pointer -Wall -fno-stack-protector
 LDFLAGS=-lm -ldl
 DEPS=${LIBDIR}/libluajit.a ${LPEGDIR}/lpeg.o
 
@@ -44,7 +44,7 @@ ${LPEGDIR}/lpeg.o:
 
 ${LIBDIR}/libluajit.a:
 	git submodule update --init ${LUADIR}
-	${MAKE} XCFLAGS="-DLUAJIT_ENABLE_LUA52COMPAT" -C ${LUADIR}
+	${MAKE} XCFLAGS="-DLUAJIT_ENABLE_LUA52COMPAT -DLUAJIT_ENABLE_CHECKHOOK" -C ${LUADIR}
 	cp ${LUADIR}/src/libluajit.a ${LIBDIR}/libluajit.a
 
 ${BINDIR}/luajit: ${LIBDIR}/libluajit.a
