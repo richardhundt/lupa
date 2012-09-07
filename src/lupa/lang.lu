@@ -101,7 +101,7 @@ object Grammar {
    var id_counter = 9
    function genid() {
       id_counter += 1
-      return '__auto_'~id_counter
+      return '_'~id_counter
    }
 
    function define(name, ctx, base, type, expr) {
@@ -323,6 +323,7 @@ object Grammar {
       var tmp = [ ]
       var buf = [ ]
       var hoist = ctx.scope.unhoist()
+      /*
       if rhs.len == 0 {
          if kind == nil {
             return '%slocal %s'.format(hoist, lhs.concat(','))
@@ -334,6 +335,7 @@ object Grammar {
             return '%s%s'.format(hoist,lhs.concat(';'))
          }
       }
+      */
 
       if lhs.len == 1 {
          var info = ctx.lookup(lhs[1])
@@ -355,6 +357,9 @@ object Grammar {
 
       if rhs.len > 0 {
          buf.push('%slocal %s=%s'.format(hoist, tmp.concat(','), rhs.concat(',')))
+      }
+      else {
+         buf.push('%slocal %s'.format(hoist, tmp.concat(',')))
       }
 
       var head = ''
@@ -451,10 +456,10 @@ object Grammar {
       var p, h = make_params(c, p)
       var t = c.scope.unhoist()
       if t != '' {
-         return "(function()%s return function(%s) %s%s end end)()".format(t,p,h,b)
+         return "(function()%s return function(%s) local __env=__env;%s%s end end)()".format(t,p,h,b)
       }
       else {
-         return 'function(%s) %s%s end'.format(p,h,b)
+         return '(function(%s) local __env=__env;%s%s end)'.format(p,h,b)
       }
    }
 
@@ -465,20 +470,20 @@ object Grammar {
       if s == 'lexical' {
          if info {
             if info['base'] == nil {
-               return "%sfunction %s(%s)%s %s end".format(t,n,p,h,b)
+               return "%sfunction %s(%s) local __env=__env;%s %s end".format(t,n,p,h,b)
             }
             else {
-               return "%sfunction __env.%s(%s)%s %s end".format(t,n,p,h,b)
+               return "%sfunction __env.%s(%s) local __env=__env;%s %s end".format(t,n,p,h,b)
             }
          }
          else {
             c.scope.outer.define(n)
-            return "%slocal function %s(%s)%s %s end".format(t,n,p,h,b)
+            return "%slocal function %s(%s) local __env=__env;%s %s end".format(t,n,p,h,b)
          }
       }
       else {
          c.scope.outer.define(n, { base = '__env' })
-         return "%sfunction __env.%s(%s)%s %s end".format(t,n,p,h,b)
+         return "%sfunction __env.%s(%s) local __env=__env;%s %s end".format(t,n,p,h,b)
       }
    }
 
@@ -512,7 +517,7 @@ object Grammar {
       p = [ 'self', ...p ]
       var p, h = make_params(c,p)
       var t = c.scope.outer.unhoist()
-      return "%s__env.method(self,%q,function(%s)%s %s end,%s);".format(t,n,p,h,b,a)
+      return "%s__env.method(self,%q,function(%s) local __env=__env;%s %s end,%s);".format(t,n,p,h,b,a)
    }
    function make_class_decl(c,n,f,w,b,s) {
       var decl = '__env.class(__env,%q,%s,{%s},function(__env,self,super) %s end);'
@@ -595,7 +600,7 @@ object Grammar {
    function make_guard_decl(c,n,p,b,s) {
       p = [ 'self', ...p ]
       var p, h = make_params(c, p)
-      var decl = '__env.guard(%q,function(%s)%s %s end)'
+      var decl = '__env.guard(%q,function(%s) local __env=__env;%s %s end)'
       var info = c.score.outer.lookup(n)
       var hoist = c.scope.outer.unhoist()
       if s == 'lexical' {
@@ -619,13 +624,13 @@ object Grammar {
       return decl.format(hoist,n,n,p,h,b)
    }
 
-   function make_try_stmt(s,ctx, try_body, catch_blocks, loopy) {
+   function make_try_stmt(s, ctx, try_body, catch_blocks, loopy) {
       var args = [ ]
       if loopy {
-         args.push("function() repeat ${try_body} until true end")
+         args.push("function() local __env=__env; repeat ${try_body} until true end")
       }
       else {
-         args.push("function() ${try_body} end")
+         args.push("function() local __env=__env; ${try_body} end")
       }
       var stmt = [ ]
       stmt.push("do${s}")
@@ -633,15 +638,17 @@ object Grammar {
       stmt.push("if not __try__ then")
       for i=1, catch_blocks.len {
          var blck = catch_blocks[i]
-         var name = blck[1]
-         var body = blck[2]
-         var type = blck[3]
+         var spre = blck[1]
+         var code = blck[2]
+         var name = code[1]
+         var type = code[2]
+         var body = code[3]
          stmt.push("local ${name}=__err__;")
          if i == 1 {
-            stmt.push("if")
+            stmt.push("${spre}if")
          }
          else {
-            stmt.push("elseif")
+            stmt.push("${spre}elseif")
          }
          if type {
             stmt.push("__env.__match__(${name},${type}) then ${body}")
@@ -667,27 +674,37 @@ object Grammar {
       var name = head.match('^%s*([^%s]+)%s*$')
       var info = ctx.lookup(name)
       var type = info['type']
-      return { name, body, type }
+      return { name, type, s1~body~s2~s3 }
    }
    function make_import_decl(ctx, names, path, dest) {
       var qnames = [ ]
-      if names == nil { names = [ ] }
-      if dest {
-         ctx.define(dest, { base = '__env' })
-         dest = quote(dest)
-         for i=1, names.len {
-            qnames[i] = quote(names[i])
+      if names == nil {
+         if dest {
+            ctx.define(dest, { base = '__env' })
+            dest = quote(dest)
+         }
+         else {
+            dest = 'nil'
+            ctx.define(path[#path], { base = '__env' })
          }
       }
       else {
-         // XXX: import from <dotted_path> (i.e. no names, no dest)
-         dest = 'nil'
-         for i=1, names.len {
-            ctx.define(names[i], { base = '__env' })
-            qnames[i] = quote(names[i])
+         if dest {
+            ctx.define(dest, { base = '__env' })
+            dest = quote(dest)
+            for i=1, names.len {
+               qnames[i] = quote(names[i])
+            }
+         }
+         else {
+            dest = 'nil'
+            for i=1, names.len {
+               ctx.define(names[i], { base = '__env' })
+               qnames[i] = quote(names[i])
+            }
          }
       }
-      return "__env:import(%q,{%s},%s);".format(path, qnames.concat(','), dest)
+      return "__env:import(%q,{%s},%s);".format(path.concat('.'), qnames.concat(','), dest)
    }
    function make_export_decl(c,n) {
       var b = [ ]
@@ -848,11 +865,22 @@ object Grammar {
       '}') -> 'local __break__; repeat %3 until true; if __break__ then break end' ~}
    }
    rule import_decl {
+      | <import_from_decl>
+      | <import_path_decl>
+   }
+   rule import_from_decl {
       {~ (
          "import" idsafe s
-         <ctx> ((<name> (s "," s <name>)*)? -> [ ]) s
-         "from" idsafe s {~ <name> ("." <name>)* ~}
+         <ctx> (<name> (s "," s <name>)* -> [ ]) s
+         "from" idsafe s (<name> ("." <name>)* -> [ ])
          (s "in" idsafe s <name>)?
+      ) -> make_import_decl ~}
+   }
+   rule import_path_decl {
+      {~ (
+         "import" idsafe s
+         <ctx> {`nil`} (<name> ("." <name>)* -> [ ])
+         (s "as" idsafe s <name>)?
       ) -> make_import_decl ~}
    }
    rule export_decl {
@@ -937,7 +965,7 @@ object Grammar {
       {~
          "try" idsafe {s} <ctx> <enter>
          "{" {~ s <lambda_body> s ~} <{ expect("}") }>
-         ((s <catch_stmt>)* -> [ ]) =loopy
+         ((({s} <catch_stmt>)->[ ])* -> [ ]) =loopy
          -> make_try_stmt <leave>
       ~}
    }
@@ -1311,7 +1339,7 @@ object Grammar {
       | <pattern>
       | <ident>
       | <symbol>
-      | &"." {`'self'`}
+      | &('.'|'::') {`'self'`}
       | <number>
       | <string>
       | <vnil>
@@ -1325,7 +1353,7 @@ object Grammar {
    }
    rule method_expr {
       {~
-      | ("." -> ":") s <name> (&(hs* (<paren_expr>)) | {`'()'`})
+      | ("." -> ":") s <name> (&(hs* <paren_expr>) | {`'()'`})
       | "[" {~ s <expr> s ~} "]" -> ":__getitem(%1)"
       | ("::" -> '') hs* "[" s <expr> s "]"
       | ("::" -> ".") hs* <name>

@@ -1,14 +1,51 @@
 import FFI     from std.system
 import TimeVal from std.time
 
-export SockAddr, Socket, TCP, SOCK, AF, PROTO, SocketError, AcceptError
+export AddrInfo, SockAddr, Socket, Select, SOCK, AF, PROTO, SocketError, AcceptError, TCPSocket
+
+var addr_info
+var sa_common
+if FFI::OS == 'OSX' {
+   sa_common = """
+      uint8_t sa_len;
+   """
+   addr_info = """
+      typedef struct AddrInfo {
+         int ai_flags;
+         int ai_family;
+         int ai_socktype;
+         int ai_protocol;
+         socklen_t ai_addrlen;
+         char *ai_canonname;
+         SockAddr *ai_addr;
+         struct AddrInfo *ai_next;
+      } AddrInfo;
+   """
+}
+else {
+   sa_common = ''
+
+   addr_info = """
+      typedef struct AddrInfo {
+         int ai_flags;             /* input flags */
+         int ai_family;            /* protocol family for socket */
+         int ai_socktype;          /* socket type */
+         int ai_protocol;          /* protocol for socket */
+         socklen_t ai_addrlen;     /* length of socket-address */
+         SockAddr *ai_addr;        /* socket-address for socket */
+         char *ai_canonname;       /* canonical name for service location */
+         struct AddrInfo *ai_next; /* pointer to next in list */
+      } AddrInfo;
+   """
+}
 
 FFI cdef """
    typedef uint16_t in_port_t;
    typedef uint32_t socklen_t;
-   typedef unsigned short int sa_family_t;
+   typedef uint8_t sa_family_t;
 
    typedef struct SockAddr {
+     ${sa_common}
      sa_family_t sa_family;
      char        sa_data[14];
    } SockAddr;
@@ -22,6 +59,7 @@ FFI cdef """
    } INET6_Addr;
 
    typedef struct SockAddr_INET {
+     ${sa_common}
      sa_family_t    sin_family;
      in_port_t      sin_port;
      INET_Addr      sin_addr;
@@ -29,6 +67,7 @@ FFI cdef """
    } SockAddr_INET;
 
    typedef struct SockAddr_INET6 {
+     ${sa_common}
      sa_family_t    sin6_family;
      in_port_t      sin6_port;
      uint32_t       sin6_flowinfo;
@@ -37,14 +76,12 @@ FFI cdef """
    } SockAddr_INET6;
 
    typedef struct SockAddr_UNIX {
+     ${sa_common}
      sa_family_t sun_family;
      char        sun_path[108];
    } SockAddr_UNIX;
 
-   typedef struct Socket {
-      int        so_fd;
-      SockAddr *so_addr;
-   } Socket;
+   ${addr_info}
 
    int socket(int domain, int type, int protocol);
    int socketpair(int domain, int type, int protocol, int sv[2]);
@@ -76,6 +113,7 @@ FFI cdef """
 
    int inet_aton(const char *cp, INET_Addr *pin);
    char * inet_ntoa(INET_Addr in);
+   char * inet_ntop(int af, const void *src, char *dst, socklen_t size);
 
    ssize_t read(int fildes, void *buf, size_t nbyte);
    ssize_t write(int fildes, const void *buf, size_t nbyte);
@@ -83,14 +121,16 @@ FFI cdef """
    /* FIXME: on BE arch this is a null macro */
    uint16_t htons(uint16_t hostshort);
 
-   void bzero(void *s, size_t n);
    int fcntl(int fd, int cmd, ...);
 
    int getsockopt(int socket, int level, int option_name,
       void *option_value, socklen_t *option_len);
 
-    int setsockopt(int socket, int level, int option_name,
+   int setsockopt(int socket, int level, int option_name,
       const void *option_value, socklen_t option_len);
+
+   int getaddrinfo(const char *host, const char *port, AddrInfo *hints, AddrInfo **res);
+   void freeaddrinfo(AddrInfo *ai);
 """
 
 enum SOCK {
@@ -107,47 +147,9 @@ enum SOCK {
 }
 
 enum AF {
-   UNSPEC     = 0,
-   LOCAL      = 1,
-   UNIX       = 1, // AF_LOCAL
-   FILE       = 1, // AF_LOCAL
-   INET       = 2,
-   AX25       = 3,
-   IPX        = 4,
-   APPLETALK  = 5,
-   NETROM     = 6,
-   BRIDGE     = 7,
-   ATMPVC     = 8,
-   X25        = 9,
-   INET6      = 10,
-   ROSE       = 11,
-   DECnet     = 12,
-   NETBEUI    = 13,
-   SECURITY   = 14,
-   KEY        = 15,
-   NETLINK    = 16,
-   ROUTE      = 16, // AF_NETLINK
-   PACKET     = 17,
-   ASH        = 18,
-   ECONET     = 19,
-   ATMSVC     = 20,
-   RDS        = 21,
-   SNA        = 22,
-   IRDA       = 23,
-   PPPOX      = 24,
-   WANPIPE    = 25,
-   LLC        = 26,
-   CAN        = 29,
-   TIPC       = 30,
-   BLUETOOTH  = 31,
-   IUCV       = 32,
-   RXRPC      = 33,
-   ISDN       = 34,
-   PHONET     = 35,
-   IEEE802154 = 36,
-   CAIF       = 37,
-   ALG        = 38,
-   MAX        = 39,
+   UNIX  = 1,
+   INET  = 2,
+   INET6 = 10,
 }
 
 enum PROTO {
@@ -205,7 +207,7 @@ class SockAddr with FFI::MetaType['SockAddr'] {
          case AF.INET6:
             return FFI.sizeof('SockAddr_INET6')
          default:
-            throw "unkown address family ${self.family}"
+            throw "unknown address family ${self.family}"
       }
    }
 
@@ -229,6 +231,9 @@ class SockAddr with FFI::MetaType['SockAddr'] {
 
       method family { self::sin_family }
       method family=(f : AF) { self::sin_family = f }
+
+      method addr { self::sin_addr }
+      method port { self::sin_port }
 
       method init(host, port) {
          self::sin_family = AF.INET
@@ -254,6 +259,9 @@ class SockAddr with FFI::MetaType['SockAddr'] {
                TypeError raise "host ${host} not valid"
             }
          }
+         method to_a {
+            FFI.string(C::inet_ntoa(self::s_addr))
+         }
       }
    }
    class UNIX with FFI::MetaType['SockAddr_UNIX'], Common {
@@ -262,6 +270,48 @@ class SockAddr with FFI::MetaType['SockAddr'] {
       class Addr with FFI::MetaType['INET6_Addr'] {
 
       }
+   }
+}
+
+class AddrInfo with FFI::MetaType['AddrInfo'] {
+
+   static method getaddrinfo(host : String, port : ?(String | Number), family : AF = AF.INET) {
+      var entries = [ ]
+
+      var info = FFI.new('struct AddrInfo*[1]')
+      var hint = FFI.new('AddrInfo')
+
+      hint::ai_family   = family
+      hint::ai_socktype = SOCK.STREAM
+
+      var retv = FFI::C::getaddrinfo(host, port, hint, info)
+      if retv == -1 {
+         Error raise FFI.strerror(FFI.errno)
+      }
+
+      var iter = info::[0]
+      while iter != nil {
+         var addr = iter::ai_addr
+         switch iter::ai_addr::ai_family {
+            case AF.INET:
+               entries.push(FFI.cast("SockAddr_INET*", iter::ai_addr))
+               break
+            case AF.UNIX:
+               entries.push(FFI.cast("SockAddr_UNIX*", iter::ai_addr))
+               break
+            case AF.INET6:
+               entries.push(FFI.cast("SockAddr_INET6*", iter::ai_addr))
+               break
+            default:
+               SocketError raise "unknown address family ${tonumber(iter::ai_addr)}"
+         }
+         iter = iter::ai_next
+      }
+
+      FFI.gc(hint, FFI::C::freeaddrinfo)
+      FFI.gc(info, FFI::C::freeaddrinfo)
+
+      return entries
    }
 }
 
@@ -286,16 +336,30 @@ class FDSet with FFI::MetaType['fd_set'] {
       self::fds_bits::[word] & mask
    }
    method clear {
-      FFI::C::bzero(self::fds_bits, NFD_SETSIZE / 8)
+      FFI.fill(self::fds_bits, NFD_SETSIZE / 8)
    }
 }
 
-class Socket with FFI::MetaType['Socket'] {
+class Socket {
    var C = FFI::C
 
-   method init(domain : AF, type : SOCK, proto : PROTO) {
+   our SOCK_STREAM = 1
+   our SOCK_DGRAM  = 2
+   our SOCK_RAW    = 3
+
+   our AF_UNIX     = 1
+   our AF_INET     = 2
+   our AF_INET6    = 10
+
+   our PROTO_TCP   = 6
+   our PROTO_UDP   = 17
+
+   method fd   { self::so_fd   }
+   method addr { self::so_addr }
+
+   method init(domain : Number = AF_INET, type : Number = SOCK_STREAM, proto : Number = PROTO_TCP) {
       var fd = C::socket(domain, type, proto)
-      if fd == -1 { return nil, FFI.strerror(FFI.errno) }
+      if fd == -1 { SocketError raise FFI.strerror(FFI.errno) }
       self::so_fd   = fd
       self::so_addr = nil
    }
@@ -313,10 +377,9 @@ class Socket with FFI::MetaType['Socket'] {
    method setoption(key : SO, val) {
       var len = FFI.sizeof(val)
       var val = FFI.cast('char *', FFI.new('int[1]', val))
-      print("key:", key, "val:", val::[0], "len:", len)
       C::setsockopt(self::so_fd, SOL_SOCKET, key, val, len)
    }
-   method reuseAddr(val) {
+   method reuseaddr(val) {
       if val {
          var v = FFI.cast('char *', FFI.new('int[1]', 1))
          var r = C::setsockopt(self::so_fd, SOL_SOCKET, SO.REUSEADDR, v, FFI.sizeof(v))
@@ -331,7 +394,6 @@ class Socket with FFI::MetaType['Socket'] {
       }
    }
 
-
    method nonblocking=(val) {
       if val {
          .flags |= FLAGS.O_NONBLOCK
@@ -343,44 +405,16 @@ class Socket with FFI::MetaType['Socket'] {
    method nonblocking {
       .flags & FLAGS.O_NONBLOCK
    }
-   method bind(addr : SockAddr) {
-      var stat = C::bind(self::so_fd, addr, addr.len)
-      if stat == -1 { SocketError raise FFI.strerror(FFI.errno) }
-      self::so_addr = addr
-      return stat
-   }
-   method connect(addr : SockAddr) {
-      var stat = C::connect(self::so_fd, addr, addr.len)
-      if stat == -1 { SocketError raise FFI.strerror(FFI.errno) }
-      self::so_addr = addr
-   }
-   method listen(backlog = 16) {
-      C::listen(self::so_fd, backlog)
-   }
-
-   method accept {
-      var cli_addr     = FFI.new('SockAddr')
-      cli_addr.family  = self::so_addr.family
-
-      var cli_addr_len = FFI.new('socklen_t[1]', self::so_addr.len)
-      var so_fd = C::accept(self::so_fd, cli_addr, cli_addr_len)
-
-      if so_fd == -1 {
-         AcceptError raise FFI.strerror(FFI.errno)
-      }
-      var sock = FFI.new('Socket')
-
-      sock::so_fd   = so_fd
-      sock::so_addr = cli_addr
-
-      return sock
-   }
-
    static method inet_aton(cp : String, pin : SockAddr::INET::Addr) {
       C::inet_aton(cp, pin)
    }
    static method inet_ntoa(n) {
-      C::inet_ntoa(n)
+      FFI.string(C::inet_ntoa(n))
+   }
+   static method inet_ntop(src, af : AF = AF.INET) {
+      var dst = FFI.new('uint8_t[32]')
+      var str = C::inet_ntop(af, src, dst, 32)
+      return FFI.string(dst)
    }
 
    static method select(rfds : FDSet, wfds : FDSet, efds : FDSet, wait : TimeVal) {
@@ -412,6 +446,14 @@ class Select {
       }
       self.handles.push(sock)
    }
+   method exists(sock : Socket) {
+      for i=1, self.handles.len {
+         if self.handles[i] == sock {
+            return true
+         }
+      }
+      return false
+   }
    method remove(sock : Socket) {
       for i, s in self.handles {
          if s == sock {
@@ -441,87 +483,106 @@ class Select {
       }
    }
    method can_write(timeout) {
+      for i=1, self.handles.len {
+         .wfds.insert(self.handles[i]::so_fd)
+      }
+      if timeout {
+         timeout = TimeVal.new(timeout)
+      }
       var n = FFI::C::select(.nfds + 1, nil, .wfds, nil, timeout)
+      if n > 0 {
+         var r = [ ]
+         for i=1, self.handles.len {
+            if .wfds.contains(self.handles[i]::so_fd) {
+               r.push(self.handles[i])
+            }
+         }
+         return r
+      }
    }
    method has_exceptions(timeout) {
+      for i=1, self.handles.len {
+         .wfds.insert(self.handles[i]::so_fd)
+      }
+      if timeout {
+         timeout = TimeVal.new(timeout)
+      }
       var n = FFI::C::select(.nfds + 1, nil, nil, .efds, timeout)
+      if n > 0 {
+         var r = [ ]
+         for i=1, self.handles.len {
+            if .efds.contains(self.handles[i]::so_fd) {
+               r.push(self.handles[i])
+            }
+         }
+         return r
+      }
    }
 }
 
 class SocketError from Error { }
 class AcceptError from SocketError { }
 
-object TCP {
-   class Client from Socket::INET {
-      var C = FFI::C
-      method init {
-         super.init(SOCK.STREAM, PROTO.TCP)
-      }
-      method connect(host, port) {
-         var addr = FFI.new('SockAddr_INET')
-         var inet = FFI.new('INET_Addr')
-         if C::inet_aton(host, inet) == 0 {
-            var hostent = C::gethostbyname(host)
-            if hostent == nil {
-               SocketError raise FFI.strerror(FFI.errno)
-            }
-            var host = FFI.cast('INET_Addr*', hostent::h_addr_list::[0])
-            addr = FFI.new('SockAddr_INET')
-            addr::sin_family = AF.INET
-            addr::sin_addr = host::[0]
-            if port {
-               addr::sin_port = C::htons(port)
-            }
-         }
-         else {
-            addr = SockAddr::INET.new(host, port)
-         }
-         super.connect(addr)
-      }
-      method read(buf, len) {
-         C::read(self::so_fd, buf, len)
-      }
-      method write(buf, len) {
-         C::write(self::so_fd, buf, len)
-      }
+class TCPSocket from Socket {
+   var C = FFI::C
+   method init {
+      super.init(AF.INET, SOCK.STREAM, PROTO.TCP)
    }
-   class Server from Socket::INET {
-      method init {
-         super.init(SOCK.STREAM, PROTO.TCP)
-      }
-      method bind(host, port) {
-         var addr = SockAddr::INET.new(host, port)
-         super.bind(addr)
-      }
+   method connect(host, port) {
+      var addr = Socket.getaddrinfo(host, port)
+      var stat = C::connect(self::so_fd, addr, addr.len)
+      if stat == -1 { SocketError raise FFI.strerror(FFI.errno) }
+      self::so_addr = addr
+   }
+   method read(buf, len) {
+      C::read(self::so_fd, buf, len)
+   }
+   method write(buf, len) {
+      C::write(self::so_fd, buf, len)
    }
 }
 
-class AddrInfo {
-   FFI cdef """
-      typedef struct AddrInfo {
-         int ai_flags;           /* input flags */
-         int ai_family;          /* protocol family for socket */
-         int ai_socktype;        /* socket type */
-         int ai_protocol;        /* protocol for socket */
-         socklen_t ai_addrlen;   /* length of socket-address */
-         SockAddr *ai_addr;    /* socket-address for socket */
-         char *ai_canonname;     /* canonical name for service location */
-         struct AddrInfo *ai_next; /* pointer to next in list */
-      } AddrInfo;
+class TCPServer from Socket {
+   var C = FFI::C
 
-      int getaddrinfo(const char *host, const char *port, AddrInfo *hints, AddrInfo **res);
-      void freeaddrinfo(AddrInfo *ai);
-   """
-
-   with FFI::MetaType['AddrInfo']
-
-   method init(host : String, port : Number, hint : AddrInfo) {
-      var info = FFI.new('AddrInfo[1]')
-      var retv = FFI::C::getaddrinfo(host, FFI::C::htons(port), hint, info)
-      if retv == -1 {
-         Error raise FFI.strerror(FFI.errno)
-      }
+   method init {
+      super.init(AF.INET, SOCK.STREAM, PROTO.TCP)
    }
+
+   method bind(host, port) {
+      var addr = SockAddr::INET.new(host, port)
+      var stat = C::bind(self::so_fd, addr, addr.len)
+      if stat == -1 { SocketError raise FFI.strerror(FFI.errno) }
+      self::so_addr = addr
+      return stat
+   }
+
+   method listen(backlog : Number = 16) {
+      var stat = C::listen(self::so_fd, backlog)
+      if stat == -1 { SocketError raise FFI.strerror(FFI.errno) }
+      return stat
+   }
+
+   method accept {
+      var cli_addr     = FFI.new('SockAddr')
+      cli_addr.family  = self::so_addr.family
+      var cli_addr_len = FFI.new('socklen_t[1]', self::so_addr.len)
+
+      var so_fd = C::accept(self::so_fd, cli_addr, cli_addr_len)
+      if so_fd == -1 {
+         AcceptError raise FFI.strerror(FFI.errno)
+      }
+      var sock = FFI.new('Socket')
+
+      sock::so_fd   = so_fd
+      sock::so_addr = cli_addr
+
+      return sock
+   }
+}
+
+class UDPSocket from Socket {
+
 }
 
 

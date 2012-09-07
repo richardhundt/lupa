@@ -39,23 +39,23 @@ end
 -- Meta delegates
 ---------------------------------------------------------------------------
 Meta = { }
-Meta.__add = function(a, b) return a:add(b) end
-Meta.__sub = function(a, b) return a:sub(b) end
-Meta.__mul = function(a, b) return a:mul(b) end
-Meta.__div = function(a, b) return a:div(b) end
-Meta.__mod = function(a, b) return a:mod(b) end
-Meta.__pow = function(a, b) return a:pow(b) end
-Meta.__unm = function(a, b) return a:unm() end
-Meta.__len = function(a, b) return a:len() end
-Meta.__pairs = function(a) return a:pairs() end
-Meta.__ipairs = function(a) return a:ipairs() end
-Meta.__call = function(a, ...) return a:apply(...) end
-Meta.__tostring = function(a) return a:toString() end
-Meta.__concat = function(a, b) return a:concat(b) end
-
-local function newmeta(meta)
-   return setmetatable(meta or { }, Meta)
-end
+Meta.__add = function(a, b) return a:__add(b) end
+Meta.__sub = function(a, b) return a:__sub(b) end
+Meta.__mul = function(a, b) return a:__mul(b) end
+Meta.__div = function(a, b) return a:__div(b) end
+Meta.__mod = function(a, b) return a:__mod(b) end
+Meta.__pow = function(a, b) return a:__pow(b) end
+Meta.__unm = function(a, b) return a:__unm() end
+Meta.__len = function(a, b) return a:__len() end
+Meta.__call = function(a, ...) return a:__call(...) end
+Meta.__tostring = function(a) return a:__tostring() end
+Meta.__concat = function(a, b) return a:__concat(b) end
+Meta.__pairs = function(a) return a:__pairs() end
+Meta.__ipairs = function(a) return a:__ipairs() end
+Meta.__eq = function(a, b) return a:__eq(b) end
+Meta.__le = function(a, b) return a:__le(b) end
+Meta.__lt = function(a, b) return a:__lt(b) end
+Meta.__gc = function(a) return a:__gc() end
 
 ---------------------------------------------------------------------------
 -- Type type
@@ -80,6 +80,7 @@ local function newtype(name)
       end
       return that
    end
+   type.__bor = Type.__proto.__bor
    return setmetatable(type, type)
 end
 
@@ -113,6 +114,23 @@ Type.__proto.__maybe = function(self)
       return __check__(this, ...)
    end
    return maybe
+end
+Type.__proto.__bor = function(self, that)
+   local this  = self
+   local union = newtype(tostring(self.__name)..'|'..tostring(that.__name))
+   union.__coerce = function(self, ...)
+      if __check__(this, ...) then
+         return __coerce__(this, ...)
+      elseif __check__(that, ...) then
+         return __coerce__(that, ...)
+      else
+         throw(TypeError:new("cannot coerce '"..tostring(...).."' to "..tostring(self)), 2)
+      end
+   end
+   union.__check = function(self, ...)
+      return __check__(this, ...) or __check__(that, ...)
+   end
+   return union
 end
 
 setmetatable(Type, Type)
@@ -274,6 +292,7 @@ function class(outer, name, from, with, body)
       end
       throw(TypeError:new("cannot coerce '"..tostring(that).."' to "..tostring(this)), 2)
    end
+   class.__bor = Type.__proto.__bor
 
    local inner = { }
    setmetatable(inner, { __index = outer })
@@ -511,7 +530,7 @@ Array.__proto.__match = function(a, b)
    if a:len() ~= b:len() then return false end
    for i=1, a:len() do
       local va, vb = a:__getitem(i), b:__getitem(i)
-      if not va == vb then
+      if va ~= vb then
          return false
       end
    end
@@ -837,31 +856,31 @@ end
 debug.setmetatable(function() end, Function.__proto)
 
 ---------------------------------------------------------------------------
--- Thread type
+-- Task type
 ---------------------------------------------------------------------------
-Thread = newtype"Thread"
-Thread.__proto.__tostring = nil
-Thread.yield = coroutine.yield
-Thread.wrap  = coroutine.wrap
-Thread.__check = function(self, that)
+Task = newtype"Task"
+Task.__proto.__tostring = nil
+Task.yield = coroutine.yield
+Task.wrap  = coroutine.wrap
+Task.__check = function(self, that)
    return rawtype(that) == 'thread'
 end
-Thread.__coerce = function(self, code)
+Task.__coerce = function(self, code)
    if self:__check(code) then return code end
    if rawtype(code) ~= "function" then
-      throw(TypeError:new("cannot coerce "..tostring(code).." to Thread"), 2)
+      throw(TypeError:new("cannot coerce "..tostring(code).." to Task"), 2)
    end
    return coroutine.wrap(code)
 end
-Thread.new = function(type, ...)
+Task.new = function(type, ...)
    return type.create(...)
 end
 for k,v in pairs(coroutine) do
-   if not rawget(Thread.__proto, k) then
-      Thread.__proto[k] = v
+   if not rawget(Task.__proto, k) then
+      Task.__proto[k] = v
    end
 end
-debug.setmetatable(coroutine.create(function() end), Thread.__proto)
+debug.setmetatable(coroutine.create(function() end), Task.__proto)
 
 ---------------------------------------------------------------------------
 -- Pattern type
@@ -877,7 +896,7 @@ do
                end
             end
          end
-         return setmetatable(tab, Table)
+         return setmetatable(tab, Table.__proto)
       end
    end
    local function make_capt_array(init)
@@ -889,7 +908,7 @@ do
                end
             end
          end 
-         return setmetatable(tab, Array)
+         return setmetatable(tab, Array.__proto)
       end
    end
 
@@ -1182,26 +1201,55 @@ function environ(outer)
    return setmetatable({ }, { __index = outer })
 end
 
+Package = newtype("Package")
+Package.new = function(class, path, env)
+   local self = setmetatable({
+      __path = path;
+      __env  = env or { };
+   }, class.__proto)
+   return self
+end
+Package.__index = function(self, name)
+   if self.__env[name] ~= nil then
+      self[name] = function()
+         return self.__env[name]
+      end
+   else
+      throw(NameError:new("'"..tostring(name).."' not defined in "..tostring(self)))
+   end
+end
+Package.__tostring = function(self)
+   return table.concat(self.__path, '.')
+end
+
 function import(into, from, what, dest) 
    local mod = loadfrom(from)
    if mod == true then
       throw(ImportError:new("'"..tostring(from).."' does not export any symbols."), 2)
    end
-   if dest then
-      if #what == 0 then
-         into[dest] = setmetatable({ }, { __index = mod })
+   local path = { }
+   for frag in from:gmatch('([^.]+)') do
+      path[#path + 1] = frag
+   end
+   if #what == 0 then
+      if dest then
+         into[dest] = mixin({ }, mod, true)
       else
+         into[path[#path]] = mixin({ }, mod, true)
+      end
+   else
+      if dest then
          into[dest] = { }
+         into = into[dest]
+      end 
+      for i=1, #what do
+         local key = what[i]
+         local val = rawget(mod, key)
+         if val == nil then
+            throw(ImportError:new("'"..tostring(key).."' from '"..tostring(from).."' is nil"), 2)
+         end
+         into[key] = val
       end
-      into = into[dest]
-   end 
-   for i=1, #what do
-      local key = what[i]
-      local val = rawget(mod, key)
-      if val == nil then
-         throw(ImportError:new("'"..tostring(key).."' from '"..tostring(from).."' is nil"), 2)
-      end
-      into[key] = val
    end
    return mod
 end

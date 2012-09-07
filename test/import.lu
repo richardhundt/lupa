@@ -1,5 +1,12 @@
-import from test.shapes in shapes
 import Point, answer, cheese from test.shapes
+import Point, answer, cheese from test.shapes in Shapes
+
+import test.shapes
+import test.shapes as sh
+
+assert(shapes)
+assert(Shapes::answer)
+assert(sh::answer)
 
 var p = Point.new
 p.move(1, 2)

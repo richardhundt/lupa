@@ -36,13 +36,17 @@ object FFI {
       static method __check(that) {
          return ffi::istype(T, that)
       }
+
       static method __finalize {
          FFI.metatype(CTYPE, self::__proto)
       }
 
+      self::__proto::__tostring = nil
+      /*
       method __tostring {
-         return tostring(CTYPE)~': %p'.format(self)
+         tostring(FFI.typeof(self))
       }
+      */
    }
 
    method new(ctype, ...args) {
