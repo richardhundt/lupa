@@ -1346,6 +1346,22 @@ do
    end
 end
 
+function getenv(lvl)
+   lvl = lvl or 1
+   while true do
+      lvl = lvl + 1
+      if debug.getinfo(lvl) == nil then break end
+      local idx = 1
+      while true do
+         local key, val = debug.getlocal(lvl, idx)
+         if key == nil then break end
+         if key == '__env' then return val end
+         idx = idx + 1
+      end
+   end
+   return __env
+end
+
 __env.global = __env
 return __env
 
