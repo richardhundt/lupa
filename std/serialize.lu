@@ -1,5 +1,7 @@
 import FFI from std.system
 
+export Serializer
+
 FFI cdef """
    typedef struct serialize_Buffer {
      size_t size;

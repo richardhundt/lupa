@@ -6,13 +6,16 @@ DEPSDIR=./deps
 BUILDDIR=./build
 LPEGDIR=${DEPSDIR}/lpeg
 LUADIR=${DEPSDIR}/luajit
+SYSDIR=${DEPSDIR}/luasys/src
 
 OS_NAME=$(shell uname -s)
 MH_NAME=$(shell uname -m)
 
 CFLAGS=-O2 -fomit-frame-pointer -Wall -fno-stack-protector
 LDFLAGS=-lm -ldl
-DEPS=${LIBDIR}/libluajit.a ${LPEGDIR}/lpeg.o
+DEPS=${LIBDIR}/libluajit.a ${LPEGDIR}/lpeg.o ${SYSDIR}/libluasys.a
+
+SYSOPT = a
 
 ifeq (${OS_NAME}, Darwin)
 ifeq (${MH_NAME}, x86_64)
@@ -29,7 +32,7 @@ export XCFLAGS
 
 BUILD= ${BUILDDIR}/bin/lupa
 
-all: ${BINDIR}/luajit ${BINDIR}/lupa ${LPEGDIR}/lpeg.o ${BUILD}
+all: ${BINDIR}/luajit ${BINDIR}/lupa ${LPEGDIR}/lpeg.o ${SYSDIR}/libluasys.a ${BUILD}
 
 ${BINDIR}/lupa: ${BUILDDIR}/bin/lupa
 	mkdir -p ${BINDIR}
@@ -37,10 +40,13 @@ ${BINDIR}/lupa: ${BUILDDIR}/bin/lupa
 
 ${BUILDDIR}/bin/lupa: ${DEPS}
 	mkdir -p ${BUILDDIR}/bin
-	${CC} ${CFLAGS} -I${LPEGDIR} -I${LUADIR}/src -L${LUADIR}/src -o ${BUILDDIR}/bin/lupa ./src/lib_init.c ./src/lupa.c ${DEPS} ${LDFLAGS}
+	${CC} ${CFLAGS} -I${LPEGDIR} -I${SYSDIR} -I${LUADIR}/src -L${LUADIR}/src -o ${BUILDDIR}/bin/lupa ./src/lib_init.c ./src/lupa.c ${DEPS} ${LDFLAGS}
 
 ${LPEGDIR}/lpeg.o:
 	${MAKE} -C ${LPEGDIR} lpeg.o
+
+${SYSDIR}/libluasys.a:
+	${MAKE} -C ${SYSDIR} ${SYSOPT}
 
 ${LIBDIR}/libluajit.a:
 	git submodule update --init ${LUADIR}
@@ -54,6 +60,7 @@ ${BINDIR}/luajit: ${LIBDIR}/libluajit.a
 clean:
 	${MAKE} -C ${LUADIR} clean
 	${MAKE} -C ${LPEGDIR} clean
+	${MAKE} -C ${SYSDIR} clean
 	rm -rf ${BUILDDIR}
 	rm -f ${LIBDIR}/*.so
 	rm -f ${LIBDIR}/*.a

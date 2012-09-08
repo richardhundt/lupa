@@ -14,6 +14,8 @@
 #include "lj_arch.h"
 
 int luaopen_lpeg (lua_State *L);
+int luaopen_sys (lua_State *L);
+int luaopen_sys_sock (lua_State *L);
 
 static const luaL_Reg lj_lib_load[] = {
   { "",			luaopen_base },
@@ -27,6 +29,8 @@ static const luaL_Reg lj_lib_load[] = {
   { LUA_BITLIBNAME,	luaopen_bit },
   { LUA_JITLIBNAME,	luaopen_jit },
   { "lpeg",		luaopen_lpeg },
+  { "sys",		luaopen_sys },
+  { "sys.sock",		luaopen_sys_sock },
   { NULL,		NULL }
 };
 
