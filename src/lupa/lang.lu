@@ -323,19 +323,6 @@ object Grammar {
       var tmp = [ ]
       var buf = [ ]
       var hoist = ctx.scope.unhoist()
-      /*
-      if rhs.len == 0 {
-         if kind == nil {
-            return '%slocal %s'.format(hoist, lhs.concat(','))
-         }
-         else {
-            for i=1, lhs.len {
-               lhs[i] = '__env.'~lhs[i]~'=nil'
-            }
-            return '%s%s'.format(hoist,lhs.concat(';'))
-         }
-      }
-      */
 
       if lhs.len == 1 {
          var info = ctx.lookup(lhs[1])
@@ -456,10 +443,10 @@ object Grammar {
       var p, h = make_params(c, p)
       var t = c.scope.unhoist()
       if t != '' {
-         return "(function()%s return function(%s) local __env=__env;%s%s end end)()".format(t,p,h,b)
+         return "(function()%s return function(%s) %s%s end end)()".format(t,p,h,b)
       }
       else {
-         return '(function(%s) local __env=__env;%s%s end)'.format(p,h,b)
+         return '(function(%s) %s%s end)'.format(p,h,b)
       }
    }
 
@@ -470,20 +457,20 @@ object Grammar {
       if s == 'lexical' {
          if info {
             if info['base'] == nil {
-               return "%sfunction %s(%s) local __env=__env;%s %s end".format(t,n,p,h,b)
+               return "%sfunction %s(%s) %s %s end".format(t,n,p,h,b)
             }
             else {
-               return "%sfunction __env.%s(%s) local __env=__env;%s %s end".format(t,n,p,h,b)
+               return "%sfunction __env.%s(%s) %s %s end".format(t,n,p,h,b)
             }
          }
          else {
             c.scope.outer.define(n)
-            return "%slocal function %s(%s) local __env=__env;%s %s end".format(t,n,p,h,b)
+            return "%slocal function %s(%s) %s %s end".format(t,n,p,h,b)
          }
       }
       else {
          c.scope.outer.define(n, { base = '__env' })
-         return "%sfunction __env.%s(%s) local __env=__env;%s %s end".format(t,n,p,h,b)
+         return "%sfunction __env.%s(%s) %s %s end".format(t,n,p,h,b)
       }
    }
 
@@ -517,7 +504,7 @@ object Grammar {
       p = [ 'self', ...p ]
       var p, h = make_params(c,p)
       var t = c.scope.outer.unhoist()
-      return "%s__env.method(self,%q,function(%s) local __env=__env;%s %s end,%s);".format(t,n,p,h,b,a)
+      return "%s__env.method(self,%q,function(%s) %s %s end,%s);".format(t,n,p,h,b,a)
    }
    function make_class_decl(c,n,f,w,b,s) {
       var decl = '__env.class(__env,%q,%s,{%s},function(__env,self,super) %s end);'
@@ -600,7 +587,7 @@ object Grammar {
    function make_guard_decl(c,n,p,b,s) {
       p = [ 'self', ...p ]
       var p, h = make_params(c, p)
-      var decl = '__env.guard(%q,function(%s) local __env=__env;%s %s end)'
+      var decl = '__env.guard(%q,function(%s) %s %s end)'
       var info = c.score.outer.lookup(n)
       var hoist = c.scope.outer.unhoist()
       if s == 'lexical' {
@@ -627,10 +614,10 @@ object Grammar {
    function make_try_stmt(s, ctx, try_body, catch_blocks, loopy) {
       var args = [ ]
       if loopy {
-         args.push("function() local __env=__env; repeat ${try_body} until true end")
+         args.push("function() repeat ${try_body} until true end")
       }
       else {
-         args.push("function() local __env=__env; ${try_body} end")
+         args.push("function() ${try_body} end")
       }
       var stmt = [ ]
       stmt.push("do${s}")
