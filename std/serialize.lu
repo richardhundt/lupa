@@ -152,6 +152,7 @@ object Serializer {
 
    var type  = type
    var pairs = pairs
+   var debug = require('debug')
 
    function encode_table(val, reg, buf) {
       buf.put_uint8(TAB)
@@ -224,7 +225,6 @@ object Serializer {
       }
    }
 
-   var debug = require('debug')
    function decode_value(reg, buf, env) {
       var t = buf.get_uint8()
       if t == STR {
@@ -255,6 +255,7 @@ object Serializer {
          var n = buf.get_bytes(l)
          if l > 0 {
             var c = env::[n]
+            // XXX: encapsulate (use __bless, or something)
             setmetatable(o, c::__proto)
          }
          return o
@@ -267,7 +268,17 @@ object Serializer {
          var l = buf.get_uint16()
          var s = buf.get_bytes(l)
          var f = assert(loadstring(s))
-         setfenv(f, env)
+         var i = 1
+         for i=1, 255 {
+            var k = debug::getupvalue(f, i)
+            if k == nil {
+               break
+            }
+            if k == '__env' {
+               debug::setupvalue(f, i, env)
+               break
+            }
+         }
          return f
       }
       else if t == THR {
@@ -300,24 +311,3 @@ object Serializer {
    }
 }
 
-class Point {
-   has x = 0
-   has y = 0
-   method move(x, y) {
-      self.x = x
-      self.y = y
-   }
-}
-
-var a = [ ]
-for i=1, 10 {
-   var p = Point.new
-   p.move(i+1,i+2)
-   a.push(p)
-}
-var s, q
-for i=1, 100_000 {
-   s = Serializer.encode(a)
-   q = Serializer.decode(s)
-}
-print(q)
