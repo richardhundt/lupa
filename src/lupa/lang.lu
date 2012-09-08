@@ -1010,7 +1010,7 @@ object Code {
          return offs
       }
 
-      self::__slots::put_uint8 = self::__slots::put
+      self::__proto::put_uint8 = self::__proto::put
 
       method put_uint16(v) {
          self.need(2)
@@ -1825,9 +1825,9 @@ class Context {
       return line
    }
 
-   for name, meth in Code::Proto::__slots {
-      if self::__slots::[name] == nil {
-         self::__slots::[name] = function(self, _1, _2, _3) {
+   for name, meth in Code::Proto::__proto {
+      if self::__proto::[name] == nil {
+         self::__proto::[name] = function(self, _1, _2, _3) {
             var proto = self.proto
             proto::[name](proto, _1, _2, _3)
          }
@@ -1865,6 +1865,9 @@ class Context {
    }
    method emit(node, _1, _2, _3, _4) {
       var emit = Handler::[node['tag']]
+      if !emit {
+         error("No handler for ${node['tag']}")
+      }
       self.sync(node)
       return emit(Handler, self, node, _1, _2, _3, _4)
    }
@@ -1971,7 +1974,7 @@ object Handler {
                var free = ctx.freereg
                var type = info::type
                var base = ctx.getvar(type::name, ctx.nextreg)
-               ctx.invoke(base, 'coerce', 1, dest)
+               ctx.invoke(base, '__coerce', 1, dest)
                dest = base
                ctx.freereg = free
             }
@@ -2024,8 +2027,8 @@ object Handler {
    method member_expr(ctx, node, base) {
       var free = ctx.freereg
       base ||= ctx.nextreg
-      var base = ctx.emit(node[1], base)
-      var expr = ctx.emit(node[2])
+      var base = ctx.emit(node[1], base, 1)
+      var expr = ctx.emit(node[2], base, 1)
       ctx.op_tget(base, base, expr)
       ctx.freereg = free
       return base
@@ -2087,7 +2090,7 @@ object Handler {
       var free = ctx.freereg
 
       base ||= ctx.nextreg
-      base = ctx.emit(node[1], base)
+      base = ctx.emit(node[1], base, want || 1)
 
       var narg = node[2].len
 
@@ -2283,7 +2286,7 @@ object Handler {
             var free = ctx.freereg
             var cast = ctx.nextreg
             ctx.op_move(cast, type::base)
-            ctx.invoke(cast, 'coerce', 1, dest)
+            ctx.invoke(cast, '__coerce', 1, dest)
             ctx.op_move(dest, cast)
             ctx.freereg = free
          }
@@ -2540,7 +2543,7 @@ print(s)
 '''
 
 tests push '''
-var l = "Hello".len::toString("foo","bar")
+var l = "Hello".len
 print(l)
 '''
 
@@ -2615,6 +2618,9 @@ for k, v in pairs(a) {
    print(k, v)
 }
 var b = 2
+a.each(function(k,v) {
+   print(k, "=>", v)
+})
 '''
 
 for i=1, tests.len {
