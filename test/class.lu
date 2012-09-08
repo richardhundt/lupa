@@ -78,3 +78,13 @@ catch (e : TypeError) {
    print("caught => ${e}")
 }
 
+var glo = getmetatable(__env)::__index
+var env = [ ]
+for k,v in glo { env.push(v) }
+var m = require('marshal')
+var s = m::encode(p, env)
+print("%q".format(s))
+var x = m::decode(s, env)
+print("x => ", x)
+x.greet()
+

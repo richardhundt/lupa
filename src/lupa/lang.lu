@@ -134,25 +134,34 @@ object Grammar {
             buf.push('{%q,%s}'.format(k, lookup(0, k, ctx)))
          }
          ctx.leave()
-         return " return export(${buf.concat(',')});"
+         return " return __env:export(${buf.concat(',')});"
       }
       ctx.leave()
       return
    }
    function lookup(pos, name, ctx) {
       var info = ctx.lookup(name, pos)
-      if info && info['base'] == 'self' {
-         return 'self:%s()'.format(name)
+      if info {
+         if info['base'] {
+            if info['base'] == 'self' {
+               return 'self:%s()'.format(name)
+            }
+            return info['base']~'.'~name
+         }
+         return name
       }
-      return name
+      return '__env.'~name
    }
    function update(pos, name, ctx) {
       var info = ctx.lookup(name, pos)
       if !info {
-         return name~'=%s'
+         return '__env.'~name~'=%s'
       }
-      if info['base'] && info['base'] == 'self' {
-         return info['base']~':__set_'~name~'(%s)'
+      if info['base'] {
+         if info['base'] == 'self' {
+            return info['base']~':__set_'~name~'(%s)'
+         }
+         return info['base']~'.'~name~'=%s'
       }
       return name~"=%s"
    }
@@ -200,16 +209,16 @@ object Grammar {
       ["!"] = "not(%s)",
       ["#"] = "#(%s)",
       ["-"] = "-(%s)",
-      ["~"] = "__bnot__(%s)",
-      ["?"] = '__maybe__(%s)',
-      ["..."] = "__spread__(%s)",
+      ["~"] = "__env.__bnot__(%s)",
+      ["?"] = '__env.__maybe__(%s)',
+      ["..."] = "__env.__spread__(%s)",
    }
 
    var binops = {
-      ['can']  = "__can__(%s,%s)",
-      ['is']   = "__is__(%s,%s)",
-      ['as']   = "__as__(%s,%s)",
-      ['does'] = "__does__(%s,%s)",
+      ['can']  = "__env.__can__(%s,%s)",
+      ['is']   = "__env.__is__(%s,%s)",
+      ['as']   = "__env.__as__(%s,%s)",
+      ['does'] = "__env.__does__(%s,%s)",
 
       ["+"] = "(%s)+(%s)",
       ["-"] = "(%s)-(%s)",
@@ -219,12 +228,12 @@ object Grammar {
       ["%"] = "(%s)%%(%s)",
       ["~"] = "(%s)..(%s)",
 
-      ['<<'] = '__lshift__(%s,%s)',
-      ['>>'] = '__rshift__(%s,%s)',
-      ['>>>'] = '__arshift__(%s,%s)',
-      ['&'] = '__band__(%s,%s)',
-      ['|'] = '__bor__(%s,%s)',
-      ['^'] = '__bxor__(%s,%s)',
+      ['<<'] = '__env.__lshift__(%s,%s)',
+      ['>>'] = '__env.__rshift__(%s,%s)',
+      ['>>>'] = '__env.__arshift__(%s,%s)',
+      ['&'] = '__env.__band__(%s,%s)',
+      ['|'] = '__env.__bor__(%s,%s)',
+      ['^'] = '__env.__bxor__(%s,%s)',
 
       ["<="] = "(%s)<=(%s)",
       [">="] = "(%s)>=(%s)",
@@ -233,8 +242,8 @@ object Grammar {
       ["=="] = "(%s)==(%s)",
       ["!="] = "(%s)~=(%s)",
 
-      ["~~"] = "__match__(%s,%s)",
-      ["!~"] = "not(__match__(%s,%s))",
+      ["~~"] = "__env.__match__(%s,%s)",
+      ["!~"] = "not(__env.__match__(%s,%s))",
 
       ["&&"] = "(%s)and(%s)",
       ["||"] = "(%s)or(%s)",
@@ -252,12 +261,12 @@ object Grammar {
       }
       if info && info['type'] {
          var type = info['type']
-         oper = '__coerce__(%s,%s)'.format(type, oper)
+         oper = '__env.__coerce__(%s,%s)'.format(type, oper)
       }
       return a2.format(oper.format(a1,b))
    }
 
-   var name_patt =  / { (%alnum | "_")+ } hs* "=" /
+   var name_patt =  / "__env." ? { (%alnum | "_")+ } hs* "=" /
 
    function make_bind_expr(ctx, l, s1, s2, r) {
       var hoist = ctx.scope.unhoist()
@@ -267,7 +276,7 @@ object Grammar {
             var info = ctx.lookup(name)
             if info && info['type'] {
                var type = info['type']
-               r[1] = '__coerce__(%s)' format [type, r[1]].concat(',')
+               r[1] = '__env.__coerce__(%s)' format [type, r[1]].concat(',')
             }
          }
          return hoist~l[1].format(s2 ~ r.concat(','))
@@ -280,7 +289,7 @@ object Grammar {
             var info = ctx.lookup(name)
             if info && info['type'] {
                var type = info['type']
-               t[i] = '__coerce__(%s)' format [type, t[i]].concat(',')
+               t[i] = '__env.__coerce__(%s)' format [type, t[i]].concat(',')
             }
          }
 
@@ -314,17 +323,31 @@ object Grammar {
       var tmp = [ ]
       var buf = [ ]
       var hoist = ctx.scope.unhoist()
+      /*
+      if rhs.len == 0 {
+         if kind == nil {
+            return '%slocal %s'.format(hoist, lhs.concat(','))
+         }
+         else {
+            for i=1, lhs.len {
+               lhs[i] = '__env.'~lhs[i]~'=nil'
+            }
+            return '%s%s'.format(hoist,lhs.concat(';'))
+         }
+      }
+      */
+
       if lhs.len == 1 {
          var info = ctx.lookup(lhs[1])
          if info['type'] {
             var type = info['type']
-            rhs[1] = '__coerce__(%s)' format [type, rhs[1]].concat(',')
+            rhs[1] = '__env.__coerce__(%s)' format [type, rhs[1]].concat(',')
          }
          if kind == nil {
             return "%slocal %s=%s;".format(hoist, lhs[1], rhs[1] || 'nil')
          }
          else {
-            return "%s%s=%s;".format(hoist, lhs[1], rhs[1] || 'nil')
+            return "%s__env.%s=%s;".format(hoist, lhs[1], rhs[1] || 'nil')
          }
       }
 
@@ -347,10 +370,10 @@ object Grammar {
          var info = ctx.lookup(lhs[i])
          if info['type'] {
             var type = info['type']
-            tmp[i] = '__coerce__(%s)' format [type, tmp[i]].concat(',')
+            tmp[i] = '__env.__coerce__(%s)' format [type, tmp[i]].concat(',')
          }
          if kind != nil {
-            lhs[i] = lhs[i]
+            lhs[i] = '__env.'~lhs[i]
          }
       }
 
@@ -361,7 +384,7 @@ object Grammar {
    function make_has_decl(ctx, name, type, body, scope, attr) {
       define(name, ctx, nil, type, body)
       type ||= 'nil'
-      return 'has(self,"%s",%s,function(self) return %s end,%s);'.format(name,type,body,attr)
+      return '__env.has(self,"%s",%s,function(self) return %s end,%s);'.format(name,type,body,attr)
    }
 
    function make_params(ctx, list) {
@@ -379,7 +402,7 @@ object Grammar {
                }
                if info['type'] {
                   var type = info['type']
-                  head.push('%s=__coerce__(%s,%s)'.format(name, type, name))
+                  head.push('%s=__env.__coerce__(%s,%s)'.format(name, type, name))
                }
             }
          }
@@ -391,10 +414,10 @@ object Grammar {
                var info = ctx.lookup(name) 
                if info['type'] {
                   var type = info['type']
-                  head.push('local %s=Array:new(...):inject(function(...) return __coerce__(%s,...) end)'.format(name,type))
+                  head.push('local %s=__env.Array:new(...):inject(function(...) return __env.__coerce__(%s,...) end)'.format(name,type))
                }
                else {
-                  head.push("local %s=Array:new(...)".format(name))
+                  head.push("local %s=__env.Array:new(...)".format(name))
                }
             }
          }
@@ -405,7 +428,7 @@ object Grammar {
    function make_for_in_stmt(ctx, name_list, expr, body) {
       var list, head = make_params(ctx, name_list)
       var hoist = ctx.scope.unhoist()
-      return '%sfor %s in __each__(%s) do %s%s end'.format(hoist, list, expr, head, body)
+      return '%sfor %s in __env.__each__(%s) do %s%s end'.format(hoist, list, expr, head, body)
    }
    function make_for_stmt(ctx, name, init, last, step, body) {
       var list, head = make_params(ctx, [ name ])
@@ -419,7 +442,7 @@ object Grammar {
          for i=1, type_list.len {
             var type = type_list[i]
             var expr = expr_list[i] || ''
-            expr_list[i] = "__coerce__(%s,%s)".format(type,expr)
+            expr_list[i] = "__env.__coerce__(%s,%s)".format(type,expr)
          }
       }
       var e = expr_list.concat(',')
@@ -433,10 +456,10 @@ object Grammar {
       var p, h = make_params(c, p)
       var t = c.scope.unhoist()
       if t != '' {
-         return "(function()%s return function(%s) %s%s end end)()".format(t,p,h,b)
+         return "(function()%s return function(%s) local __env=__env;%s%s end end)()".format(t,p,h,b)
       }
       else {
-         return '(function(%s) %s%s end)'.format(p,h,b)
+         return '(function(%s) local __env=__env;%s%s end)'.format(p,h,b)
       }
    }
 
@@ -447,25 +470,25 @@ object Grammar {
       if s == 'lexical' {
          if info {
             if info['base'] == nil {
-               return "%sfunction %s(%s) %s %s end".format(t,n,p,h,b)
+               return "%sfunction %s(%s) local __env=__env;%s %s end".format(t,n,p,h,b)
             }
             else {
-               return "%sfunction %s(%s) %s %s end".format(t,n,p,h,b)
+               return "%sfunction __env.%s(%s) local __env=__env;%s %s end".format(t,n,p,h,b)
             }
          }
          else {
             c.scope.outer.define(n)
-            return "%slocal function %s(%s) %s %s end".format(t,n,p,h,b)
+            return "%slocal function %s(%s) local __env=__env;%s %s end".format(t,n,p,h,b)
          }
       }
       else {
          c.scope.outer.define(n, { base = '__env' })
-         return "%sfunction %s(%s) %s %s end".format(t,n,p,h,b)
+         return "%sfunction __env.%s(%s) local __env=__env;%s %s end".format(t,n,p,h,b)
       }
    }
 
    function make_enum_decl(c,n,b,s) {
-      var decl = 'enum(%q,{%s});'
+      var decl = '__env.enum(%q,{%s});'
       var info = c.scope.lookup(n)
       if s == 'lexical' {
          if info {
@@ -473,7 +496,7 @@ object Grammar {
                decl = '%s='~decl
             }
             else {
-               decl = '%s='~decl
+               decl = '__env.%s='~decl
             }
          }
          else {
@@ -483,25 +506,30 @@ object Grammar {
       }
       else {
          c.define(n, { type = 'Enum', base = '__env' })
-         decl = '%s='~decl
+         decl = '__env.%s='~decl
       }
       return decl.format(n,n,b)
    }
    function make_with_decl(w) {
-      return "with(self,{%s})".format(w)
+      return "__env.with(self,{%s})".format(w)
    }
    function make_meth_decl(c,n,p,b,s,a) {
       p = [ 'self', ...p ]
       var p, h = make_params(c,p)
       var t = c.scope.outer.unhoist()
-      return "%smethod(self,%q,function(%s) %s %s end,%s);".format(t,n,p,h,b,a)
+      return "%s__env.method(self,%q,function(%s) local __env=__env;%s %s end,%s);".format(t,n,p,h,b,a)
    }
    function make_class_decl(c,n,f,w,b,s) {
-      var decl = 'class(%q,%s,{%s},function(self,super) %s end);'
+      var decl = '__env.class(__env,%q,%s,{%s},function(__env,self,super) %s end);'
       var info = c.scope.lookup(n)
       if s == 'lexical' {
          if info {
-            decl = '%s='~decl
+            if info['base'] == nil {
+               decl = '%s='~decl
+            }
+            else {
+               decl = '__env.%s='~decl
+            }
          }
          else {
             c.define(n, { type = 'Class' })
@@ -510,16 +538,21 @@ object Grammar {
       }
       else {
          c.define(n, { type = 'Class', base = '__env' })
-         decl = "%s="~decl
+         decl = "__env.%s="~decl
       }
       return decl.format(n,n,f,w,b)
    }
    function make_obj_decl(c,n,f,w,b,s) {
-      var decl = 'object(%q,%s,{%s},function(self,super) %s end);'
+      var decl = '__env.object(__env,%q,%s,{%s},function(__env,self,super) %s end);'
       var info = c.scope.lookup(n)
       if s == 'lexical' {
          if info {
-            decl = '%s='~decl
+            if info['base'] == nil {
+               decl = '%s='~decl
+            }
+            else {
+               decl = '__env.%s='~decl
+            }
          }
          else {
             c.define(n, { type = n })
@@ -528,16 +561,16 @@ object Grammar {
       }
       else {
          c.define(n, { type = n, base = '__env' })
-         decl = "%s="~decl
+         decl = "__env.%s="~decl
       }
       return decl.format(n,n,f,w,b)
    }
    function make_obj(c,f,w,b,s) {
-      var decl = 'object(%q,%s,{%s},function(self,super) %s end)'
+      var decl = '__env.object(__env,%q,%s,{%s},function(__env,self,super) %s end)'
       return decl.format("object${genid()}",f,w,b)
    }
    function make_trait_decl(c,n,p,w,b) {
-      var decl = 'trait(%q,{%s},%s,function(self,%s)%s end);'
+      var decl = '__env.trait(__env,%q,{%s},%s,function(__env,self,%s)%s end);'
       var info = c.scope.outer.lookup(n)
       var a = '...'
       if p.len > 0 {
@@ -545,7 +578,12 @@ object Grammar {
       }
       if s == 'lexical' {
          if info {
-            decl = '%s='~decl
+            if info['base'] == nil {
+               decl = '%s='~decl
+            }
+            else {
+               decl = '__env.%s='~decl
+            }
          }
          else {
             c.scope.outer.define(n, { type = 'Trait' })
@@ -554,7 +592,7 @@ object Grammar {
       }
       else {
          c.scope.outer.define(n, { type = 'Trait', base = '__env' })
-         decl = "%s="~decl
+         decl = "__env.%s="~decl
       }
       return decl.format(n,n,w,p.len,a,b)
    }
@@ -562,12 +600,17 @@ object Grammar {
    function make_guard_decl(c,n,p,b,s) {
       p = [ 'self', ...p ]
       var p, h = make_params(c, p)
-      var decl = 'guard(%q,function(%s) %s %s end)'
-      var info  = c.scope.outer.lookup(n)
+      var decl = '__env.guard(%q,function(%s) local __env=__env;%s %s end)'
+      var info = c.score.outer.lookup(n)
       var hoist = c.scope.outer.unhoist()
       if s == 'lexical' {
          if info {
-            decl = '%s%s='~decl
+            if info['base'] == nil {
+               decl = '%s%s='~decl
+            }
+            else {
+               decl = '%s__env.%s='~decl
+            }
          }
          else {
             c.scope.outer.define(n)
@@ -576,7 +619,7 @@ object Grammar {
       }
       else {
          c.scope.outer.define(n, { base = '__env' })
-         decl = "%s%s="~decl
+         decl = "%s__env.%s="~decl
       }
       return decl.format(hoist,n,n,p,h,b)
    }
@@ -584,14 +627,14 @@ object Grammar {
    function make_try_stmt(s, ctx, try_body, catch_blocks, loopy) {
       var args = [ ]
       if loopy {
-         args.push("function() repeat ${try_body} until true end")
+         args.push("function() local __env=__env; repeat ${try_body} until true end")
       }
       else {
-         args.push("function() ${try_body} end")
+         args.push("function() local __env=__env; ${try_body} end")
       }
       var stmt = [ ]
       stmt.push("do${s}")
-      stmt.push("local __return__;local __try__,__err__=try(${args.concat(',')});")
+      stmt.push("local __return__;local __try__,__err__=__env.try(${args.concat(',')});")
       stmt.push("if not __try__ then")
       for i=1, catch_blocks.len {
          var blck = catch_blocks[i]
@@ -608,17 +651,17 @@ object Grammar {
             stmt.push("${spre}elseif")
          }
          if type {
-            stmt.push("__match__(${name},${type}) then ${body}")
+            stmt.push("__env.__match__(${name},${type}) then ${body}")
          }
          else {
             stmt.push("true then ${body}")
          }
          if i == catch_blocks.len {
-            stmt.push("else throw(e) end")
+            stmt.push("else __env.throw(e) end")
          }
       }
       stmt.push("end")
-      stmt.push('if __return__ then return unpack(__return__) end')
+      stmt.push('if __return__ then return __env.unpack(__return__) end')
       if loopy {
          stmt.push('if __break__ then break end')
       }
@@ -661,7 +704,7 @@ object Grammar {
             }
          }
       }
-      return "import(%q,{%s},%s);".format(path.concat('.'), qnames.concat(','), dest)
+      return "__env:import(%q,{%s},%s);".format(path.concat('.'), qnames.concat(','), dest)
    }
    function make_export_decl(c,n) {
       var b = [ ]
@@ -890,7 +933,7 @@ object Grammar {
       {~
          "case" idsafe {~ hs* <expr> s ~} <{ expect(":") }>
          {~ s <case_body>? ~}
-         -> " if case(__switch__,%1) then %2 end "
+         -> " if __env.case(__switch__,%1) then %2 end "
       ~}
    }
    rule case_body {
@@ -903,7 +946,7 @@ object Grammar {
       {~ "default" idsafe hs* ":" {~ s <stmt_list>? ~} -> "%1" ~}
    }
    rule throw_stmt {
-      "throw" idsafe {~ s <expr> ~} -> 'throw(%1)'
+      "throw" idsafe {~ s <expr> ~} -> '__env.throw(%1)'
    }
    rule break_stmt {
       {~ { "break" idsafe } (
@@ -980,7 +1023,7 @@ object Grammar {
 
    rule needs_decl {
       {~
-         <attr> "needs" idsafe hs* <meth_name> =attr -> 'needs(self,"%2",%3)'
+         <attr> "needs" idsafe hs* <meth_name> =attr -> '__env.needs(self,"%2",%3)'
       ~}
    }
 
@@ -1251,11 +1294,11 @@ object Grammar {
    rule range {
       {~ (
          "[" s <expr> s ";" s <expr> ( s ";" s <expr> | {`"1"`} ) s "]"
-      ) -> "Range:new(%1,%2,%3)" ~}
+      ) -> "__env.Range:new(%1,%2,%3)" ~}
    }
    rule array {
       {~
-         ("[" -> "Array:new(") s
+         ("[" -> "__env.Array:new(") s
          (<array_elements> | {`""`}) s
          ("]" -> ")" | <{syntax_error("expected ']'")}>)
       ~}
@@ -1266,7 +1309,7 @@ object Grammar {
 
    rule table {
       {~
-         ("{" -> "Table:new({") s
+         ("{" -> "__env.Table:new({") s
          (<table_elems> | {`""`}) s
          ("}" -> "})" | <{syntax_error("expected '}'")}>)
       ~}
@@ -1425,14 +1468,14 @@ object Grammar {
 
    // PEG grammar and pattern rules
    rule pattern {
-      "/" {~ s <rule_body> s ~} <{ expect("/") }> -> 'Pattern.P(%1)'
+      "/" {~ s <rule_body> s ~} <{ expect("/") }> -> '__env.Pattern.P(%1)'
    }
    rule rule_decl {
       "rule" idsafe s <name> s "{" {~ s <rule_body> s ~} "}"
-      -> 'rule(self,"%1",%2);'
+      -> '__env.rule(self,"%1",%2);'
    }
    rule rule_body {
-      <rule_alt> | {`'Pattern.P(nil)'`}
+      <rule_alt> | {`'__env.Pattern.P(nil)'`}
    }
 
    rule rule_alt {
@@ -1451,17 +1494,17 @@ object Grammar {
    rule rule_suffix {
       ({~ <rule_patt> ~} {: {s} {prod_oper} {s} <rule_prod> :}*) ~> function(a,s1,o,s2,b,t) {
          if o == "=>" {
-            return 'Pattern.Cmt(%s%s,%s%s)'.format(a,s1,s2,b)
+            return '__env.Pattern.Cmt(%s%s,%s%s)'.format(a,s1,s2,b)
          }
          else if o == "~>" {
-            return 'Pattern.Cf(%s%s,%s%s)'.format(a,s1,s2,b)
+            return '__env.Pattern.Cf(%s%s,%s%s)'.format(a,s1,s2,b)
          }
          else {
             if t == 'table' {
-               return 'Pattern.Ch(%s%s,%s%s)'.format(a,s1,s2,b)
+               return '__env.Pattern.Ch(%s%s,%s%s)'.format(a,s1,s2,b)
             }
             else if t == 'array' {
-               return 'Pattern.Ca(%s%s,%s%s)'.format(a,s1,s2,b)
+               return '__env.Pattern.Ca(%s%s,%s%s)'.format(a,s1,s2,b)
             }
             else {
                return '(%s)%s/%s(%s)'.format(a,s1,s2,b)
@@ -1500,40 +1543,40 @@ object Grammar {
       ~}
    }
    rule rule_term {
-      {~ <string> -> 'Pattern.P(%1)' ~}
+      {~ <string> -> '__env.Pattern.P(%1)' ~}
    }
    rule rule_class {
       {~
-         ("[" -> '(') ("^" -> 'Pattern.P(1)-')?
+         ("[" -> '(') ("^" -> '__env.Pattern.P(1)-')?
          (((!"]" <rule_item>)+ -> [ ]) -> function(a) { "("~a.concat("+")~")" })
          ("]" -> ')')
       ~}
    }
    rule rule_item {
       {~ <rule_predef> | <rule_range>
-      | {.} -> function(c) { 'Pattern.P(%q)'.format(c) }
+      | {.} -> function(c) { '__env.Pattern.P(%q)'.format(c) }
       ~}
    }
    rule rule_predef {
       {~ ('%' -> '') (
-         | { [0-9]+ } -> 'Pattern.Carg(%1)'
-         | <name> -> 'Pattern.Def("%1")'
+         | { [0-9]+ } -> '__env.Pattern.Carg(%1)'
+         | <name> -> '__env.Pattern.Def("%1")'
       ) ~}
    }
    rule rule_range {
-      {~ . ("-"->'') !"]" . ~} -> function(r) { 'Pattern.R(%q)'.format(r) }
+      {~ . ("-"->'') !"]" . ~} -> function(r) { '__env.Pattern.R(%q)'.format(r) }
    }
    rule rule_any {
-      {~ "." -> 'Pattern.P(1)' ~}
+      {~ "." -> '__env.Pattern.P(1)' ~}
    }
    rule rule_ref {
       {~
       ("<" -> '') s
-         ( <name> -> 'Pattern.V("%1")'
-         | {~ ("{" -> 'Pattern.P(') s <expr> s ("}" -> ")") ~}
+         ( <name> -> '__env.Pattern.V("%1")'
+         | {~ ("{" -> '__env.Pattern.P(') s <expr> s ("}" -> ")") ~}
          ) s
       (">" -> '')
-      | <ident> -> 'Pattern.P(%1)'
+      | <ident> -> '__env.Pattern.P(%1)'
       ~}
    }
    rule rule_capt {
@@ -1545,23 +1588,23 @@ object Grammar {
    }
    rule rule_group_capt {
       {~ "{:" ((<name> -> quote ":") | {`'nil'`}) {~ s <rule_alt> s ~} <{ expect(":}") }>
-      -> 'Pattern.Cg(%2,%1)'
+      -> '__env.Pattern.Cg(%2,%1)'
       ~}
    }
    rule rule_back_capt {
-      "=" (<name> -> quote) -> 'Pattern.Cb(%1)'
+      "=" (<name> -> quote) -> '__env.Pattern.Cb(%1)'
    }
    rule rule_sub_capt {
-      "{~" {~ s <rule_alt> s ~} <{ expect("~}") }> -> 'Pattern.Cs(%1)'
+      "{~" {~ s <rule_alt> s ~} <{ expect("~}") }> -> '__env.Pattern.Cs(%1)'
    }
    rule rule_const_capt {
-      "{:" {~ s <rule_alt> s ~} <{ expect(":}") }> -> 'Pattern.Cg(%1)'
+      "{:" {~ s <rule_alt> s ~} <{ expect(":}") }> -> '__env.Pattern.Cg(%1)'
    }
    rule rule_const_capt {
-      "{`" {~ s <expr_list> s ~} <{ expect("`}") }> -> 'Pattern.Cc(%1)'
+      "{`" {~ s <expr_list> s ~} <{ expect("`}") }> -> '__env.Pattern.Cc(%1)'
    }
    rule rule_simple_capt {
-      "{" {~ s <rule_alt> s ~} <{ expect("}") }> -> 'Pattern.C(%1)'
+      "{" {~ s <rule_alt> s ~} <{ expect("}") }> -> '__env.Pattern.C(%1)'
    }
 }
 
@@ -1577,7 +1620,9 @@ object Compiler {
       var ctx = Context.new(lupa)
       ctx.enter()
       self.predef(ctx, env || global)
-      var lua = Grammar.match(lupa, 1, ctx, 'require"lupa.core".__INIT__(...)')
+      var lua = Grammar.match(
+         lupa, 1, ctx, 'local __env=require("lupa.core").environ();'
+      )
       ctx.leave()
       assert(ctx.scope.outer == nil, "scope is unbalanced")
       return lua

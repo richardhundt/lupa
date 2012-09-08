@@ -72,10 +72,11 @@ var run = function(...a) {
          out.close()
       }
       else {
+         var main_env  = require('lupa.core')::environ()
          xpcall(main, function(err) {
             io::stderr.write(debug::traceback(tostring(err)), "\n")
             os::exit(1)
-         }, opt['files'][1], ...a)
+         }, main_env, opt['files'][1], ...a)
       }
    }
 }

@@ -20,5 +20,3 @@ class Point3D from Point {
 var answer = 42
 our cheese = "Chutney"
 
-print(Point)
-
