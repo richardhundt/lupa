@@ -1,7 +1,9 @@
-local __env = setmetatable({ }, { __index = _G })
+local __env = _G--setmetatable({ }, { __index = _G, __newindex = _G })
+
+_G.lupa = setmetatable({ }, { __index = __env })
+_G.lupa.core = __env
 package.loaded['lupa.core'] = __env
 setfenv(1, __env)
-for k,v in pairs(_G) do __env[k] = v end
 
 __env.__each = pairs
 
@@ -236,15 +238,19 @@ end
 ---------------------------------------------------------------------------
 Class = newtype"Class"
 
-function class(outer, name, from, with, body)
+function class(name, from, with, body, outer)
    if from == nil then
       from = Any
    else
       if  typeof(from) ~= from -- object
       and typeof(from) ~= Class
       and typeof(from) ~= Type then
-         throw(TypeError:new("Cannot extend "..tostring(from), 2))
+         throw("Cannot extend "..tostring(from), 2)
       end
+   end
+
+   if not outer then
+      outer = getfenv(2)
    end
 
    local class = { }
@@ -313,12 +319,14 @@ function class(outer, name, from, with, body)
          if typeof(with[i]) ~= Trait then
             throw(TypeError:new(tostring(with[i]).." is not a trait"), 2)
          end
-         with[i]:make(class.__frame, class)
+         with[i]:make(class)
       end
    end
 
    local super = setmetatable({ }, from.__proto)
-   body(class.__frame, class, super)
+
+   setfenv(body, class.__frame)
+   body(class, super)
 
    if from.__extend then
       from:__extend(class)
@@ -378,14 +386,14 @@ Trait.__proto.__getitem = function(self, ...)
          " parameters but got "..tostring(#args)
       ), 2)
    end
-   local copy = trait(nil, self.__name, self.__with, want, self.__body)
+   local copy = trait(self.__name, self.__with, want, self.__body)
    local make = self.make
-   copy.make = function(self, into, recv)
-      return make(self, into, recv, unpack(args))
+   copy.make = function(self, recv)
+      return make(self, recv, unpack(args))
    end
    return copy
 end
-Trait.__proto.make = function(self, into, recv, ...)
+Trait.__proto.make = function(self, recv, ...)
    if self.__want ~= 0 then
       throw(TypeError:new(
          "trait "..tostring(self.__name)..
@@ -393,14 +401,14 @@ Trait.__proto.make = function(self, into, recv, ...)
       ), 2)
    end
    for i = 1, #self.__with, 1 do
-      self.__with[i]:make(into, recv)
+      self.__with[i]:make(recv)
    end
-   self.__body(into, recv, ...)
+   self.__body(recv, ...)
    recv.__with[self.__body] = self
    return into
 end
 
-function trait(into, name, with, want, body)
+function trait(name, with, want, body)
    local trait = { }
    trait.__name = name
    trait.__with = with
@@ -415,7 +423,7 @@ function needs(into, name, meta)
 end
 function with(into, with)
    for i=1,#with do
-      with[i]:make(into.__frame, into)
+      with[i]:make(into)
    end
    return into
 end
@@ -423,8 +431,8 @@ end
 ---------------------------------------------------------------------------
 -- Object ctor
 ---------------------------------------------------------------------------
-function object(into, name, from, with, body)
-   local anon = class(into, name, from, with, body)
+function object(name, from, with, body)
+   local anon = class(name, from, with, body, getfenv(2))
    anon.new = nil
    setmetatable(anon, anon.__proto)
    anon.__type = anon
@@ -977,7 +985,7 @@ end
 ---------------------------------------------------------------------------
 -- Error types
 ---------------------------------------------------------------------------
-Error = class(__env, "Error", nil, {}, function(__env,self)
+Error = class("Error", nil, {}, function(self)
    has(self, "trace", nil, function(self) return end)
    method(self,'init',function(self, message, level)
       if not level then level = 1 end
@@ -997,13 +1005,13 @@ Error = class(__env, "Error", nil, {}, function(__env,self)
    end)
 end)
 
-SyntaxError  = class(__env, "SyntaxError",  Error, {}, function() end)
-AccessError  = class(__env, "AccessError",  Error, {}, function() end)
-ImportError  = class(__env, "ImportError",  Error, {}, function() end)
-ExportError  = class(__env, "ExportError",  Error, {}, function() end)
-TypeError    = class(__env, "TypeError",    Error, {}, function() end)
-NameError    = class(__env, "NameError",    Error, {}, function() end)
-ComposeError = class(__env, "ComposeError", Error, {}, function() end)
+SyntaxError  = class("SyntaxError",  Error, {}, function() end)
+AccessError  = class("AccessError",  Error, {}, function() end)
+ImportError  = class("ImportError",  Error, {}, function() end)
+ExportError  = class("ExportError",  Error, {}, function() end)
+TypeError    = class("TypeError",    Error, {}, function() end)
+NameError    = class("NameError",    Error, {}, function() end)
+ComposeError = class("ComposeError", Error, {}, function() end)
 
 
 ---------------------------------------------------------------------------
@@ -1169,6 +1177,28 @@ do
    end
    LUPA_PATH = table.concat(buf, ';')..';'
 end
+
+package.namespace = function(name)
+   local curr = __env
+   local path = { }
+   for frag in string.gmatch(name, "([^.]+)") do
+      path[#path + 1] = frag
+      if rawget(curr, frag) == nil then
+         curr[frag] = setmetatable({
+            __name = table.concat(path, '.');
+            __path = { unpack(path) };
+         }, {
+            __index = __env;
+            __tostring = function(self)
+               return 'module<'..self.__name..'>'
+            end;
+         })
+      end
+      curr = curr[frag]
+   end
+   return curr
+end
+
 table.insert(package.loaders, function(modname)
    local filename = modname:gsub("%.", "/")
    for path in LUPA_PATH:gmatch("([^;]+)") do
@@ -1184,6 +1214,8 @@ table.insert(package.loaders, function(modname)
                local ok, rv = pcall(function(...)
                   local lua  = Compiler:compile(src)
                   local main = assert(loadstring(lua, '='..filepath))
+                  local pckg = package.namespace(modname)
+                  setfenv(main, pckg)
                   return main(...)
                end, ...)
                if not ok then
@@ -1196,37 +1228,16 @@ table.insert(package.loaders, function(modname)
    end
 end)
 
-function environ(outer)
-   if not outer then outer = __env end
-   return setmetatable({ }, { __index = outer })
+function environ(...)
+   local env = setmetatable({ }, { __index = __env })
+   setfenv(2, env)
+   return env
 end
+__INIT__ = environ
 
-Package = newtype("Package")
-Package.new = function(class, path, env)
-   local self = setmetatable({
-      __path = path;
-      __env  = env or { };
-   }, class.__proto)
-   return self
-end
-Package.__index = function(self, name)
-   if self.__env[name] ~= nil then
-      self[name] = function()
-         return self.__env[name]
-      end
-   else
-      throw(NameError:new("'"..tostring(name).."' not defined in "..tostring(self)))
-   end
-end
-Package.__tostring = function(self)
-   return table.concat(self.__path, '.')
-end
-
-function import(into, from, what, dest) 
-   local mod = loadfrom(from)
-   if mod == true then
-      throw(ImportError:new("'"..tostring(from).."' does not export any symbols."), 2)
-   end
+function import(from, what, dest) 
+   local into = getfenv(2)
+   local mod  = loadfrom(from)
    local path = { }
    for frag in from:gmatch('([^.]+)') do
       path[#path + 1] = frag
@@ -1246,6 +1257,10 @@ function import(into, from, what, dest)
          local key = what[i]
          local val = rawget(mod, key)
          if val == nil then
+            print("mod has...")
+            for k,v in pairs(mod) do
+               print(k, '=>', v)
+            end
             throw(ImportError:new("'"..tostring(key).."' from '"..tostring(from).."' is nil"), 2)
          end
          into[key] = val
@@ -1254,7 +1269,7 @@ function import(into, from, what, dest)
    return mod
 end
 
-function export(from, ...)
+function export(...)
    local what = Array:new(...)
    local exporter = { }
    for i = 1, #what do
@@ -1312,6 +1327,7 @@ uint32 = ffi.typeof('uint32_t')
 int64 = ffi.typeof('int64_t')
 uint64 = ffi.typeof('uint64_t')
 
+--[[
 do
    -- from strict.lua
    local mt = getmetatable(_G)
@@ -1345,6 +1361,7 @@ do
       return rawget(t, n)
    end
 end
+]]
 
 __env.global = __env
 return __env
