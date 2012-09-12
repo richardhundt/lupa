@@ -1,0 +1,78 @@
+import sys
+import SysWrapper from std.sys
+
+export Event
+
+class Event with SysWrapper['sys.event_queue'] {
+
+   our LOOP = sys::event_queue()
+
+   static method new {
+      sys::event_queue()
+   }
+   static method add(what, events, cb, timeout = -1, once = false) {
+      LOOP.add(what, events, cb, timeout, once)
+   }
+   static method add_timer(cb, timeout, once = false, obj = nil) {
+      LOOP.add_timer(cb, timeout, once, obj)
+   }
+   static method add_pid(pid, cb, timeout = -1) {
+      LOOP.add_pid(pid, cb, timeout)
+   }
+   static method add_winmsg(...args) {
+      LOOP.add_winmsg(...args)
+   }
+   static method add_dirwatch(path : String, cb, timeout = -1, once = false, modify = false) {
+      LOOP.add_dirwatch(path, cb, timeout, once, modify)
+   }
+   static method add_signal(sig : String, cb, timeout = -1, once = false) {
+      LOOP.add_signal(sig, cb, timeout, once)
+   }
+   static method ignore_signal(sig : String, ignore : Boolean = true) {
+      LOOP.ignore_signal(sig, ignore)
+   }
+   static method signal(sig : ?String = nil) {
+      LOOP.signal(sig)
+   }
+   static method add_socket(sd, events, cb, timeout = -1, once = false) {
+      LOOP.add_socket(sd, events, cb, timeout, once)
+   }
+   static method mod_socket(ev, events) {
+      LOOP.mod_socket(ev, events)
+   }
+   static method del(ev, reuse_fd = nil) {
+      LOOP.del(ev, reuse_fd)
+   }
+   static method timeout(ev, timeout) {
+      LOOP.timeout(ev, timeout)
+   }
+   static method timeout_manual(ev, manual : Boolean = true) {
+      LOOP.timeout_manual(ev, manual)
+   }
+   static method loop(timeout, linger, once, pull) {
+      LOOP.loop(timeout, linger, once, pull)
+   }
+   static method stop() {
+      LOOP.stop()
+   }
+   static method size() {
+      LOOP.size()
+   }
+   static method on_idle(cb) {
+      LOOP.on_idle(cb)
+   }
+   static method callback(ev, cb = nil) {
+      LOOP.callback(ev, cb)
+   }
+   static method now(ev) {
+      LOOP.now(ev)
+   }
+   static method notify(ev) {
+      LOOP.notify(ev)
+   }
+   static method sync(cb) {
+      LOOP.sync(cb)
+   }
+}
+
+

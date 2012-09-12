@@ -1,0 +1,10 @@
+trait Stream {
+   needs read
+   needs write
+   needs close
+}
+
+class Socket {
+
+}
+

@@ -1,0 +1,30 @@
+import FFI from std.ffi
+
+export Fcntl
+
+object Fcntl {
+   our F_GETFD = 1
+   our F_SETFD = 2
+   our F_GETFL = 3
+   our F_SETFL = 4
+   our O_NONBLOCK = 0x0004
+   our O_APPEND   = 0x0008
+
+   our SOL_SOCKET, SO_REUSEADDR, SO_DONTROUTE, SO_BROADCAST, SO_KEEPALIVE
+
+   if FFI::OS == 'Linux' {
+      SOL_SOCKET = 1
+      SO_REUSEADDR = 2
+      SO_DONTROUTE = 5
+      SO_BROADCAST = 6
+      SO_KEEPALIVE = 9
+   }
+   else if FFI::OS == 'OSX' {
+      SOL_SOCKET = 0xffff
+      SO_REUSEADDR = 0x0004
+      SO_KEEPALIVE = 0x0008
+      SO_DONTROUTE = 0x0010
+      SO_BROADCAST = 0x0020
+   }
+}
+

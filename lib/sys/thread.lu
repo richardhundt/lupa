@@ -1,0 +1,68 @@
+import sys
+import SysWrapper from std.sys
+
+export Thread, Scheduler
+
+var thread = sys::thread
+assert(thread::init())
+
+class Thread with SysWrapper['sys.thread'] {
+   static method yield {
+      thread::yield()
+   }
+   static method sleep(msec) {
+      thread::sleep(msec)
+   }
+   static method run(func, ...args) {
+      thread::run(func, ...args)
+   }
+   static method runvm(func, ...args) {
+      var path  = global::package::path
+      var cpath = global::package::cpath
+      var wrap = assert(loadstring("""
+         package.path  = "${path}"
+         package.cpath = "${cpath}"
+         debug     = require('debug')
+         table     = require('table')
+         coroutine = require('coroutine')
+         string    = require('string')
+         os        = require('os')
+         io        = require('io')
+         ffi       = require('ffi')
+         local dump = ...
+         local func = assert(loadstring(dump))
+         local env  = require('lupa.core').environ()
+         debug.setupvalue(func, 1, env)
+         return func(select(2, ...))
+      """))
+      func = string::dump(func)
+      wrap = string::dump(wrap)
+      thread::runvm(nil, wrap, func, ...args)
+   }
+   static method self {
+      thread::self()
+   }
+   static method pipe {
+      thread::pipe()
+   }
+}
+
+class Scheduler with SysWrapper['sys.thread.scheduler'] {
+   static method new(controller, min_workers, max_workers, timeout) {
+      thread::scheduler(controller, min_workers, max_workers, timeout)
+   }
+   method schedule(timeout = nil, nworkers = 4, preempt = false) {
+      if preempt {
+         for i=1, nworkers {
+            thread::run(self::preempt_tasks, self, timeout)
+         }
+         self.loop(timeout)
+      }
+      else {
+         for i=1, nworkers {
+            thread::run(self::loop, self, timeout)
+         }
+      }
+   }
+}
+

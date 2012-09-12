@@ -1,0 +1,166 @@
+import MemBuf from std.sys.membuf
+
+export JSON, json_encode, json_decode
+
+function json_encode(item) {
+   return JSON.encode(item)
+}
+
+function json_decode(jstr) {
+   return JSON.decode(jstr)
+}
+
+object JSON {
+   import mem from sys
+
+   var encode_escapes = {
+      ['\b'] = "\\b",
+      ['\t'] = "\\t",  
+      ['\n'] = "\\n", 
+      ['\f'] = "\\f",
+      ['\r'] = "\\r", 
+      ['"']  = "\\\"", 
+      ['\\'] = "\\\\", 
+      ['/']  = "\\/"
+   }
+
+   method encode(item) {
+      var buf  = MemBuf.new
+      var seen = { }
+      encode_helper(buf, item, seen)
+      return buf.tostring()
+   }
+
+   method decode(jstr) {
+      return self.JSON.match(jstr)
+   }
+
+   function encode_helper(buf, item, seen) {
+      var t = typeof(item)
+      if t == Table {
+         if seen[item] {
+            error("cycle detected")
+         }
+         seen[item] = true
+         buf.write("{")
+         var prev = false
+         for k,v in pairs(item) {
+            if prev {
+               buf.write(",")
+            }
+            else {
+               prev = true
+            }
+            buf.write("%q".format(tostring(k)), ":")
+            encode_helper(buf, v, seen)
+         }
+         buf.write("}")
+      }
+      else if t == Array {
+         if seen[item] {
+            error("cycle detected")
+         }
+         seen[item] = true
+         buf.write("[")
+         var prev = false
+         for i,v in ipairs(item) {
+            if prev {
+               buf.write(",")
+            }
+            else {
+               prev = true
+            }
+            encode_helper(buf, v, seen)
+         }
+         buf.write("]")
+      }
+      else if t == Number {
+         buf.write(tostring(item))
+      }
+      else if t == String {
+         buf.write('"')
+         var str = item.gsub("[%z%c\\\"/]", function(n) {
+            var c = encode_escapes[n]
+            if c { return c }
+            return "\\u%.4X".format(String::byte(n))
+         })
+         buf.write(str, '"')
+      }
+      else if t == Boolean {
+         buf.write(tostring(item))
+      }
+      else if item == nil {
+         buf.write("null")
+      }
+      else {
+         error("cannot encode a: ${t}")
+      }
+   }
+
+   var decode_escapes = /
+      | '\\\\' -> '\\'
+      | "\\r"  -> "\r"
+      | "\\n"  -> "\n"
+      | "\\f"  -> "\f"
+      | "\\b"  -> "\b"
+      | "\\t"  -> "\t"
+      | "\\u"  { [0-9A-F]^4 } -> function(code) {
+         return String::char(tonumber(code, 16))
+      }
+   /
+
+   rule JSON {
+      | <null>
+      | <boolean>
+      | <string>
+      | <number>
+      | <array>
+      | <table>
+   }
+
+   rule boolean {
+      | "true"  {`true`}
+      | "false" {`false`}
+   }
+   rule string {
+      | '"' {~ (decode_escapes | ('\"'  -> '"') | !'"' .)* ~} '"'
+      | "'" {~ (decode_escapes | ("\\'" -> "'") | !"'" .)* ~} "'"
+   }
+   rule null {
+      "null" {`nil`}
+   }
+   rule number {
+      (<hexadec> | <decimal>) -> tonumber
+   }
+   rule hexadec {
+      "-"? %space* "0x" %xdigit+
+   }
+   rule decimal {
+      "-"? %space* %digit+
+      ("." %digit+)?
+      ([eE] "-"? %digit+)?
+   }
+   rule array {
+      "[" %space* <items>? %space* "]" -> [ ]
+   }
+   rule items {
+      <JSON> (%space* "," %space* <JSON>)*
+   }
+   rule table {
+      "{" %space* <pairs>? %space* "}" -> { } -> function(t) {
+         var h = { }
+         for i=1, #t, 2 {
+            h[t[i]] = t[i+1]
+         }
+         return h
+      }
+   }
+   rule pairs {
+      <pair> (%space* "," %space* <pair>)*
+   }
+   rule pair {
+      <string> %space* ":" %space* <JSON>
+   }
+}
+
+

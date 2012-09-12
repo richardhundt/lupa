@@ -1,0 +1,89 @@
+export Socket, TCPSocket, TCPServer
+
+import SysWrapper from std.sys
+
+import sys
+import sys.sock
+
+trait Final {
+   static method __extend { error("cannot extend Final ${self}") }
+}
+
+class Addr with Final, SysWrapper['sys.sock.addr'] {
+   static method new(...args) {
+      sys::sock::addr()
+   }
+}
+
+class Handle with Final, SysWrapper['sys.sock.handle'] {
+   static method new(...args) {
+      sys::sock::handle()
+   }
+}
+
+class Socket {
+   has addr   = Addr.new
+   has handle = Handle.new
+
+   static method getaddrinfo(host) {
+      assert(sys::sock::getaddrinfo(host))
+   }
+   static method inet_pton(host) {
+      assert(sys::sock::inet_pton(host))
+   }
+   method nonblocking=(flag : Boolean) {
+      assert(self.handle.nonblocking(flag))
+   }
+   method sockopt(opt, vlo, vhi) {
+      assert(self.handle.sockopt(opt, vlo, vhi))
+   }
+   method close {
+      assert(self.handle.close())
+   }
+   method shutdown {
+      assert(self.handle.shutdown())
+   }
+}
+
+class UDPSocket from Socket {
+   // TODO
+}
+
+class TCPSocket from Socket {
+   method init {
+      assert(self.handle.socket("stream", "inet"))
+   }
+   method connect(host, port) {
+      var info = Socket.getaddrinfo(host)
+      var addr = Addr.new.inet(port,info)
+      assert(self.handle.connect(addr))
+   }
+   method write(data) {
+      self.handle.write(data)
+   }
+   method read(how) {
+      self.handle.read(how)
+   }
+}
+
+class TCPServer from Socket {
+   has handle = Handle.new
+   method init {
+      assert(self.handle.socket("stream", "inet"))
+   }
+   method bind(host, port) {
+      var addr = self.addr.inet(port, Socket.inet_pton(host))
+      assert(self.handle.bind(addr))
+   }
+   method listen {
+      assert(self.handle.listen())
+   }
+   method accept(handle : Handle = Handle.new, addr : Addr = Addr.new) {
+      assert(self.handle.accept(handle, addr))
+      var child = TCPSocket.new
+      child.handle = handle
+      child.addr   = addr
+      return child
+   }
+}
+

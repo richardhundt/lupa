@@ -4,3 +4,9 @@
 [submodule "deps/luasys"]
 	path = deps/luasys
 	url = https://github.com/richardhundt/luasys.git
+[submodule "deps/libzmq"]
+	path = deps/libzmq
+	url = https://github.com/zeromq/libzmq.git
+[submodule "lib/sys/inc"]
+	path = lib/sys/inc
+	url = https://github.com/richardhundt/luasys.git

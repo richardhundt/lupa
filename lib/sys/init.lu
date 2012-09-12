@@ -1,0 +1,16 @@
+import sys
+
+export SysWrapper
+
+trait SysWrapper[typename] {
+   var proto = assert(debug::getregistry()::[typename])
+   for k,v in pairs(self::__proto) {
+      if proto::[k] == nil {
+         proto::[k] = v
+      }
+   }
+   proto::__tostring = self::__proto::__tostring
+   self::__proto = proto
+}
+
+

@@ -296,7 +296,7 @@ function class(outer, name, from, with, body)
 
    local inner = { }
    setmetatable(inner, { __index = outer })
-   class.__frame = setmetatable({ }, {
+   class.__frame = setmetatable({ [name] = class }, {
       __index = inner;
       __newindex = function(env, key, val)
          inner[key] = val
@@ -304,7 +304,8 @@ function class(outer, name, from, with, body)
       end;
    })
 
-   class.__frame[name] = class
+   -- don't do this here because we end up with self.Foo in class Foo
+   --class.__frame[name] = class
 
    setmetatable(class, class)
 
@@ -1222,8 +1223,35 @@ Package.__tostring = function(self)
    return table.concat(self.__path, '.')
 end
 
+local function _require(from, into)
+   local path = from
+   if rawtype(from) == "table" then
+      path = table.concat(from, ".")
+   end
+   local mod = require(path)
+   if mod == true then
+      mod = into or __env
+      if rawtype(from) == 'string' then
+         local orig = from
+         from = { }
+         for frag in orig:gmatch('([^%.]+)') do
+            from[#from + 1] = frag
+         end
+      end
+      for i=1, #from do
+         local prev = mod
+         mod = rawget(prev, from[i])
+         if mod == nil then
+            mod = { }
+            prev[from[i]] = mod
+         end
+      end
+   end
+   return mod
+end
+
 function import(into, from, what, dest) 
-   local mod = loadfrom(from)
+   local mod = _require(from, into)
    if mod == true then
       throw(ImportError:new("'"..tostring(from).."' does not export any symbols."), 2)
    end
@@ -1244,6 +1272,9 @@ function import(into, from, what, dest)
       end 
       for i=1, #what do
          local key = what[i]
+         if mod == nil then
+            throw(ImportError:new("failed to load "..from))
+         end
          local val = rawget(mod, key)
          if val == nil then
             throw(ImportError:new("'"..tostring(key).."' from '"..tostring(from).."' is nil"), 2)
@@ -1266,28 +1297,6 @@ function export(from, ...)
       exporter[key] = val
    end
    return exporter
-end
-
-function loadfrom(from)
-   local path = from
-   if rawtype(from) == "table" then
-      path = table.concat(from, ".")
-   end
-   local mod = require(path)
-   if mod == true then
-      mod = _G
-      if rawtype(from) == 'string' then
-         local orig = from
-         from = { }
-         for frag in orig:gmatch('([^%.]+)') do
-            from[#from + 1] = frag
-         end
-      end
-      for i = 1, #from do -- FIXME: hack!
-         mod = rawget(mod or { }, from[i])
-      end
-   end
-   return mod
 end
 function evaluate(lua)
    local main = assert(loadstring(lua))

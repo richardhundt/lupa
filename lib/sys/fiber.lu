@@ -1,0 +1,78 @@
+import Event from std.sys.event
+
+import Thread, Scheduler from std.sys.thread
+
+export Fiber
+
+class Fiber {
+   var STATE = 'initial'
+   var MAIN  = coroutine::running()
+   var EVENT = Event::LOOP
+
+   static method new(func) {
+      coroutine::create(func)
+   }
+
+   static method self { coroutine::running() }
+
+   static method run(func, ...args) {
+      var task = Fiber.new(func)
+      assert(task.resume(...args))
+   }
+
+   static method yield(...args) {
+      coroutine::yield(...args)
+   }
+
+   static method loop(timeout) {
+      EVENT.loop(timeout, true)
+   }
+   static method stop() {
+      EVENT.stop
+   }
+
+   static method __check(that) {
+      return rawtype(that) == 'thread'
+   }
+   static method __coerce(code) {
+      if self.__check(code) { return code }
+      if rawtype(code) != "function" {
+         TypeError raise "cannot coerce ${code} to Fiber"
+      }
+      Fiber.new(code)
+   }
+   static method sleep(msec) {
+      var curr = Fiber.self
+      Event.add_timer(curr, msec, true)
+      Fiber.yield
+   }
+   method suspend {
+      Fiber.yield
+   }
+   method resume(...args) {
+      coroutine::resume(self, ...args)
+   }
+   method wait(timeout = -1) {
+      var curr = Fiber.self
+      if curr == MAIN {
+         Fiber.loop(timeout)
+      }
+      else {
+         Fiber.wait_timer(timeout)
+      }
+   }
+   static method wait_timer(timeout) {
+      EVENT.add_timer(Fiber.self, timeout, true)
+      Fiber.yield
+   }
+   static method wait_signal(signame, timeout) {
+      EVENT.add_signal(signame, timeout, Fiber.self)
+      Fiber.yield
+   }
+   static method wait_socket(handle, events, timeout) {
+      EVENT.add_socket(handle, events, Fiber.self, timeout, true)
+      Fiber.yield
+   }
+   debug::setmetatable(coroutine::create(function() { }), self::__proto)
+}
+

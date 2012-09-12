@@ -1,0 +1,11 @@
+import sys
+import SysWrapper from std.sys
+
+export MemBuf
+
+class MemBuf with SysWrapper['sys.mem.pointer'] {
+   static method new(str) {
+      sys::mem::pointer().alloc()
+   }
+}
+

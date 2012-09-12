@@ -1,0 +1,57 @@
+import FFI from std.ffi
+
+export Buffer
+
+class Buffer {
+   FFI cdef """
+      typedef struct std_Buffer {
+         size_t   _size;
+         size_t   _offs;
+         uint8_t *_data;
+      } std_Buffer;
+   """
+
+   with FFI::MetaType['std_Buffer']
+
+   method data { self::_data }
+   method size { self::_size }
+   method offs { self::_offs }
+
+   method init(size : Number = 512) {
+      self::_size = size
+      self::_data = FFI::C::malloc(size)
+      self::_offs = 0
+   }
+   method clear {
+      FFI.fill(self::_data, self::_size)
+   }
+   method need(size) {
+      if self::_size < self::_offs + size {
+         var new_size = self::_offs + size
+         while new_size < self::_size {
+            new_size = new_size * 2
+         }
+         self::_data = FFI::C::realloc(FFI.cast('void*', self::_data), new_size)
+         self::_size = new_size
+      }
+   }
+   method append(data : String) {
+      var len = #data
+      self.need(len)
+      FFI.copy(self::_data + self::_offs, data)
+      self::_offs += len
+      len
+   }
+
+   method __tostring {
+      FFI.string(self::_data, self::_offs)
+   }
+   method to_string {
+      tostring(self)
+   }
+   self::__proto::__gc = function(self) {
+      FFI::C::free(self::_data)
+   }
+}
+
+
