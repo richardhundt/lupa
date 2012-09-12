@@ -1,4 +1,4 @@
-import FFI from std.system
+import FFI from std.ffi
 
 export Serializer
 

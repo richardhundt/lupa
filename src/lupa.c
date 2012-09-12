@@ -10,7 +10,6 @@
 #include "core.h"
 #include "lang.h"
 #include "lupa.h"
-#include "luasys.h"
 
 static int traceback(lua_State *L) {
     lua_getfield(L, LUA_GLOBALSINDEX, "debug");

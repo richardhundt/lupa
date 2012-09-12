@@ -21,6 +21,10 @@ var getopt = function(...args) {
          else if o == 'b' {
             opt['b'] = true
          }
+         else if o == 'e' {
+            opt['e'] = args[idx + 1]
+            idx = idx + 1
+         }
          else {
             error('unknown option: '~arg, 2)
          }
@@ -39,9 +43,15 @@ var run = function(...a) {
       os::exit(0)
    }
    var opt = getopt(...a)
-   var sfh = assert(io::open(opt['files'][1]))
-   var src = sfh.read('*a')
-   sfh.close()
+   var src
+   if opt['e'] {
+      src = opt['e']
+   }
+   else {
+      var sfh = assert(io::open(opt['files'][1]))
+      src = sfh.read('*a')
+      sfh.close()
+   }
 
    var lua
    try {
@@ -64,7 +74,8 @@ var run = function(...a) {
    }
    else {
       lua = lua.gsub("^%s*#![^\n]*",'')
-      var main = assert(loadstring(lua,'='~opt['files'][1]))
+      var name = opt['files'][1] || src
+      var main = assert(loadstring(lua,'='~name))
       if opt['b'] {
          var out = opt['files'][2] || 'a.luac'
          out = io::open(out, "wb+")
