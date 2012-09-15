@@ -4,3 +4,6 @@
 [submodule "lib/sys/inc"]
 	path = lib/sys/inc
 	url = https://github.com/richardhundt/luasys.git
+[submodule "lib/zmq/inc"]
+	path = lib/zmq/inc
+	url = https://github.com/Neopallium/lua-zmq.git
