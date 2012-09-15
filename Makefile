@@ -12,11 +12,15 @@ LDFLAGS=-lm -ldl
 
 ifeq (${OS_NAME}, Darwin)
 ifeq (${MH_NAME}, x86_64)
-CFLAGS+=-pagezero_size 10000 -image_base 100000000
+#CFLAGS+=-pagezero_size 10000 -image_base 100000000
+CFLAGS+=
 endif
 else
 CFLAGS+=-Wl,-E
 endif
+
+CC=gcc -m32
+export CC
 
 DEPS=${LUADIR}/src/libluajit.a ${LIBDIR}/lpeg/lpeg.o
 
@@ -28,11 +32,12 @@ ${BINDIR}/lupa: ${DEPS} libs
 	${CC} ${CFLAGS} -I${LUADIR}/src -L${LUADIR}/src -o ${BINDIR}/lupa ${SRCDIR}/lib_init.c ${SRCDIR}/lupa.c ${DEPS} ${LDFLAGS}
 
 libs:
+	git submodule update --init ./lib/sys/inc
 	${MAKE} -C ${LIBDIR}
 
 ${LUADIR}/src/libluajit.a:
 	git submodule update --init ${LUADIR}
-	${MAKE} XCFLAGS="-DLUAJIT_ENABLE_LUA52COMPAT" -C ${LUADIR}
+	${MAKE} CC="gcc -m32" XCFLAGS="-DLUAJIT_ENABLE_LUA52COMPAT" -C ${LUADIR}
 
 clean:
 	${MAKE} -C ${LUADIR} clean

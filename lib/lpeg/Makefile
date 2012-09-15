@@ -24,7 +24,7 @@ CWARNS = -Wall -Wextra -pedantic \
 OS_NAME=$(shell uname -s)
 
 CFLAGS = $(CWARNS) $(COPT) -ansi -I$(LUADIR)
-CC = gcc
+CC = gcc -m32
 
 ifeq ($(OS_NAME), Darwin)
 ENV=MACOSX_DEPLOYMENT_TARGET=10.4

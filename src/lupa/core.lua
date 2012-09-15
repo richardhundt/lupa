@@ -1170,7 +1170,7 @@ do
    end
    LUPA_PATH = table.concat(buf, ';')..';'
 end
-table.insert(package.loaders, function(modname)
+table.insert(package.loaders, 1, function(modname)
    local filename = modname:gsub("%.", "/")
    for path in LUPA_PATH:gmatch("([^;]+)") do
       if path ~= "" then
@@ -1261,9 +1261,9 @@ function import(into, from, what, dest)
    end
    if #what == 0 then
       if dest then
-         into[dest] = mixin({ }, mod, true)
+         into[dest] = mod
       else
-         into[path[#path]] = mixin({ }, mod, true)
+         into[path[#path]] = mod
       end
    else
       if dest then

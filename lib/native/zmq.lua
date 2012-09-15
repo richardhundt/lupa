@@ -1,12 +1,12 @@
 local ffi = require( "ffi" )
 
-local libs = ffi_zmq_libs or {
+local libs = {
    OSX     = { x86 = "zmq.dylib", x64 = "zmq.dylib" },
    Windows = { x86 = "zmq.dll", x64 = "zmq.dll" },
    Linux   = { x86 = "zmq.so", x64 = "zmq.so", arm = "zmq.so"  },
 }
 
-local zmq = ffi.load( ffi_zmq_lib or libs[ ffi.os ][ ffi.arch ] )
+local zmq = ffi.load( libs[ ffi.os ][ ffi.arch ] )
 
 ffi.cdef([[
    enum {
