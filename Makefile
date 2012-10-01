@@ -28,6 +28,7 @@ ${BINDIR}/lupa: ${DEPS} libs
 	${CC} ${CFLAGS} -I${LUADIR}/src -L${LUADIR}/src -o ${BINDIR}/lupa ${SRCDIR}/lib_init.c ${SRCDIR}/lupa.c ${DEPS} ${LDFLAGS}
 
 libs:
+	git submodule update --init ./lib/sys/inc
 	${MAKE} -C ${LIBDIR}
 
 ${LUADIR}/src/libluajit.a:

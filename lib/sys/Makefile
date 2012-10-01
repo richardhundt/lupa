@@ -19,7 +19,6 @@ endif
 all: sys
 
 sys:
-	git submodule update --init ./inc
 	${MAKE} -C ./inc/src ${SYSOPT}
 	cp ./inc/src/sys.so ../sys.so
 
