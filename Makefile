@@ -1,6 +1,7 @@
 SRCDIR=./src
 BLDDIR=./build
 LUADIR=./deps/luajit
+LUVDIR=./deps/luv
 LIBDIR=./lib
 BINDIR=${BLDDIR}/bin
 
@@ -13,34 +14,35 @@ LDFLAGS=-lm -ldl
 ifeq (${OS_NAME}, Darwin)
 ifeq (${MH_NAME}, x86_64)
 #CFLAGS+=-pagezero_size 10000 -image_base 100000000
-CFLAGS+=
+CFLAGS+=-undefined dynamic_lookup -framework CoreServices
 endif
 else
 CFLAGS+=-Wl,-E
 endif
 
-CC=gcc -m32
-export CC
-
-DEPS=${LUADIR}/src/libluajit.a ${LIBDIR}/lpeg/lpeg.o
+DEPS=${LUADIR}/src/libluajit.a ${LIBDIR}/lpeg/lpeg.o ${LUVDIR}/src/libluv.a
 
 all: ${BINDIR}/lupa
 
 ${BINDIR}/lupa: ${DEPS} libs
 	mkdir -p ${BLDDIR}
 	mkdir -p ${BINDIR}
-	${CC} ${CFLAGS} -I${LUADIR}/src -L${LUADIR}/src -o ${BINDIR}/lupa ${SRCDIR}/lib_init.c ${SRCDIR}/lupa.c ${DEPS} ${LDFLAGS}
+	${CC} ${CFLAGS} -I${LUADIR}/src -I${LUVDIR}/src -I${LUVDIR}/src/uv/include -I${LUVDIR}/src/zmq/include -o ${BINDIR}/lupa ${SRCDIR}/lib_init.c ${SRCDIR}/lupa.c ${DEPS} ${LDFLAGS}
 
 libs:
-	git submodule update --init ./lib/sys/inc
 	${MAKE} -C ${LIBDIR}
 
 ${LUADIR}/src/libluajit.a:
 	git submodule update --init ${LUADIR}
-	${MAKE} CC="gcc -m32" XCFLAGS="-DLUAJIT_ENABLE_LUA52COMPAT" -C ${LUADIR}
+	${MAKE} XCFLAGS="-DLUAJIT_ENABLE_LUA52COMPAT" -C ${LUADIR}
 
-clean:
+${LUVDIR}/src/libluv.a:
+	git submodule update --init ${LUVDIR}
+	${MAKE} -C ${LUVDIR}
+
+clean: ${DEPS}
 	${MAKE} -C ${LUADIR} clean
+	${MAKE} -C ${LUVDIR} clean
 	${MAKE} -C ${LIBDIR} clean
 	rm -rf ${BLDDIR}
 

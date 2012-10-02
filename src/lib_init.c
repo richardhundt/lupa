@@ -12,6 +12,7 @@
 #include "lualib.h"
 
 #include "lj_arch.h"
+#include "luv.h"
 
 int luaopen_lpeg (lua_State *L);
 
@@ -27,6 +28,7 @@ static const luaL_Reg lj_lib_load[] = {
   { LUA_BITLIBNAME,	luaopen_bit },
   { LUA_JITLIBNAME,	luaopen_jit },
   { "lpeg",		luaopen_lpeg },
+  { "system",	        luaopen_luv },
   { NULL,		NULL }
 };
 
