@@ -1,9 +1,3 @@
 [submodule "deps/luajit"]
 	path = deps/luajit
 	url = http://luajit.org/git/luajit-2.0.git
-[submodule "lib/sys/inc"]
-	path = lib/sys/inc
-	url = https://github.com/richardhundt/luasys.git
-[submodule "lib/zmq/inc"]
-	path = lib/zmq/inc
-	url = https://github.com/Neopallium/lua-zmq.git
