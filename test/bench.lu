@@ -1,16 +1,7 @@
 class Point {
    has x : Number = 0
    has y : Number = 0
-   async method move(x : Number = 0, y : Number = 0) {
-   /*
-   method('move', function(self, x, y)
-      return sched.put(function()
-         self.x = x
-         self.y = y
-         return 42
-      end)
-   end)
-   */
+   method move(x : Number = 0, y : Number = 0) {
       .x = x
       .y = y
    }
@@ -26,10 +17,8 @@ class Point3D from Point {
 
 var p = Point3D.new
 for i=1,100_000_000 {
-   var r = await p.move(i, i+1, i+2)
-   /*
-   local r = thread.run(p.move(i, i+1, i+2)):wait()
-   */
+   p.move(i, i+1, i+2)
 }
+
 print(p.x, p.y, p.z)
 
