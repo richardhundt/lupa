@@ -1,4 +1,4 @@
-local __env = _G--setmetatable({ }, { __index = _G, __newindex = _G })
+local __env = _G
 
 _G.lupa = setmetatable({ }, { __index = __env })
 _G.lupa.core = __env
@@ -47,8 +47,8 @@ Meta.__mul = function(a, b) return a:__mul(b) end
 Meta.__div = function(a, b) return a:__div(b) end
 Meta.__mod = function(a, b) return a:__mod(b) end
 Meta.__pow = function(a, b) return a:__pow(b) end
-Meta.__unm = function(a, b) return a:__unm() end
-Meta.__len = function(a, b) return a:__len() end
+Meta.__unm = function(a) return a:__unm() end
+Meta.__len = function(a) return a:__len() end
 Meta.__call = function(a, ...) return a:__call(...) end
 Meta.__tostring = function(a) return a:__tostring() end
 Meta.__concat = function(a, b) return a:__concat(b) end
@@ -156,17 +156,24 @@ Any.__proto.__coerce = function(self, that)
    end
 end
 Any.__proto.__tostring = function(self)
-   return string.format("%s<%s: %p>", type(self), typeof(self).__name or '?', self)
+   local meta = typeof(self)
+   local name
+   if meta.__path then
+      name = table.concat(meta.__path, '::')
+   else
+      name = meta.__name
+   end
+   return string.format("%s<%s: %p>", type(self), name or '?', self)
 end
 
 ---------------------------------------------------------------------------
 -- Member declarators
 ---------------------------------------------------------------------------
-function has(into, name, type, ctor, meta) 
+function has(into, name, type, ctor, meta)
    local idx
    if meta then
-      into[#into + 1] = name
-      idx = #into
+      into[rawlen(into) + 1] = name
+      idx = rawlen(into)
    else
       into.__size = into.__size + 1
       idx = into.__size
@@ -202,13 +209,14 @@ end
 
 function method(into, name, code, meta)
    if meta then
+      -- static method
       into[name] = code
    else
       into.__proto[name] = code
    end
 end
 
-function rule(into, name, patt) 
+function rule(into, name, patt)
    local key = '__rule_'..name
    local get = function(obj, ...)
       local rule = rawget(obj, key)
@@ -233,11 +241,37 @@ function rule(into, name, patt)
    into.__rules[name] = patt
 end
 
+
+---------------------------------------------------------------------------
+-- Environ type
+---------------------------------------------------------------------------
+Environ = newtype"Environ"
+Environ.new = function(self, outer, path)
+   local env = { }
+   env.__path  = path
+   env.__outer = outer or __env
+   env.__frame = { }
+   env.__names = { }
+   setmetatable(env, self)
+   return env
+end
+Environ.__index = function(self, key)
+   if self.__names[key] then
+      return self.__frame[key]
+   else
+      return self.__outer[key]
+   end
+end
+Environ.__newindex = function(self, key, val)
+   self.__frame[key] = val
+   self.__names[key] = true
+end
+
 ---------------------------------------------------------------------------
 -- Class type
 ---------------------------------------------------------------------------
 Class = newtype"Class"
-
+Class.__proto = mixin({ }, Meta)
 function class(name, from, with, body, outer)
    if from == nil then
       from = Any
@@ -254,11 +288,22 @@ function class(name, from, with, body, outer)
    end
 
    local class = { }
-   local proto = { }
    local rules = { }
+   local proto = { }
 
    class.__type = Class
    proto.__type = class
+
+   local path
+   if outer.__path then
+      path = { unpack(outer.__path) }
+      path[#path + 1] = name
+   else
+      path = { name }
+   end
+   class.__path = path
+
+   class.__name = name
    proto.__name = name
 
    class.__from = from
@@ -278,9 +323,18 @@ function class(name, from, with, body, outer)
    if from.__rules then
       mixin(rules, from.__rules)
    end
+   class.__frame = Environ:new(outer, path)
+   class.__frame[name] = class
 
+   class.__type  = Class
+   class.__index = function(self, key)
+      if self.__frame.__names[key] then
+         return self.__frame[key]
+      end
+      return nil
+   end
    class.__tostring = function(self)
-      return "<class "..tostring(self.__name)..">"
+      return "<class "..tostring(table.concat(self.__path,'::'))..">"
    end
    class.new = function(self, ...)
       local obj = setmetatable({ }, self.__proto)
@@ -298,19 +352,8 @@ function class(name, from, with, body, outer)
       end
       throw(TypeError:new("cannot coerce '"..tostring(that).."' to "..tostring(this)), 2)
    end
+
    class.__bor = Type.__proto.__bor
-
-   local inner = { }
-   setmetatable(inner, { __index = outer })
-   class.__frame = setmetatable({ }, {
-      __index = inner;
-      __newindex = function(env, key, val)
-         inner[key] = val
-         class[key] = val
-      end;
-   })
-
-   class.__frame[name] = class
 
    setmetatable(class, class)
 
@@ -422,7 +465,7 @@ function needs(into, name, meta)
    into.__need[name] = meta
 end
 function with(into, with)
-   for i=1,#with do
+   for i=1, #with do
       with[i]:make(into)
    end
    return into
@@ -526,7 +569,7 @@ Array.__proto.__tostring = function(self)
          buf[#buf + 1] = string.format("%q", self[i])
       else
          buf[#buf + 1] = tostring(self[i])
-      end 
+      end
    end
    return "["..table.concat(buf, ",").."]"
 end
@@ -616,7 +659,7 @@ Array.__proto.splice = function(self, offset, count, ...)
    end
    return out
 end
-Array.__proto.reverse = function(self) 
+Array.__proto.reverse = function(self)
    local out = Array:new()
    for i=1, #self do
       out[i] = self[#self - i + 1]
@@ -631,7 +674,7 @@ Table = newtype"Table"
 Table.new = function(self, table)
    return setmetatable(table or { }, self.__proto)
 end
-Table.MODE = { k = { }, v = { }, kv = { } } 
+Table.MODE = { k = { }, v = { }, kv = { } }
 Table.__index = Table.__proto
 Table.__proto.weak = function(self, mode)
    if mode == 'k' or mode == 'kv' or mode == 'v' then
@@ -679,7 +722,7 @@ end
 -- Range type
 ---------------------------------------------------------------------------
 Range = newtype"Range"
-Range.new = function(self, min, max, inc) 
+Range.new = function(self, min, max, inc)
    min = assert(tonumber(min), "range min is not a number")
    max = assert(tonumber(max), "range max is not a number")
    inc = assert(tonumber(inc or 1), "range inc is not a number")
@@ -821,7 +864,7 @@ String.__proto.split = function(str, sep, max)
    end
    if idx ~= max then
       list[idx + 1] = str:sub(last)
-   end 
+   end
    return list
 end
 String.__proto.len = function(self)
@@ -915,7 +958,7 @@ do
                   tab[i] = init[i]
                end
             end
-         end 
+         end
          return setmetatable(tab, Array.__proto)
       end
    end
@@ -1059,7 +1102,7 @@ function __is__(this, that)
    end
    local meta = typeof(this)
    while meta do
-      if meta == that then
+      if rawequal(meta, that) then
          return true
       end
       meta = meta.__from
@@ -1181,6 +1224,9 @@ end
 package.namespace = function(name)
    local curr = __env
    local path = { }
+   if string.match(name, "/") then
+      error("name looks more like a path")
+   end
    for frag in string.gmatch(name, "([^.]+)") do
       path[#path + 1] = frag
       if rawget(curr, frag) == nil then
@@ -1216,7 +1262,7 @@ table.insert(package.loaders, function(modname)
                   local main = assert(loadstring(lua, '='..filepath))
                   local pckg = package.namespace(modname)
                   setfenv(main, pckg)
-                  return main(...)
+                  return main(modname, ...)
                end, ...)
                if not ok then
                   throw("failed to load "..modname..": "..tostring(rv), 2)
@@ -1228,14 +1274,19 @@ table.insert(package.loaders, function(modname)
    end
 end)
 
-function environ(...)
-   local env = setmetatable({ }, { __index = __env })
+function environ(name)
+   local env
+   if name then
+      env = package.namespace(name)
+   else
+      env = __env
+   end
    setfenv(2, env)
    return env
 end
 __INIT__ = environ
 
-function import(from, what, dest) 
+function import(from, what, dest)
    local into = getfenv(2)
    local mod  = loadfrom(from)
    local path = { }
@@ -1252,15 +1303,11 @@ function import(from, what, dest)
       if dest then
          into[dest] = { }
          into = into[dest]
-      end 
+      end
       for i=1, #what do
          local key = what[i]
          local val = rawget(mod, key)
          if val == nil then
-            print("mod has...")
-            for k,v in pairs(mod) do
-               print(k, '=>', v)
-            end
             throw(ImportError:new("'"..tostring(key).."' from '"..tostring(from).."' is nil"), 2)
          end
          into[key] = val
@@ -1326,42 +1373,6 @@ uint32 = ffi.typeof('uint32_t')
 
 int64 = ffi.typeof('int64_t')
 uint64 = ffi.typeof('uint64_t')
-
---[[
-do
-   -- from strict.lua
-   local mt = getmetatable(_G)
-   if mt == nil then
-      mt = { }
-      setmetatable(_G, mt)
-   end
-
-   mt.__declared = { }
-
-   local function what()
-      local d = debug.getinfo(3, "S")
-      return d and d.what or "C"
-   end
-
-   mt.__newindex = function(t, n, v)
-      if not mt.__declared[n] then
-         local w = what()
-         if w ~= "main" and w ~= "C" then
-            error("assign to undeclared variable '"..tostring(n).."'", 2)
-         end
-         mt.__declared[n] = true
-      end
-      rawset(t, n, v)
-   end
-
-   mt.__index = function(t, n)
-      if not mt.__declared[n] and what() ~= "C" then
-         error(debug.traceback("variable '"..tostring(n).."' is not declared", 2))
-      end
-      return rawget(t, n)
-   end
-end
-]]
 
 __env.global = __env
 return __env

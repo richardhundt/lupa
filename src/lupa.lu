@@ -72,10 +72,11 @@ var run = function(...a) {
          out.close()
       }
       else {
+         a.shift() // file name
          xpcall(main, function(err) {
             io::stderr.write(debug::traceback(tostring(err)), "\n")
             os::exit(1)
-         }, opt['files'][1], ...a)
+         }, ...a)
       }
    }
 }
