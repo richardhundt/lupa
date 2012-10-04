@@ -7,9 +7,14 @@ setfenv(1, __env)
 
 __env.__each = pairs
 
-local bit  = require("bit")
-local ffi  = require('ffi')
+local bit = require("bit")
+local ffi = require('ffi')
+
+package.path  = ';;./lib/?.lua;'..package.path
+package.cpath = ';;./lib/?.so;'..package.cpath
+
 local lpeg = require("lpeg")
+local luv  = require("luv")
 
 function newtable(...) return { ... } end
 local rawget, rawset = rawget, rawset
@@ -36,28 +41,6 @@ local function mixin(this, that, override)
    end
    return this
 end
-
----------------------------------------------------------------------------
--- Meta delegates
----------------------------------------------------------------------------
-Meta = { }
-Meta.__add = function(a, b) return a:__add(b) end
-Meta.__sub = function(a, b) return a:__sub(b) end
-Meta.__mul = function(a, b) return a:__mul(b) end
-Meta.__div = function(a, b) return a:__div(b) end
-Meta.__mod = function(a, b) return a:__mod(b) end
-Meta.__pow = function(a, b) return a:__pow(b) end
-Meta.__unm = function(a) return a:__unm() end
-Meta.__len = function(a) return a:__len() end
-Meta.__call = function(a, ...) return a:__call(...) end
-Meta.__tostring = function(a) return a:__tostring() end
-Meta.__concat = function(a, b) return a:__concat(b) end
-Meta.__pairs = function(a) return a:__pairs() end
-Meta.__ipairs = function(a) return a:__ipairs() end
-Meta.__eq = function(a, b) return a:__eq(b) end
-Meta.__le = function(a, b) return a:__le(b) end
-Meta.__lt = function(a, b) return a:__lt(b) end
-Meta.__gc = function(a) return a:__gc() end
 
 ---------------------------------------------------------------------------
 -- Type type
@@ -271,7 +254,7 @@ end
 -- Class type
 ---------------------------------------------------------------------------
 Class = newtype"Class"
-Class.__proto = mixin({ }, Meta)
+
 function class(name, from, with, body, outer)
    if from == nil then
       from = Any
@@ -1199,9 +1182,6 @@ end
 ---------------------------------------------------------------------------
 -- Packages / Import / Export
 ---------------------------------------------------------------------------
-package.path  = ';;./lib/?.lua;'..package.path
-package.cpath = ';;./lib/?.so;'..package.cpath
-
 do
    local paths = {
       ".",

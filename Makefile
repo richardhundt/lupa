@@ -9,27 +9,27 @@ BINDIR=${BLDDIR}/bin
 OS_NAME=$(shell uname -s)
 MH_NAME=$(shell uname -m)
 
-CFLAGS=-O2 -fomit-frame-pointer -Wall -fno-stack-protector
-LDFLAGS=-lm -ldl
+CFLAGS=-O2 -Wall
+LFLAGS=-lm -ldl -lstdc++ -lluajit -lluv
 
 ifeq (${OS_NAME}, Darwin)
 ifeq (${MH_NAME}, x86_64)
-CFLAGS+=-pagezero_size 10000 -image_base 100000000
-CFLAGS+=-undefined dynamic_lookup -framework CoreServices
+CFLAGS+=-pagezero_size 10000 -image_base 100000000 -framework CoreServices
 endif
 else
 CFLAGS+=-Wl,-E
+CFLAGS=-fomit-frame-pointer -fno-stack-protector
 endif
 
-INCS=-I${LUVDIR}/src -I${LUVDIR}/src/uv/include -I${LUVDIR}/src/zmq/include -I${LUADIR}/src
-DEPS=${LUADIR}/src/libluajit.a ${LPEGDIR}/lpeg.o ${LUVDIR}/src/libluv.a
+INCS=-I${LUVDIR}/src -I${LUADIR}/src -L${LUADIR}/src -L${LUVDIR}/src -I${LUVDIR}/src/zmq/include -I${LUVDIR}/src/uv/include
+DEPS=${LUADIR}/src/libluajit.a ${LIBDIR}/lpeg.so ${LIBDIR}/luv.so ${LUVDIR}/src/libluv.a
 
 all: ${BINDIR}/lupa
 
 ${BINDIR}/lupa: ${DEPS}
 	mkdir -p ${BLDDIR}
 	mkdir -p ${BINDIR}
-	${CC} ${CFLAGS} ${INCS} -o ${BINDIR}/lupa ${SRCDIR}/lib_init.c ${SRCDIR}/lupa.c ${DEPS} ${LDFLAGS}
+	${CC} ${CFLAGS} ${INCS} -o ${BINDIR}/lupa ${SRCDIR}/lib_init.c ${SRCDIR}/lupa.c ${LPEGDIR}/lpeg.o ${LFLAGS}
 
 ${LUADIR}/src/libluajit.a:
 	git submodule update --init ${LUADIR}
@@ -39,8 +39,13 @@ ${LUVDIR}/src/libluv.a:
 	git submodule update --init ${LUVDIR}
 	${MAKE} -C ${LUVDIR}
 
-${LPEGDIR}/lpeg.o:
+${LIBDIR}/lpeg.so:
 	${MAKE} -C ${LPEGDIR}
+	cp ${LPEGDIR}/lpeg.so ${LIBDIR}/lpeg.so
+
+${LIBDIR}/luv.so:
+	${MAKE} -C ${LUVDIR}
+	cp ${LUVDIR}/src/luv.so ${LIBDIR}/luv.so
 
 clean:
 	rm -rf ${BLDDIR}
