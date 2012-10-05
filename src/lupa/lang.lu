@@ -258,7 +258,7 @@ object Grammar {
             var info = ctx.lookup(name)
             if info && info['type'] {
                var type = info['type']
-               r[1] = '__coerce__(%s)' format [type, r[1]].concat(',')
+               r[1] = '__coerce__(%s)'.format([type, r[1]].concat(','))
             }
          }
          return hoist~l[1].format(s2 ~ r.concat(','))
@@ -271,7 +271,7 @@ object Grammar {
             var info = ctx.lookup(name)
             if info && info['type'] {
                var type = info['type']
-               t[i] = '__coerce__(%s)' format [type, t[i]].concat(',')
+               t[i] = '__coerce__(%s)'.format([type, t[i]].concat(','))
             }
          }
 
@@ -1392,7 +1392,7 @@ object Grammar {
    rule bind_suffix {
       {~
       | "." {hs*} <name> ->":%1__set_%2(%%s)"
-      | "[" {~ s <expr> s ~} "]" -> ":__setitem(%1,%%s)"
+      | "[" {~ s (<expr> -> (s) => { s.gsub('%%','%%%%') }) s ~} "]" -> ":__setitem(%1,%%s)"
       | "::" {hs*} {~ <name> -> (s) => { s.gsub('%%','%%%%') } ~} -> '.%1%2=%%s'
       | "::" {hs*} "[" {~ s (<expr> -> (s) => { s.gsub('%%','%%%%') }) s ~} "]" -> '%1[%2]=%%s'
       ~}

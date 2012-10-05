@@ -49,10 +49,11 @@ ${LIBDIR}/luv.so:
 
 clean:
 	rm -rf ${BLDDIR}
+	rm -f ./lib/*.so
 
 realclean: clean
 	${MAKE} -C ${LUADIR} clean
-	${MAKE} -C ${LUVDIR} clean
+	${MAKE} -C ${LUVDIR} realclean
 
 bootstrap: all
 	${BINDIR}/lupa ./src/lupa.lu -o ${BLDDIR}/lupa.lua

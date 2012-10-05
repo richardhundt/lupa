@@ -1230,7 +1230,9 @@ table.insert(package.loaders, function(modname)
    for path in LUPA_PATH:gmatch("([^;]+)") do
       if path ~= "" then
          local lang = package.loaded["lupa.lang"]
-         if not lang then return end
+         if not lang then
+            lang = require("lupa.lang")
+         end
          local Compiler = lang.Compiler
          local filepath = path:gsub("?", filename)
          local file = io.open(filepath, "r")
