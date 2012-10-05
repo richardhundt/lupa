@@ -307,43 +307,63 @@ object Grammar {
       var hoist = ctx.scope.unhoist()
       if lhs.len == 1 {
          var info = ctx.lookup(lhs[1])
-         if info['type'] {
-            var type = info['type']
-            rhs[1] = '__coerce__(%s)' format [type, rhs[1]].concat(',')
-         }
-         if kind == 'var' {
-            return "%slocal %s=%s;".format(hoist, lhs[1], rhs[1] || 'nil')
+         if rhs.len > 0 {
+            if info['type'] {
+               var type = info['type']
+               rhs[1] = '__coerce__(%s)' format [type, rhs[1]].concat(',')
+            }
+            if kind == 'var' {
+               return "%slocal %s=%s;".format(hoist, lhs[1], rhs[1] || 'nil')
+            }
+            else {
+               return "%s%s=%s;".format(hoist, lhs[1], rhs[1] || 'nil')
+            }
          }
          else {
-            return "%s%s=%s;".format(hoist, lhs[1], rhs[1] || 'nil')
+            if kind == 'var' {
+               return "%slocal %s;".format(hoist, lhs[1])
+            }
+            else {
+               return "%s;".format(hoist)
+            }
          }
       }
 
-      for i = 1, lhs.len {
-         tmp.push(genid())
-      }
-
-      if rhs.len > 0 {
-         buf.push('%slocal %s=%s'.format(hoist, tmp.concat(','), rhs.concat(',')))
+      if rhs.len == 0 {
+         if kind == 'var' {
+            return '%slocal %s;'.format(hoist, lhs.concat(','))
+         }
+         else {
+            return '%s'.format(hoist)
+         }
       }
       else {
-         buf.push('%slocal %s'.format(hoist, tmp.concat(',')))
-      }
-
-      var head = ''
-      if kind == 'var' {
-         head = 'local '
-      }
-      for i=1, lhs.len {
-         var info = ctx.lookup(lhs[i])
-         if info['type'] {
-            var type = info['type']
-            tmp[i] = '__coerce__(%s)' format [type, tmp[i]].concat(',')
+         for i = 1, lhs.len {
+            tmp.push(genid())
          }
-      }
 
-      buf.push('%s%s=%s;'.format(head, lhs.concat(','), tmp.concat(',')))
-      return buf.concat(';')
+         if rhs.len > 0 {
+            buf.push('%slocal %s=%s'.format(hoist, tmp.concat(','), rhs.concat(',')))
+         }
+         else {
+            buf.push('%slocal %s'.format(hoist, tmp.concat(',')))
+         }
+
+         var head = ''
+         if kind == 'var' {
+            head = 'local '
+         }
+         for i=1, lhs.len {
+            var info = ctx.lookup(lhs[i])
+            if info['type'] {
+               var type = info['type']
+               tmp[i] = '__coerce__(%s)'.format([type, tmp[i]].concat(','))
+            }
+         }
+
+         buf.push('%s%s=%s;'.format(head, lhs.concat(','), tmp.concat(',')))
+         return buf.concat(';')
+      }
    }
 
    function make_has_decl(ctx, name, type, body, scope, attr) {
