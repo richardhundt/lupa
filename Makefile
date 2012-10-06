@@ -22,7 +22,7 @@ CFLAGS=-fomit-frame-pointer -fno-stack-protector
 endif
 
 INCS=-I${LUVDIR}/src -I${LUADIR}/src -L${LUADIR}/src -L${LUVDIR}/src -I${LUVDIR}/src/zmq/include -I${LUVDIR}/src/uv/include
-DEPS=${LUADIR}/src/libluajit.a ${LIBDIR}/lpeg.so ${LIBDIR}/luv.so ${LUVDIR}/src/libluv.a
+DEPS=${LUADIR}/src/libluajit.a ${LIBDIR}/lpeg.so ${LIBDIR}/luv.so
 
 all: ${BINDIR}/lupa
 
@@ -35,15 +35,12 @@ ${LUADIR}/src/libluajit.a:
 	git submodule update --init ${LUADIR}
 	${MAKE} XCFLAGS="-DLUAJIT_ENABLE_LUA52COMPAT" -C ${LUADIR}
 
-${LUVDIR}/src/libluv.a:
-	git submodule update --init ${LUVDIR}
-	${MAKE} -C ${LUVDIR}
-
 ${LIBDIR}/lpeg.so:
 	${MAKE} -C ${LPEGDIR}
 	cp ${LPEGDIR}/lpeg.so ${LIBDIR}/lpeg.so
 
-${LIBDIR}/luv.so:
+${LIBDIR}/luv.so: ${LUVDIR}/src/libluv.a
+	git submodule update --init ${LUVDIR}
 	${MAKE} -C ${LUVDIR}
 	cp ${LUVDIR}/src/luv.so ${LIBDIR}/luv.so
 
@@ -66,6 +63,9 @@ bootstrap: all
 	${LUADIR}/src/luajit -b -g ${BLDDIR}/lupa.lua ./src/lupa.h
 	${LUADIR}/src/luajit -b -g ${BLDDIR}/core.lua ./src/core.h
 	${LUADIR}/src/luajit -b -g ${BLDDIR}/lang.lua ./src/lang.h
+	mkdir -p ./lib/lupa
+	${LUADIR}/src/luajit -b -g ${BLDDIR}/core.lua ./lib/lupa/core.lua
+	${LUADIR}/src/luajit -b -g ${BLDDIR}/lang.lua ./lib/lupa/lang.lua
 
 install: all
 	mkdir -p /usr/local/bin
