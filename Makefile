@@ -1,4 +1,4 @@
-SCDIR=./src
+SRCDIR=./src
 BLDDIR=./build
 LPEGDIR=./deps/lpeg
 LUADIR=./deps/luajit
