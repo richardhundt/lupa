@@ -1,4 +1,4 @@
-SRCDIR=./src
+SCDIR=./src
 BLDDIR=./build
 LPEGDIR=./deps/lpeg
 LUADIR=./deps/luajit
@@ -10,15 +10,15 @@ OS_NAME=$(shell uname -s)
 MH_NAME=$(shell uname -m)
 
 CFLAGS=-O2 -Wall
-LFLAGS=-lm -ldl -lstdc++ -lluajit -lluv
+LFLAGS=-lluv -lluajit -lstdc++ -lm -ldl -lpthread
 
 ifeq (${OS_NAME}, Darwin)
 ifeq (${MH_NAME}, x86_64)
 CFLAGS+=-pagezero_size 10000 -image_base 100000000 -framework CoreServices
 endif
 else
-CFLAGS+=-Wl,-E
-CFLAGS=-fomit-frame-pointer -fno-stack-protector
+CFLAGS+=-Wl,-E -fomit-frame-pointer -fno-stack-protector
+LFLAGS+=-lrt
 endif
 
 INCS=-I${LUVDIR}/src -I${LUADIR}/src -L${LUADIR}/src -L${LUVDIR}/src -I${LUVDIR}/src/zmq/include -I${LUVDIR}/src/uv/include
