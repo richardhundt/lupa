@@ -39,7 +39,7 @@ ${LIBDIR}/lpeg.so:
 	${MAKE} -C ${LPEGDIR}
 	cp ${LPEGDIR}/lpeg.so ${LIBDIR}/lpeg.so
 
-${LIBDIR}/luv.so: ${LUVDIR}/src/libluv.a
+${LIBDIR}/luv.so:
 	git submodule update --init ${LUVDIR}
 	${MAKE} -C ${LUVDIR}
 	cp ${LUVDIR}/src/luv.so ${LIBDIR}/luv.so
