@@ -64,7 +64,7 @@ var run = function(...a) {
    }
    else {
       lua = lua.gsub("^%s*#![^\n]*",'')
-      var main = assert(loadstring(lua,'='~opt['files'][1]))
+      var main = assert(loadstring(lua,'@'~opt['files'][1]))
       if opt['b'] {
          var out = opt['files'][2] || 'a.luac'
          out = io::open(out, "wb+")

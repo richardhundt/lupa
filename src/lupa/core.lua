@@ -1,11 +1,13 @@
-local __env = _G
+local __env = { }
+for k,v in pairs(_G) do __env[k] = v end
 
-_G.lupa = setmetatable({ }, { __index = __env })
-_G.lupa.core = __env
+__env.lupa = setmetatable({ }, { __index = __env })
+__env.lupa.core = __env
 package.loaded['lupa.core'] = __env
 setfenv(1, __env)
 
 __env.__each = pairs
+__env.__name = "lupa.core"
 
 local bit = require("bit")
 local ffi = require('ffi')
@@ -20,8 +22,7 @@ function newtable(...) return { ... } end
 local rawget, rawset = rawget, rawset
 
 rawtype = _G.type
-rawlen = function(tab) return #tab end
-throw = error
+throw   = error
 
 function typeof(this)
    return this.__type
@@ -345,7 +346,7 @@ function class(name, from, with, body, outer)
          if typeof(with[i]) ~= Trait then
             throw(TypeError:new(tostring(with[i]).." is not a trait"), 2)
          end
-         with[i]:make(class)
+         with[i]:compose(class)
       end
    end
 
@@ -413,13 +414,13 @@ Trait.__proto.__getitem = function(self, ...)
       ), 2)
    end
    local copy = trait(self.__name, self.__with, want, self.__body)
-   local make = self.make
-   copy.make = function(self, recv)
-      return make(self, recv, unpack(args))
+   local compose = self.compose
+   copy.compose = function(self, recv)
+      return compose(self, recv, unpack(args))
    end
    return copy
 end
-Trait.__proto.make = function(self, recv, ...)
+Trait.__proto.compose = function(self, recv, ...)
    if self.__want ~= 0 then
       throw(TypeError:new(
          "trait "..tostring(self.__name)..
@@ -427,9 +428,12 @@ Trait.__proto.make = function(self, recv, ...)
       ), 2)
    end
    for i = 1, #self.__with, 1 do
-      self.__with[i]:make(recv)
+      self.__with[i]:compose(recv)
    end
    self.__body(recv, ...)
+   if self.__mixin then
+      self:__mixin(recv, ...)
+   end
    recv.__with[self.__body] = self
    return into
 end
@@ -449,7 +453,7 @@ function needs(into, name, meta)
 end
 function with(into, with)
    for i=1, #with do
-      with[i]:make(into)
+      with[i]:compose(into)
    end
    return into
 end
@@ -1201,7 +1205,7 @@ do
    LUPA_PATH = table.concat(buf, ';')..';'
 end
 
-package.namespace = function(name)
+function lupa.module(name)
    local curr = __env
    local path = { }
    if string.match(name, "/") then
@@ -1225,41 +1229,56 @@ package.namespace = function(name)
    return curr
 end
 
-table.insert(package.loaders, function(modname)
-   local filename = modname:gsub("%.", "/")
-   for path in LUPA_PATH:gmatch("([^;]+)") do
-      if path ~= "" then
-         local lang = package.loaded["lupa.lang"]
-         if not lang then
-            lang = require("lupa.lang")
-         end
-         local Compiler = lang.Compiler
-         local filepath = path:gsub("?", filename)
-         local file = io.open(filepath, "r")
+function lupa.loadfile(path)
+   if path:sub(-3) == ".lu" then
+      local lang = require("lupa.lang")
+      local file, mesg = io.open(path, "r")
+      if file then
+         local src = file:read("*a")
+         local lua = lang.Compiler:compile(src)
+         return loadstring(lua, '@'..path)
+      else
+         return nil, mesg
+      end
+   else
+      return _G.loadfile(path)
+   end
+end
+
+function lupa.searchpath(name, path, sep, rep)
+   if not sep then sep = "." end
+   if not rep then rep = package.config:sub(1,1) end
+   name = name:gsub("["..sep.."]", rep)
+   local tried = { }
+   for frag in path:gmatch("([^;]+)") do
+      if frag ~= "" then
+         local test = frag:gsub('?', name)
+         local file = io.open(test, "r")
          if file then
-            local src = file:read("*a")
-            return function(...)
-               local ok, rv = pcall(function(...)
-                  local lua  = Compiler:compile(src)
-                  local main = assert(loadstring(lua, '='..filepath))
-                  local pckg = package.namespace(modname)
-                  setfenv(main, pckg)
-                  return main(modname, ...)
-               end, ...)
-               if not ok then
-                  throw("failed to load "..modname..": "..tostring(rv), 2)
-               end
-               return rv
-            end
+            file:close()
+            return test
+         else
+            tried[#tried + 1] = string.format("no file '%s'", test)
          end
       end
    end
-end)
+   return nil, table.concat(tried, "\t\n")
+end
+
+function lupa.loader(name)
+   local path, mesg = lupa.searchpath(name, LUPA_PATH)
+   if not path then
+      return nil, mesg
+   end
+   return lupa.loadfile(path)
+end
+
+table.insert(package.loaders, lupa.loader)
 
 function environ(name)
    local env
    if name then
-      env = package.namespace(name)
+      env = lupa.module(name)
    else
       env = __env
    end
@@ -1357,5 +1376,6 @@ int64 = ffi.typeof('int64_t')
 uint64 = ffi.typeof('uint64_t')
 
 __env.global = __env
+
 return __env
 
