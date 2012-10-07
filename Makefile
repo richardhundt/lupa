@@ -10,7 +10,7 @@ OS_NAME=$(shell uname -s)
 MH_NAME=$(shell uname -m)
 
 CFLAGS=-O2 -Wall
-LFLAGS=-lluv -lluajit -lstdc++ -lm -ldl -lpthread
+LDFLAGS=-lluv -lluajit -lstdc++ -lm -ldl -lpthread
 
 ifeq (${OS_NAME}, Darwin)
 ifeq (${MH_NAME}, x86_64)
@@ -18,7 +18,7 @@ CFLAGS+=-pagezero_size 10000 -image_base 100000000 -framework CoreServices
 endif
 else
 CFLAGS+=-Wl,-E -fomit-frame-pointer -fno-stack-protector
-LFLAGS+=-lrt
+LDFLAGS+=-lrt
 endif
 
 INCS=-I${LUVDIR}/src -I${LUADIR}/src -L${LUADIR}/src -L${LUVDIR}/src -I${LUVDIR}/src/zmq/include -I${LUVDIR}/src/uv/include
@@ -29,7 +29,7 @@ all: ${BINDIR}/lupa
 ${BINDIR}/lupa: ${DEPS}
 	mkdir -p ${BLDDIR}
 	mkdir -p ${BINDIR}
-	${CC} ${CFLAGS} ${INCS} -o ${BINDIR}/lupa ${SRCDIR}/lib_init.c ${SRCDIR}/lupa.c ${LPEGDIR}/lpeg.o ${LFLAGS}
+	${CC} ${CFLAGS} ${INCS} -o ${BINDIR}/lupa ${SRCDIR}/lib_init.c ${SRCDIR}/lupa.c ${LUADIR}/src/libluajit.a ${LPEGDIR}/lpeg.o ${LDFLAGS}
 
 ${LUADIR}/src/libluajit.a:
 	git submodule update --init ${LUADIR}
