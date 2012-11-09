@@ -16,7 +16,6 @@ package.path  = ';;./lib/?.lua;'..package.path
 package.cpath = ';;./lib/?.so;'..package.cpath
 
 local lpeg = require("lpeg")
-local luv  = require("luv")
 
 function newtable(...) return { ... } end
 local rawget, rawset = rawget, rawset

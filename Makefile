@@ -2,7 +2,6 @@ SRCDIR=./src
 BLDDIR=./build
 LPEGDIR=./deps/lpeg
 LUADIR=./deps/luajit
-LUVDIR=./deps/luv
 LIBDIR=./lib
 BINDIR=${BLDDIR}/bin
 
@@ -10,7 +9,7 @@ OS_NAME=$(shell uname -s)
 MH_NAME=$(shell uname -m)
 
 CFLAGS=-O2 -Wall
-LDFLAGS=-lluv -lluajit -lstdc++ -lm -ldl -lpthread
+LDFLAGS=-lluajit -lstdc++ -lm -ldl -lpthread
 
 ifeq (${OS_NAME}, Darwin)
 ifeq (${MH_NAME}, x86_64)
@@ -21,8 +20,8 @@ CFLAGS+=-Wl,-E -fomit-frame-pointer -fno-stack-protector
 LDFLAGS+=-lrt
 endif
 
-INCS=-I${LUVDIR}/src -I${LUADIR}/src -L${LUADIR}/src -L${LUVDIR}/src -I${LUVDIR}/src/zmq/include -I${LUVDIR}/src/uv/include
-DEPS=${LUADIR}/src/libluajit.a ${LIBDIR}/lpeg.so ${LIBDIR}/luv.so
+INCS=-I${LUADIR}/src -L${LUADIR}/src
+DEPS=${LUADIR}/src/libluajit.a ${LIBDIR}/lpeg.so
 
 all: ${BINDIR}/lupa
 
@@ -38,11 +37,6 @@ ${LUADIR}/src/libluajit.a:
 ${LIBDIR}/lpeg.so:
 	${MAKE} -C ${LPEGDIR}
 	cp ${LPEGDIR}/lpeg.so ${LIBDIR}/lpeg.so
-
-${LIBDIR}/luv.so:
-	git submodule update --init ${LUVDIR}
-	${MAKE} -C ${LUVDIR}
-	cp ${LUVDIR}/src/luv.so ${LIBDIR}/luv.so
 
 clean:
 	rm -rf ${BLDDIR}

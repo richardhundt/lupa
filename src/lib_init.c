@@ -13,8 +13,6 @@
 
 #include "lj_arch.h"
 
-#include "luv.h"
-
 int luaopen_lpeg (lua_State *L);
 
 static const luaL_Reg lj_lib_load[] = {
@@ -36,7 +34,6 @@ static const luaL_Reg lj_lib_preload[] = {
 #if LJ_HASFFI
   { LUA_FFILIBNAME,	luaopen_ffi },
 #endif
-  { "luv",		luaopen_luv },
   { NULL,		NULL }
 };
 
