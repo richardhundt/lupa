@@ -19,7 +19,7 @@ class Point {
       .y = y
    }
    has deep = { hop = 'jump' }
-   method __persis() {
+   method __persist() {
       var x = self.x
       var y = self.y
       var P = typeof(self)::__proto
