@@ -92,6 +92,6 @@ rudy.count(5)
 
 For more, check out:
 
-* [Getting Started](lupa/wiki/Getting-Started)
+* [Getting Started](https://github.com/richardhundt/lupa/wiki/Getting-Started)
 
 
