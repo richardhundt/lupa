@@ -168,7 +168,7 @@ object Grammar {
       ((!nl %s)* ("//" -> '--') (!nl .)* nl)
    /
    var long_comment = /
-      ("/*" -> '--[=[') (']=]' -> ']\=]' | !"*/" .)* ("*/" -> ']=]')
+      ("/*" -> '--[=[') (']=]' -> "]\\=]" | !"*/" .)* ("*/" -> ']=]')
    /
    var comment = / {~ line_comment | long_comment ~} /
    var idsafe  = / !(%alnum | "_") /
@@ -1218,7 +1218,7 @@ object Grammar {
    rule qstring {
       | '"""' -> '"' {~ (
          | <string_expr>
-         | {~ (<special> | !'"""'('"' -> '\"') | !(<string_expr> | "\"\"\"") .)+ ~}
+         | {~ (<special> | !'"""'('"' -> "\\\"") | !(<string_expr> | "\"\"\"") .)+ ~}
       )* ~} ('"""' -> '"' | <{ syntax_error("expected '\"\"\"'") }>)
       | '"' {~ (
          | <string_expr>
@@ -1227,8 +1227,8 @@ object Grammar {
    }
    rule astring {
       {~
-         | ("'''" -> "") ('\\' | '\'' | (!"'''" .))* ("'''" -> "")
-         | ("'"   -> "") ('\\' | '\'' | (!"'"   .))* ("'"   -> "")
+         | ("'''" -> "") ("\\\\" -> "\\" | "\\'" -> "'" | (!"'''" .))* ("'''" -> "")
+         | ("'"   -> "") ("\\\\" -> "\\" | "\\'"  -> "'" | (!"'"   .))* ("'"   -> "")
       ~} -> quote
    }
    rule string_expr {
@@ -1506,6 +1506,7 @@ object Grammar {
    }
    rule rule_item {
       {~ <rule_predef> | <rule_range>
+      | {"\\" .} -> function(c) { 'Pattern.P("%s")'.format(c) }
       | {.} -> function(c) { 'Pattern.P(%q)'.format(c) }
       ~}
    }
@@ -1572,7 +1573,7 @@ object Compiler {
       var ctx = Context.new(lupa)
       ctx.enter()
       self.predef(ctx, env || global)
-      var lua = Grammar.match(lupa, 1, ctx, 'require"lupa.core".__INIT__(...)')
+      var lua = Grammar.match(lupa, 1, ctx, 'require"lupa.core".__INIT__(...);')
       ctx.leave()
       assert(ctx.scope.outer == nil, "scope is unbalanced")
       return lua
