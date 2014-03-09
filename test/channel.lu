@@ -1,4 +1,5 @@
-import File, Fiber, Channel from std.system
+import Fiber, Channel from std.system
+import File from std.file
 
 var chan = Channel.new(3)
 
